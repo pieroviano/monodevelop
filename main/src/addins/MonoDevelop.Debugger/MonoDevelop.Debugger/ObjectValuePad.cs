@@ -34,7 +34,9 @@ using Mono.Debugging.Client;
 using MonoDevelop.Core;
 using MonoDevelop.Ide.Gui;
 using MonoDevelop.Components;
+#if MAC
 using Foundation;
+#endif
 
 namespace MonoDevelop.Debugger
 {

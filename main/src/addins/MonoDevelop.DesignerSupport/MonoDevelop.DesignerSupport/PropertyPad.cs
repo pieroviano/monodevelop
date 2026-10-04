@@ -44,6 +44,7 @@ using Gtk;
 
 namespace MonoDevelop.DesignerSupport
 {
+#if MAC
 	class PropertyMacHostWidget : IPropertyGrid
 	{
 		public event EventHandler PropertyGridChanged;
@@ -124,6 +125,7 @@ namespace MonoDevelop.DesignerSupport
 			}
 		}
 	}
+#endif
 
 	public interface IPropertyGrid : IPropertyPad
 	{

@@ -30,7 +30,9 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 
+#if MAC
 using Foundation;
+#endif
 using GLib;
 using Gtk;
 
