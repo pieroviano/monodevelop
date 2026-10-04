@@ -121,12 +121,12 @@ namespace MonoDevelop.Debugger
 			DebuggerLoggingService.LogMessage ("End Local Variables");
 
 			if (UseNewTreeView) {
-				_treeview.BeginUpdates ();
+				BeginTreeUpdates ();
 				try {
 					controller.ClearValues ();
 					controller.AddValues (locals);
 				} finally {
-					_treeview.EndUpdates ();
+					EndTreeUpdates ();
 				}
 
 				if (EnableFakeNodes)

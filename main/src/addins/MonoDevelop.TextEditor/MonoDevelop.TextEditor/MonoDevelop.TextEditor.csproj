@@ -16,6 +16,15 @@
     <Reference Include="PresentationCore" />
     <ProjectReference Include="..\..\MonoDevelop.DesignerSupport\MonoDevelop.DesignerSupport.csproj" Private="false" />
   </ItemGroup>
+  <!-- Find/InfoBar editor extras: platform neutral, but only shipped in the Cocoa editor API (the WPF packages lack them) -->
+  <ItemGroup Condition="$(OS) == 'Windows_NT'">
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\Find\FindCommandArgs.cs" Link="EditorExtras\Find\FindCommandArgs.cs" />
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\Find\IFindPresenter.cs" Link="EditorExtras\Find\IFindPresenter.cs" />
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\Find\IFindPresenterFactory.cs" Link="EditorExtras\Find\IFindPresenterFactory.cs" />
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\InfoBar\IInfoBarPresenter.cs" Link="EditorExtras\InfoBar\IInfoBarPresenter.cs" />
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\InfoBar\IInfoBarPresenterFactory.cs" Link="EditorExtras\InfoBar\IInfoBarPresenterFactory.cs" />
+    <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Def\TextUICocoa\Extras\InfoBar\InfoBarViewModel.cs" Link="EditorExtras\InfoBar\InfoBarViewModel.cs" />
+  </ItemGroup>
   <ItemGroup>
     <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Util\TextUIUtil\VacuousTextDataModel.cs" Link="Util\VacuousTextDataModel.cs" />
     <Compile Include="$(VSEditorApiDirectory)src\Editor\Text\Util\TextUIUtil\UIExtensionSelector.cs" Link="Util\UIExtensionSelector.cs" />

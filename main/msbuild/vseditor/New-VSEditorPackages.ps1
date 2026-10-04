@@ -178,3 +178,5 @@ $deps
 }
 
 Write-Host "feed: $OutputPath"
+# same version, new content: restore treats it as a no-op unless forced
+Write-Host 'regenerated packages keep their version: run "NuGet.exe restore Main.sln -Force" (or delete obj\project.assets.json)'

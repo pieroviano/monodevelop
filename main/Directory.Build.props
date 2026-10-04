@@ -25,5 +25,7 @@
     <NuGetVersionVSCodeDebugProtocol>15.8.20719.1</NuGetVersionVSCodeDebugProtocol>
     <NuGetVersionVSComposition>15.8.112</NuGetVersionVSComposition>
     <NuGetVersionVSEditor>16.1.28-g2ad4df7366</NuGetVersionVSEditor>
+    <!-- minimum required by the 16.11 editor packages in the local vseditor feed -->
+    <NuGetVersionVSImaging>16.10.31225.38</NuGetVersionVSImaging>
   </PropertyGroup>
 </Project>

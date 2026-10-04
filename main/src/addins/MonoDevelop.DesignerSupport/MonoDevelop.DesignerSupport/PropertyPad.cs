@@ -125,6 +125,72 @@ namespace MonoDevelop.DesignerSupport
 			}
 		}
 	}
+#else
+	// adapts the Gtk property grid to IPropertyGrid on platforms without the native Mac grid
+	class PropertyGtkHostWidget : IPropertyGrid
+	{
+		pg.PropertyGrid grid = new pg.PropertyGrid ();
+
+		public event EventHandler PropertyGridChanged {
+			add { grid.Changed += value; }
+			remove { grid.Changed -= value; }
+		}
+
+		public string Name {
+			get => grid.Name;
+			set => grid.Name = value;
+		}
+
+		public bool ShowHelp {
+			get => grid.ShowHelp;
+			set => grid.ShowHelp = value;
+		}
+
+		public bool ShowToolbar {
+			get => grid.ShowToolbar;
+			set => grid.ShowToolbar = value;
+		}
+
+		public ShadowType ShadowType {
+			get => grid.ShadowType;
+			set => grid.ShadowType = value;
+		}
+
+		public bool Sensitive {
+			get => grid.Sensitive;
+			set => grid.Sensitive = value;
+		}
+
+		public object CurrentObject {
+			get => grid.CurrentObject;
+			set => grid.CurrentObject = value;
+		}
+
+		public Widget Widget => grid;
+
+		public bool IsGridEditing => grid.IsEditing;
+
+		public void SetCurrentObject (object lastComponent, object [] propertyProviders)
+			=> grid.SetCurrentObject (lastComponent, propertyProviders);
+
+		public void BlankPad () => grid.BlankPad ();
+		public void PopulateGrid (bool saveEditSession) => grid.Populate (saveEditSession);
+		public void Hide () => grid.Hide ();
+		public void Show () => grid.Show ();
+
+		public void SetToolbarProvider (object toolbarProvider)
+			=> grid.SetToolbarProvider (toolbarProvider as pg.PropertyGrid.IToolbarProvider);
+
+		public void CommitPendingChanges () => grid.CommitPendingChanges ();
+
+		public void Dispose ()
+		{
+			if (grid != null) {
+				grid.Destroy ();
+				grid = null;
+			}
+		}
+	}
 #endif
 
 	public interface IPropertyGrid : IPropertyPad
@@ -190,7 +256,7 @@ namespace MonoDevelop.DesignerSupport
 #if MAC
 			nativeWidget = new PropertyMacHostWidget ();
 #else
-			nativeWidget = new pg.PropertyGrid ();
+			nativeWidget = new PropertyGtkHostWidget ();
 #endif
 			nativeWidget.PropertyGridChanged += NativeWidget_PropertyGridChanged;
 		}

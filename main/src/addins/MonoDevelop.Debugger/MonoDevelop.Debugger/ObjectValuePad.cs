@@ -46,8 +46,25 @@ namespace MonoDevelop.Debugger
 
 		protected ObjectValueTreeViewController controller;
 		protected ObjectValueTreeView tree;
+#if MAC
 		// this is for the new treeview
 		protected MacObjectValueTreeView _treeview;
+#endif
+
+		// batches tree updates on the native Mac tree view; the Gtk tree view needs no batching
+		protected void BeginTreeUpdates ()
+		{
+#if MAC
+			_treeview?.BeginUpdates ();
+#endif
+		}
+
+		protected void EndTreeUpdates ()
+		{
+#if MAC
+			_treeview?.EndUpdates ();
+#endif
+		}
 
 		readonly Control control;
 		PadFontChanger fontChanger;
@@ -70,6 +87,7 @@ namespace MonoDevelop.Debugger
 				controller = new ObjectValueTreeViewController (allowWatchExpressions);
 				controller.AllowEditing = true;
 
+#if MAC
 				if (Platform.IsMac) {
 					LoggingService.LogInfo ("Using MacObjectValueTreeView for {0}", allowWatchExpressions ? "Watch Pad" : "Locals Pad");
 					var treeView = controller.GetMacControl (ObjectValueTreeViewFlags.ObjectValuePadFlags);
@@ -103,7 +121,9 @@ namespace MonoDevelop.Debugger
 					host.ShowAll ();
 
 					control = host;
-				} else {
+				} else
+#endif
+				{
 					LoggingService.LogInfo ("Using GtkObjectValueTreeView for {0}", allowWatchExpressions ? "Watch Pad" : "Locals Pad");
 					var treeView = controller.GetGtkControl (ObjectValueTreeViewFlags.ObjectValuePadFlags);
 					treeView.Show ();

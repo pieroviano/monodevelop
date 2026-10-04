@@ -190,9 +190,9 @@
     <Compile Include="MonoDevelop.Debugger\PinnedWatchLocation.cs" />
     <Compile Include="MonoDevelop.Debugger\ObjectValue\ExpressionEventArgs.cs" />
     <Compile Include="MonoDevelop.Debugger\DebuggerAsyncCompletionSource.cs" />
-    <Compile Include="MonoDevelop.Debugger\DebuggerCompletionCommandHandler.cs" />
   </ItemGroup>
   <ItemGroup Condition="$(OS) != 'Windows_NT'">
+    <Compile Include="MonoDevelop.Debugger\DebuggerCompletionCommandHandler.cs" />
     <Compile Include="MonoDevelop.Debugger\ObjectValue\Mac\MacObjectValueTreeView.cs" />
     <Compile Include="MonoDevelop.Debugger.VSTextView\QuickInfo\MacDebuggerTooltipWindow.cs" />
     <Compile Include="MonoDevelop.Debugger.VSTextView\PinnedWatches\PinnedWatchProvider.cs" />

@@ -89,7 +89,7 @@ namespace MonoDevelop.Debugger
 			controller.ExpressionAdded -= OnExpressionAdded;
 
 			try {
-				_treeview.BeginUpdates ();
+				BeginTreeUpdates ();
 				try {
 					// remove the expressions because we're going to rebuild them
 					controller.ClearAll ();
@@ -97,7 +97,7 @@ namespace MonoDevelop.Debugger
 					// re-add the expressions which will reevaluate the expressions and repopulate the treeview
 					controller.AddExpressions (expressions);
 				} finally {
-					_treeview.EndUpdates ();
+					EndTreeUpdates ();
 				}
 			} finally {
 				controller.ExpressionAdded += OnExpressionAdded;
