@@ -112,6 +112,8 @@
   </ItemGroup>
   <ItemGroup>
     <IncludeCopyLocal Include="Humanizer.dll" />
+    <!-- not in the GAC on Windows: ship the copy referenced via MonodocAssemblyPath -->
+    <IncludeCopyLocal Include="monodoc.dll" Condition=" '$(OS)' == 'Windows_NT' " />
     <IncludeCopyLocal Include="ICSharpCode.Decompiler.dll" />
     <IncludeCopyLocal Include="ICSharpCode.SharpZipLib.dll" />
     <IncludeCopyLocal Include="Microsoft.Build.Locator.dll" />
