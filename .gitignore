@@ -9,6 +9,7 @@
 obj/
 /main/build/bin
 /main/build/lib
+/main/build/vseditor-feed
 /main/build/AddIns
 /main/build/data/
 /main/build/locale/

@@ -39,6 +39,9 @@ exit /b 1
 
 git submodule sync || goto :error
 git submodule update --init --recursive || goto :error
+if not exist "build\vseditor-feed\*.nupkg" (
+	powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0msbuild\vseditor\New-VSEditorPackages.ps1" || goto :error
+)
 "external\nuget-binary\NuGet.exe" restore Main.sln
 
 "%MSBUILD_EXE%" external\fsharpbinding\.paket\paket.targets /t:RestorePackages /p:PaketReferences="%~dp0external\fsharpbinding\MonoDevelop.FSharpBinding\paket.references"
