@@ -4,14 +4,18 @@
 
 .DESCRIPTION
   That version was only published on a retired internal feed. This script recreates it:
-  - public packages: repacks the nuget.org 16.1.89 builds under $(NuGetVersionVSEditor);
-  - closed-source Platform.VSEditor / Text.Internal: packs the DLLs of a local Visual Studio 2019 install.
+  - closed-source Platform.VSEditor / Text.Internal: packs the DLLs of a local Visual Studio 2019 install;
+  - public packages: repacks the nuget.org builds matching those DLLs (e.g. 16.11.41) under $(NuGetVersionVSEditor),
+    so the whole set comes from one editor release (the closed DLLs forward types to the public ones).
   Dependencies between the packages are rewritten to the same version so restore sees one consistent set.
-  Output: main/build/vseditor-feed (gitignored; referenced by NuGet.config). Requires VS 2019 (any 16.x, core editor).
+  Output: main/build/vseditor-feed (gitignored; referenced by NuGet.config).
+  Requires VS 2019 (any 16.x, core editor), or -EditorDllPath: a folder holding the two closed DLLs (e.g. extracted
+  from a previously generated feed).
 #>
 param(
 	[string] $VsInstallPath,
-	[string] $PublicVersion = '16.1.89',
+	[string] $EditorDllPath,
+	[string] $PublicVersion,
 	[string] $OutputPath = (Join-Path $PSScriptRoot '..\..\build\vseditor-feed')
 )
 
@@ -37,10 +41,25 @@ $publicIds = @(
 $closedIds = @('Microsoft.VisualStudio.Platform.VSEditor', 'Microsoft.VisualStudio.Text.Internal')
 $allIds = $publicIds + $closedIds
 
-if (-not $VsInstallPath) {
-	$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-	$VsInstallPath = & $vswhere -version '[16.0,17.0)' -products * -latest -property installationPath
-	if (-not $VsInstallPath) { throw 'Visual Studio 2019 not found (pass -VsInstallPath).' }
+if ($EditorDllPath) {
+	$searchRoot = $EditorDllPath
+} else {
+	if (-not $VsInstallPath) {
+		$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+		$VsInstallPath = & $vswhere -version '[16.0,17.0)' -products * -latest -property installationPath
+		if (-not $VsInstallPath) { throw 'Visual Studio 2019 not found (pass -VsInstallPath or -EditorDllPath).' }
+	}
+	$searchRoot = Join-Path $VsInstallPath 'Common7\IDE'
+}
+
+$closedDlls = @{}
+foreach ($id in $closedIds) {
+	$closedDlls[$id] = Get-ChildItem $searchRoot -Recurse -Filter "$id.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+	if (-not $closedDlls[$id]) { throw "$id.dll not found under $searchRoot" }
+}
+if (-not $PublicVersion) {
+	# 16.11.41.21696 -> 16.11.41
+	$PublicVersion = ($closedDlls['Microsoft.VisualStudio.Platform.VSEditor'].VersionInfo.FileVersion -split '\.')[0..2] -join '.'
 }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) "vseditor-pack-$PID"
@@ -100,16 +119,18 @@ try {
 		$nuspecPath = Get-ChildItem $dir -Filter *.nuspec | Select-Object -First 1 -ExpandProperty FullName
 		$nuspec = [xml](Get-Content $nuspecPath)
 		$nuspec.package.metadata.version = $version
+		# the repository's NuGet.exe predates <icon> and rejects <licenseUrl> next to <license>
+		$metadata = $nuspec.package.metadata
+		$hasLicense = @($metadata.ChildNodes | Where-Object { $_.LocalName -eq 'license' }).Count -gt 0
+		foreach ($node in @($metadata.ChildNodes | Where-Object { $_.LocalName -eq 'icon' -or ($hasLicense -and $_.LocalName -eq 'licenseUrl') })) { [void]$metadata.RemoveChild($node) }
 		Set-Dependencies $nuspec
 		$nuspec.Save($nuspecPath)
 		Invoke-Pack $dir $nuspecPath
 		Write-Host "packed $id $version (from $PublicVersion)"
 	}
 
-	$ide = Join-Path $VsInstallPath 'Common7\IDE'
 	foreach ($id in $closedIds) {
-		$dll = Get-ChildItem $ide -Recurse -Filter "$id.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-		if (-not $dll) { throw "$id.dll not found under $ide" }
+		$dll = $closedDlls[$id]
 		$dir = Join-Path $work $id
 		$lib = Join-Path $dir 'lib\net472'
 		New-Item -ItemType Directory -Force $lib | Out-Null

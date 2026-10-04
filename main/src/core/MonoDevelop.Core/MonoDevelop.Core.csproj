@@ -76,7 +76,9 @@
       <HintPath>$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll</HintPath>
       <Private>False</Private>
     </Reference>
-    <Reference Include="monodoc, Version=1.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756" />
+    <Reference Include="monodoc, Version=1.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756">
+      <HintPath>$(MonodocAssemblyPath)</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.IO.FileSystem" />
     <Reference Include="System.IO.FileSystem.Primitives" />
