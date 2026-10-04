@@ -90,6 +90,22 @@ namespace MonoDevelop.Components.AtkCocoaHelper
 		{
 		}
 
+		public static void SetSubRole (this Atk.Object o, AtkCocoa.SubRoles subrole)
+		{
+		}
+
+		public static void SetValue (this Atk.Object o, object value)
+		{
+		}
+
+		public static void SetHidden (this Atk.Object o, bool hidden)
+		{
+		}
+
+		public static void SetCurrentFocus (this Atk.Object o)
+		{
+		}
+
 		public static void SetTitleUIElement (this Atk.Object o, Atk.Object title)
 		{
 		}

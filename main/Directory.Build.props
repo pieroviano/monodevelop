@@ -27,5 +27,8 @@
     <NuGetVersionVSEditor>16.1.28-g2ad4df7366</NuGetVersionVSEditor>
     <!-- minimum required by the 16.11 editor packages in the local vseditor feed -->
     <NuGetVersionVSImaging>16.10.31225.38</NuGetVersionVSImaging>
+    <NuGetVersionSystemCollectionsImmutable>1.5.0</NuGetVersionSystemCollectionsImmutable>
+    <!-- the 16.11 editor packages (Windows) are built against 5.0 -->
+    <NuGetVersionSystemCollectionsImmutable Condition=" '$(OS)' == 'Windows_NT' ">5.0.0</NuGetVersionSystemCollectionsImmutable>
   </PropertyGroup>
 </Project>
