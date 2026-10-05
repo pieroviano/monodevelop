@@ -824,37 +824,5 @@ namespace MonoDevelop.Components.AutoTest
 			return output;
 		}
 	}
-
-	[StructLayout (LayoutKind.Sequential)] 
-	struct NativeEventButtonStruct { 
-		public Gdk.EventType type; 
-		public IntPtr window; 
-		public sbyte send_event; 
-		public uint time; 
-		public double x; 
-		public double y; 
-		public IntPtr axes; 
-		public uint state; 
-		public uint button; 
-		public IntPtr device; 
-		public double x_root; 
-		public double y_root; 
-	} 
-	
-	[StructLayout (LayoutKind.Sequential)] 
-	struct NativeEventScrollStruct { 
-		public Gdk.EventType type; 
-		public IntPtr window; 
-		public sbyte send_event; 
-		public uint time; 
-		public double x; 
-		public double y; 
-		public uint state; 
-		public Gdk.ScrollDirection direction;
-		public IntPtr device; 
-		public double x_root; 
-		public double y_root; 
-	}
-	// Analysis restore InconsistentNaming
 }
 

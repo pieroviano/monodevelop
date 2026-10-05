@@ -28,7 +28,6 @@
 
 using System;
 using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
@@ -41,8 +40,8 @@ namespace MonoDevelop.Components
 		public CellRendererComboBox ()
 		{
 			Mode |= Gtk.CellRendererMode.Editable;
-			Gtk.ComboBox dummyEntry = Gtk.ComboBox.NewText ();
-			rowHeight = dummyEntry.SizeRequest ().Height + (2 * dummyEntry.Style?.YThickness ?? 0);
+			var dummyEntry = new Gtk.ComboBoxText ();
+			dummyEntry.Measure (Gtk.Orientation.Vertical, -1, out _, out rowHeight, out _, out _);
 			Ypad = 0;
 		}
 
@@ -51,29 +50,37 @@ namespace MonoDevelop.Components
 			set { values = value; }
 		}
 		
-		public override void GetSize (Widget widget, ref Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+		protected override void OnGetPreferredHeight (Widget widget, out int minimum_size, out int natural_size)
 		{
-			base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-			if (height < rowHeight)
-				height = rowHeight;
+			base.OnGetPreferredHeight (widget, out minimum_size, out natural_size);
+			minimum_size = Math.Max (minimum_size, rowHeight);
+			natural_size = Math.Max (natural_size, rowHeight);
+		}
+
+		protected override void OnGetPreferredHeightForWidth (Widget widget, int width, out int minimum_height, out int natural_height)
+		{
+			base.OnGetPreferredHeightForWidth (widget, width, out minimum_height, out natural_height);
+			minimum_height = Math.Max (minimum_height, rowHeight);
+			natural_height = Math.Max (natural_height, rowHeight);
 		}
 		
-		public override CellEditable StartEditing (Gdk.Event ev, Widget widget, string path, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
+		protected override ICellEditable OnStartEditing (Gdk.Event evnt, Widget widget, string path, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
 		{
 			this.path = path;
 
-			Gtk.ComboBox combo = Gtk.ComboBox.NewText ();
-			foreach (string s in values)
-				combo.AppendText (s);
-			
-			combo.Active = Array.IndexOf (values, Text);
-			combo.Changed += new EventHandler (SelectionChanged);
-			return new TreeViewCellContainer (combo);
+			var combo = new Gtk.ComboBoxText ();
+			if (values != null) {
+				foreach (string s in values)
+					combo.AppendText (s);
+				combo.Active = Array.IndexOf (values, Text);
+			}
+			combo.Changed += SelectionChanged;
+			return CellEditableAdapter.GetObject (new TreeViewCellContainer (combo));
 		}
 		
 		void SelectionChanged (object s, EventArgs a)
 		{
-			Gtk.ComboBox combo = (Gtk.ComboBox) s;
+			var combo = (Gtk.ComboBoxText) s;
 			if (Changed != null)
 				Changed (this, new ComboSelectionChangedArgs (path, combo.Active, combo.ActiveText));
 		}

@@ -85,7 +85,8 @@ namespace MonoDevelop.Components.AutoTest
 
 		public AppQuery RadioButton ()
 		{
-			return CheckType (typeof(Gtk.RadioButton), "RadioButton");
+			// GTK 4 radio buttons are grouped Gtk.CheckButtons.
+			return CheckType (typeof(Gtk.CheckButton), "RadioButton");
 		}
 
 		public AppQuery TreeView ()

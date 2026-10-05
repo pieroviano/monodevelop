@@ -27,12 +27,14 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
-using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using System.Xml;
 using Gtk;
 
 namespace MonoDevelop.Components.AutoTest.Results
 {
+	// GTK 4 cannot synthesize input events (gdk_event_put is gone), so clicks and key presses are
+	// emulated by activating widgets, editing text directly and triggering matching shortcuts.
 	public class GtkWidgetResult : AppResult
 	{
 		Widget resultWidget;
@@ -44,7 +46,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override string ToString ()
 		{
-			return String.Format ("{0} - {1} - {2} - {3}, - {4}", resultWidget, resultWidget.Allocation, resultWidget.Name, resultWidget.GetType ().FullName, resultWidget.Toplevel.Name);
+			return String.Format ("{0} - {1} - {2} - {3}, - {4}", resultWidget, resultWidget.Allocation, resultWidget.Name, resultWidget.GetType ().FullName, (resultWidget.Root as Widget)?.Name);
 		}
 
 		public override void ToXml (XmlElement element)
@@ -87,7 +89,15 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override AppResult Selected ()
 		{
-			return resultWidget.HasFocus ? this : null;
+			return HasFocusWithin (resultWidget) ? this : null;
+		}
+
+		// In GTK 4 an Entry/SpinButton delegates focus to an internal Gtk.Text.
+		static bool HasFocusWithin (Widget widget)
+		{
+			if (widget.HasFocus)
+				return true;
+			return widget is IEditable editable && editable.Delegate is Widget inner && inner != widget && inner.HasFocus;
 		}
 
 		public override AppResult CheckType (Type desiredType)
@@ -99,6 +109,24 @@ namespace MonoDevelop.Components.AutoTest.Results
 			return null;
 		}
 
+		static string GetComboBoxActiveText (ComboBox cb)
+		{
+			if (cb is ComboBoxText cbt)
+				return cbt.ActiveText;
+
+			if (cb.HasEntry && cb.Child is IEditable entry)
+				return entry.Text;
+
+			var model = cb.Model;
+			if (model == null || !cb.GetActiveIter (out TreeIter iter))
+				return null;
+
+			int column = cb.EntryTextColumn >= 0 ? cb.EntryTextColumn : 0;
+			if (column >= model.NColumns)
+				return null;
+			return GtkTreeModelResult.GetModelValue (model, iter, column) as string;
+		}
+
 		public override AppResult Text (string text, bool exact)
 		{
 			// Entries and Labels have Text, Buttons have Label.
@@ -108,7 +136,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 			// If the active text fails then
 			ComboBox cb = resultWidget as ComboBox;
 			if (cb != null) {
-				string activeText = cb.ActiveText;
+				string activeText = GetComboBoxActiveText (cb);
 				if (activeText == null) {
 					return null;
 				}
@@ -127,17 +155,11 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 			pinfo = resultWidget.GetType ().GetProperty ("Label");
 			if (pinfo != null) {
-				string propText = (string)pinfo.GetValue (resultWidget);
+				string propText = pinfo.GetValue (resultWidget) as string;
 
-				Button button = resultWidget as Button;
-				// If resultWidget is a button then the label may not be the actual label that is displayed
-				// but rather a stock ID. So we may need to translate it
-				if (button != null && button.UseStock && propText != null) {
-					StockItem item = Stock.Lookup (propText);
-					propText = item.Label;
-				}
-
-				if (button != null && button.UseUnderline && propText != null) {
+				// Stock items are gone in GTK 4; only mnemonic underlines need stripping.
+				bool useUnderline = (resultWidget as Button)?.UseUnderline ?? (resultWidget as CheckButton)?.UseUnderline ?? false;
+				if (useUnderline && propText != null) {
 					int indexOfUnderline = propText.IndexOf ("_");
 					if (indexOfUnderline > -1) {
 						propText = propText.Remove (indexOfUnderline, 1);
@@ -152,7 +174,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 			return null;
 		}
 
-		protected TreeModel ModelFromWidget (Widget widget)
+		protected ITreeModel ModelFromWidget (Widget widget)
 		{
 			TreeView tv = widget as TreeView;
 			if (tv != null) {
@@ -169,7 +191,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override AppResult Model (string column)
 		{
-			TreeModel model = ModelFromWidget (resultWidget);
+			ITreeModel model = ModelFromWidget (resultWidget);
 			if (model == null) {
 				return null;
 			}
@@ -183,7 +205,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 			return columnNumber == -1 ? null : DisposeWithResult (new GtkTreeModelResult (resultWidget, model, columnNumber) { SourceQuery = this.SourceQuery });
 		}
 
-		protected int GetColumnNumber (string column, TreeModel model)
+		protected int GetColumnNumber (string column, ITreeModel model)
 		{
 			Type modelType = model.GetType ();
 			SemanticModelAttribute attr = modelType.GetCustomAttribute<SemanticModelAttribute> ();
@@ -211,26 +233,13 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override List<AppResult> NextSiblings ()
 		{
-			Widget parent = resultWidget.Parent;
-			Gtk.Container container = parent as Gtk.Container;
-
 			// This really shouldn't happen
-			if (container == null) {
+			if (resultWidget.Parent == null) {
 				return null;
 			}
 
-			bool foundSelf = false;
 			List<AppResult> siblingResults = new List<AppResult> ();
-			foreach (Widget child in container.Children) {
-				if (child == resultWidget) {
-					foundSelf = true;
-					continue;
-				}
-
-				if (!foundSelf) {
-					continue;
-				}
-
+			for (Widget child = resultWidget.NextSibling; child != null; child = child.NextSibling) {
 				siblingResults.Add (DisposeWithResult (new GtkWidgetResult (child) { SourceQuery = this.SourceQuery }));
 			}
 
@@ -252,104 +261,231 @@ namespace MonoDevelop.Components.AutoTest.Results
 			return true;
 		}
 
+		static readonly Regex hrefRegex = new Regex ("href\\s*=\\s*[\"']([^\"']*)[\"']", RegexOptions.IgnoreCase);
+
 		public override bool Click ()
 		{
-			Button button = resultWidget as Button;
-			if (button != null) {
-				button.Click ();
-				return true;
-			}
 			Label lbl = resultWidget as Label;
-			if(lbl != null)
-			{
-				GLib.Signal.Emit (lbl, "activate-link", new object[]{});
+			if (lbl != null) {
+				// Follow the focused link, or the first one in the markup.
+				string uri = lbl.CurrentUri;
+				if (uri == null && lbl.UseMarkup && lbl.LabelProp != null) {
+					var match = hrefRegex.Match (lbl.LabelProp);
+					if (match.Success)
+						uri = match.Groups [1].Value;
+				}
+				if (uri == null)
+					return false;
+				GLib.Signal.Emit (lbl, "activate-link", uri);
 				return true;
 			}
-			GLib.Signal.Emit (resultWidget, "button-press-event", new object [] { });
-			GLib.Signal.Emit (resultWidget, "button-release-event", new object [] { });
 
-			return true;
-		}
-
-		void SendButtonEvent (Widget target, Gdk.EventType eventType, double x, double y, Gdk.ModifierType state, uint button)
-		{
-			Gdk.Window win = target.GdkWindow;
-
-			int rx, ry;
-			win.GetRootOrigin (out rx, out ry);
-
-			var nativeEvent = new NativeEventButtonStruct {
-				type = eventType,
-				send_event = 1,
-				window = win.Handle,
-				state = (uint)state,
-				button = button,
-				x = x,
-				y = y,
-				axes = IntPtr.Zero,
-				device = IntPtr.Zero,
-				time = Global.CurrentEventTime,
-				x_root = x + rx,
-				y_root = y + ry
-			};
-
-			IntPtr ptr = GLib.Marshaller.StructureToPtrAlloc (nativeEvent);
-			try {
-				Gdk.EventHelper.Put (new Gdk.EventButton (ptr));
-			} finally {
-				Marshal.FreeHGlobal (ptr);
-			}
+			// Buttons, check buttons, expanders, menu buttons, entries...: "activate" == click.
+			return resultWidget.Activate ();
 		}
 
 		public override bool Click (double x, double y)
 		{
-			SendButtonEvent (resultWidget, Gdk.EventType.ButtonPress, x, y, 0, 1);
-			SendButtonEvent (resultWidget, Gdk.EventType.ButtonRelease, x, y, 0, 1);
+			if (resultWidget is TreeView treeView) {
+				treeView.ConvertWidgetToBinWindowCoords ((int)x, (int)y, out int bx, out int by);
+				if (!treeView.GetPathAtPos (bx, by, out TreePath path, out TreeViewColumn column))
+					return false;
+				treeView.SetCursor (path, column, false);
+				return true;
+			}
 
-			return true;
+			// Activate the deepest widget under the point, or its closest activatable ancestor.
+			Widget hit = resultWidget.Pick (x, y, PickFlags.Default) ?? resultWidget;
+			for (Widget w = hit; w != null; w = w.Parent) {
+				if (w.Activate ())
+					return true;
+				if (w == resultWidget)
+					break;
+			}
+
+			return false;
 		}
 
-		void SendKeyEvent (Gtk.Widget target, uint keyval, Gdk.ModifierType state, Gdk.EventType eventType, string subWindow)
+		// Key emulation targets the focus widget when the result is a window.
+		Widget GetKeyTarget ()
 		{
-			Gdk.KeymapKey[] keyms = Gdk.Keymap.Default.GetEntriesForKeyval (keyval);
-			if (keyms.Length == 0)
-				throw new Exception ("Keyval not found");
+			if (resultWidget is Gtk.Window window)
+				return window.Focus ?? window;
+			return resultWidget;
+		}
 
-			Gdk.Window win = target.GdkWindow;
-
-			// FIXME: Do we need subwindow for anything?
-			/*
-			if (subWindow == null) {
-				win = target.GdkWindow;
-			} else {
-				win = (Gdk.Window)GetValue (target, target.GetType (), subWindow);
-			}
-			*/
-
-			var nativeEvent = new NativeEventKeyStruct {
-				type = eventType,
-				send_event = 1,
-				window = win.Handle,
-				state = (uint)state,
-				keyval = keyval,
-				group = (byte)keyms [0].Group,
-				hardware_keycode = (ushort)keyms [0].Keycode,
-				length = 0,
-				time = Gtk.Global.CurrentEventTime
-			};
-
-			IntPtr ptr = GLib.Marshaller.StructureToPtrAlloc (nativeEvent); 
-			try {
-				Gdk.EventHelper.Put (new Gdk.EventKey (ptr));
-			} finally {
-				Marshal.FreeHGlobal (ptr);
-			}
+		static IEditable GetEditable (Widget widget)
+		{
+			return widget is IEditable editable && editable.IsEditable ? editable : null;
 		}
 
 		internal void RealTypeKey (Gdk.Key key, Gdk.ModifierType state)
 		{
-			SendKeyEvent (resultWidget, (uint)key, state, Gdk.EventType.KeyPress, null);
-			SendKeyEvent (resultWidget, (uint)key, state, Gdk.EventType.KeyRelease, null);
+			Widget target = GetKeyTarget ();
+			if (target == null)
+				return;
+
+			if (TryActivateShortcut (target, (uint)key, state))
+				return;
+
+			if (HandleSpecialKey (target, key, state))
+				return;
+
+			const Gdk.ModifierType commandMask = Gdk.ModifierType.ControlMask | Gdk.ModifierType.AltMask | Gdk.ModifierType.SuperMask | Gdk.ModifierType.MetaMask | Gdk.ModifierType.HyperMask;
+			if ((state & commandMask) != 0)
+				return;
+
+			uint unicode = Gdk.Keyval.ToUnicode ((uint)key);
+			if (unicode != 0)
+				InsertText (target, char.ConvertFromUtf32 ((int)unicode));
+		}
+
+		static void InsertText (Widget target, string text)
+		{
+			if (target is TextView textView) {
+				if (textView.Editable)
+					GLib.Signal.Emit (textView, "insert-at-cursor", text);
+				return;
+			}
+
+			var editable = GetEditable (target);
+			if (editable == null)
+				return;
+
+			editable.DeleteSelection ();
+			int position = editable.Position;
+			editable.InsertText (text, ref position);
+			editable.Position = position;
+		}
+
+		static bool HandleSpecialKey (Widget target, Gdk.Key key, Gdk.ModifierType state)
+		{
+			bool shift = (state & Gdk.ModifierType.ShiftMask) != 0;
+			var editable = GetEditable (target);
+			var textView = target as TextView;
+			var treeView = target as TreeView;
+
+			switch (key) {
+			case Gdk.Key.Return:
+			case Gdk.Key.KP_Enter:
+				if (textView != null) {
+					InsertText (target, "\n");
+					return true;
+				}
+				if (!target.Activate ())
+					target.ActivateActionVariant ("default.activate", null);
+				return true;
+
+			case Gdk.Key.Escape:
+				for (Widget w = target; w != null; w = w.Parent) {
+					if (w is Popover popover) {
+						popover.Popdown ();
+						return true;
+					}
+				}
+				(target.Root as Gtk.Window)?.Close ();
+				return true;
+
+			case Gdk.Key.Tab:
+			case Gdk.Key.ISO_Left_Tab:
+				if (textView != null && textView.Editable && !shift && key == Gdk.Key.Tab) {
+					InsertText (target, "\t");
+					return true;
+				}
+				MoveFocus (target, shift || key == Gdk.Key.ISO_Left_Tab ? DirectionType.TabBackward : DirectionType.TabForward);
+				return true;
+
+			case Gdk.Key.BackSpace:
+			case Gdk.Key.Delete:
+				if (textView != null) {
+					if (key == Gdk.Key.BackSpace)
+						GLib.Signal.Emit (textView, "backspace");
+					else
+						GLib.Signal.Emit (textView, "delete-from-cursor", DeleteType.Chars, 1);
+					return true;
+				}
+				if (editable != null) {
+					if (editable.GetSelectionBounds (out int start, out int end) && start != end) {
+						editable.DeleteSelection ();
+					} else {
+						int pos = editable.Position;
+						if (key == Gdk.Key.BackSpace && pos > 0)
+							editable.DeleteText (pos - 1, pos);
+						else if (key == Gdk.Key.Delete)
+							editable.DeleteText (pos, pos + 1);
+					}
+					return true;
+				}
+				return false;
+
+			case Gdk.Key.Up:
+			case Gdk.Key.Down:
+			case Gdk.Key.Left:
+			case Gdk.Key.Right:
+				bool vertical = key == Gdk.Key.Up || key == Gdk.Key.Down;
+				int count = key == Gdk.Key.Up || key == Gdk.Key.Left ? -1 : 1;
+				if (treeView != null) {
+					if (vertical)
+						GLib.Signal.Emit (treeView, "move-cursor", MovementStep.DisplayLines, count, shift, false);
+					else
+						GLib.Signal.Emit (treeView, "expand-collapse-cursor-row", false, count > 0, false);
+					return true;
+				}
+				if (textView != null) {
+					GLib.Signal.Emit (textView, "move-cursor", vertical ? MovementStep.DisplayLines : MovementStep.VisualPositions, count, shift);
+					return true;
+				}
+				if (editable != null && !vertical) {
+					editable.Position = Math.Max (0, editable.Position + count);
+					return true;
+				}
+				MoveFocus (target, key == Gdk.Key.Up ? DirectionType.Up : key == Gdk.Key.Down ? DirectionType.Down : key == Gdk.Key.Left ? DirectionType.Left : DirectionType.Right);
+				return true;
+			}
+
+			return false;
+		}
+
+		static void MoveFocus (Widget target, DirectionType direction)
+		{
+			if (target.Root is Gtk.Window window)
+				GLib.Signal.Emit (window, "move-focus", direction);
+		}
+
+		// Triggers the first Gtk.Shortcut bound to keyval+modifiers in a ShortcutController on the
+		// target or one of its ancestors (GTK 4 has no API to dispatch a synthetic key event).
+		static bool TryActivateShortcut (Widget target, uint keyval, Gdk.ModifierType state)
+		{
+			uint lowerKeyval = Gdk.Keyval.ToLower (keyval);
+			for (Widget w = target; w != null; w = w.Parent) {
+				GLib.IListModel controllers = w.ObserveControllers ();
+				for (uint i = 0; i < controllers.NItems; i++) {
+					if (!(controllers.GetObject (i) is ShortcutController shortcuts))
+						continue;
+					for (uint j = 0; j < shortcuts.NItems; j++) {
+						if (!(shortcuts.GetObject (j) is Shortcut shortcut) || shortcut.Action == null)
+							continue;
+						if (!TriggerMatches (shortcut.Trigger, lowerKeyval, state))
+							continue;
+						if (shortcut.Action.Activate (ShortcutActionFlags.Exclusive, w, shortcut.Arguments))
+							return true;
+					}
+				}
+			}
+			return false;
+		}
+
+		static bool TriggerMatches (ShortcutTrigger trigger, uint lowerKeyval, Gdk.ModifierType state)
+		{
+			const Gdk.ModifierType mask = Gdk.ModifierType.ShiftMask | Gdk.ModifierType.ControlMask | Gdk.ModifierType.AltMask | Gdk.ModifierType.SuperMask | Gdk.ModifierType.HyperMask | Gdk.ModifierType.MetaMask;
+			switch (trigger) {
+			case KeyvalTrigger keyvalTrigger:
+				return Gdk.Keyval.ToLower (keyvalTrigger.Keyval) == lowerKeyval && (keyvalTrigger.Modifiers & mask) == (state & mask);
+			case AlternativeTrigger alternative:
+				return TriggerMatches (alternative.First, lowerKeyval, state) || TriggerMatches (alternative.Second, lowerKeyval, state);
+			default:
+				return false;
+			}
 		}
 
 		Gdk.ModifierType ParseModifier (string modifierString)
@@ -372,23 +508,8 @@ namespace MonoDevelop.Components.AutoTest.Results
 					break;
 
 				case "Mod1":
-					modifier |= Gdk.ModifierType.Mod1Mask;
-					break;
-
-				case "Mod2":
-					modifier |= Gdk.ModifierType.Mod2Mask;
-					break;
-
-				case "Mod3":
-					modifier |= Gdk.ModifierType.Mod3Mask;
-					break;
-
-				case "Mod4":
-					modifier |= Gdk.ModifierType.Mod4Mask;
-					break;
-
-				case "Mod5":
-					modifier |= Gdk.ModifierType.Mod5Mask;
+				case "Alt":
+					modifier |= Gdk.ModifierType.AltMask;
 					break;
 
 				case "Super":
@@ -404,6 +525,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 					break;
 
 				default:
+					// Mod2..Mod5 do not exist in GTK 4.
 					modifier |= Gdk.ModifierType.None;
 					break;
 				}
@@ -479,50 +601,54 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override bool Toggle (bool active)
 		{
-			ToggleButton toggleButton = resultWidget as ToggleButton;
-			if (toggleButton == null) {
+			switch (resultWidget) {
+			case ToggleButton toggleButton:
+				toggleButton.Active = active;
+				return true;
+			case CheckButton checkButton:
+				checkButton.Active = active;
+				return true;
+			case Switch switchWidget:
+				switchWidget.Active = active;
+				return true;
+			default:
 				return false;
 			}
-
-			toggleButton.Active = active;
-			return true;
 		}
 
-		bool flashState;
+		const string FlashCssClass = "autotest-flash";
+		static CssProvider flashProvider;
 
-		void OnFlashWidget (object o, ExposeEventArgs args)
+		static void EnsureFlashProvider (Widget widget)
 		{
-			flashState = !flashState;
-
-			if (flashState) {
+			if (flashProvider != null || widget.Display == null)
 				return;
-			}
-
-			using (var cr = Gdk.CairoHelper.Create (resultWidget.GdkWindow)) {
-				cr.SetSourceRGB (1.0, 0.0, 0.0);
-
-				Gdk.Rectangle allocation = resultWidget.Allocation;
-				Gdk.CairoHelper.Rectangle (cr, allocation);
-				cr.Stroke ();
-			}
+			flashProvider = new CssProvider ();
+			flashProvider.LoadFromString ("." + FlashCssClass + " { outline: 2px solid red; outline-offset: -2px; }");
+			StyleContext.AddProviderForDisplay (widget.Display, flashProvider, 800 /* GTK_STYLE_PROVIDER_PRIORITY_USER */);
 		}
 
 		public override void Flash ()
 		{
-			int flashCount = 10;
+			var widget = resultWidget;
+			if (widget == null)
+				return;
 
-			flashState = true;
-			resultWidget.ExposeEvent += OnFlashWidget;
+			EnsureFlashProvider (widget);
+
+			int flashCount = 10;
+			bool flashState = false;
 
 			GLib.Timeout.Add (1000, () => {
-				resultWidget.QueueDraw ();
+				flashState = !flashState;
 				flashCount--;
 
-				if (flashCount == 0) {
-					resultWidget.ExposeEvent -= OnFlashWidget;
-					return false;
-				}
-				return true;
+				if (flashState && flashCount > 0)
+					widget.AddCssClass (FlashCssClass);
+				else
+					widget.RemoveCssClass (FlashCssClass);
+
+				return flashCount > 0;
 			});
 		}
 

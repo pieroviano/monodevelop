@@ -27,7 +27,6 @@ using System;
 using Xwt.Drawing;
 using MonoDevelop.Core;
 using MonoDevelop.Ide;
-using System.Runtime.InteropServices;
 
 namespace MonoDevelop.Components
 {
@@ -37,13 +36,13 @@ namespace MonoDevelop.Components
 		Image imageOpen;
 		Image imageClosed;
 		IconId icon;
-		Gtk.IconSize stockSize = Gtk.IconSize.Menu;
+		StockIconSize stockSize = StockIconSize.Menu;
 
 		/// <summary>
 		/// Image to be used to represent "no image". This is necessary since GLib.Value can't hold
 		/// null values for object that are not of subclasses of GLib.Object
 		/// </summary>
-		public static readonly Xwt.Drawing.Image NullImage = ImageService.GetIcon ("md-empty", Gtk.IconSize.Menu);
+		public static readonly Xwt.Drawing.Image NullImage = ImageService.GetIcon ("md-empty", StockIconSize.Menu);
 
 		public CellRendererImage ()
 		{
@@ -55,11 +54,11 @@ namespace MonoDevelop.Components
 				return (int)stockSize;
 			}
 			set {
-				stockSize = (Gtk.IconSize) value;
+				stockSize = (StockIconSize) value;
 			}
 		}
 
-		public Gtk.IconSize StockSize {
+		public StockIconSize StockSize {
 			get {
 				return stockSize;
 			}
@@ -130,7 +129,7 @@ namespace MonoDevelop.Components
 
 		bool? ignoreSelection;
 
-		protected override void Render (Gdk.Drawable window, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, Gtk.CellRendererState flags)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gtk.CellRendererState flags)
 		{
 			// In light theme:
 			// On the Mac, the default unfocused selection background is lighter, so the icon should be black
@@ -141,8 +140,10 @@ namespace MonoDevelop.Components
 			if (!ignoreSelection.HasValue) {
 				if (Platform.IsMac) {
 					if (IdeTheme.UserInterfaceTheme == Theme.Light) {
-						var baseColor = widget.Style.Base (widget.State).ToXwtColor ();
-						ignoreSelection = baseColor.Brightness == 1;
+#pragma warning disable CS0612, CS0618 // StyleContext is deprecated in GTK 4 but is the only way to read the theme base color
+						ignoreSelection = widget.StyleContext.LookupColor ("theme_base_color", out Gdk.RGBA baseColor)
+							&& baseColor.ToXwtColor ().Brightness == 1;
+#pragma warning restore CS0612, CS0618
 					} else {
 						ignoreSelection = false;
 					}
@@ -159,13 +160,13 @@ namespace MonoDevelop.Components
 			if (!shouldIgnoreSelection && ((flags & Gtk.CellRendererState.Selected) != 0))
 				img = img.WithStyles ("sel");
 			if (!img.HasFixedSize)
-				img = img.WithSize (Gtk.IconSize.Menu);
-			
-			using (var ctx = Gdk.CairoHelper.Create (window)) {
+				img = img.WithSize (StockIconSize.Menu);
+
+			snapshot.DrawCairo (cell_area, ctx => {
 				var x = cell_area.X + cell_area.Width / 2 - (int)(img.Width / 2);
 				var y = cell_area.Y + cell_area.Height / 2 - (int)(img.Height / 2);
 				ctx.DrawImage (widget, img, x, y);
-			}
+			});
 		}
 
 		protected void GetImageInfo (Gdk.Rectangle cell_area, out Image img, out int x, out int y)
@@ -180,7 +181,7 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public override void GetSize (Gtk.Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+		void GetImageSize (out int width, out int height)
 		{
 			var img = GetImage ();
 			if (img != null) {
@@ -188,14 +189,36 @@ namespace MonoDevelop.Components
 					width = (int)img.Width;
 					height = (int)img.Height;
 				} else
-					Gtk.IconSize.Menu.GetSize(out width, out height);
+					StockIconSize.Menu.GetSize (out width, out height);
 			} else
 				width = height = 0;
+		}
 
-			width += (int)Xpad * 2;
-			height += (int)Ypad * 2;
-			x_offset = (int)(cell_area.Width / 2 - (width / 2));
-			y_offset = (int)(cell_area.Height / 2 - (height / 2));
+		protected override Gtk.SizeRequestMode OnGetRequestMode ()
+		{
+			return Gtk.SizeRequestMode.ConstantSize;
+		}
+
+		protected override void OnGetPreferredWidth (Gtk.Widget widget, out int minimum_size, out int natural_size)
+		{
+			GetImageSize (out int width, out _);
+			minimum_size = natural_size = width + (int)Xpad * 2;
+		}
+
+		protected override void OnGetPreferredHeight (Gtk.Widget widget, out int minimum_size, out int natural_size)
+		{
+			GetImageSize (out _, out int height);
+			minimum_size = natural_size = height + (int)Ypad * 2;
+		}
+
+		protected override void OnGetPreferredHeightForWidth (Gtk.Widget widget, int width, out int minimum_height, out int natural_height)
+		{
+			OnGetPreferredHeight (widget, out minimum_height, out natural_height);
+		}
+
+		protected override void OnGetPreferredWidthForHeight (Gtk.Widget widget, int height, out int minimum_width, out int natural_width)
+		{
+			OnGetPreferredWidth (widget, out minimum_width, out natural_width);
 		}
 
 		Image GetImage ()

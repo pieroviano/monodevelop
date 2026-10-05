@@ -74,7 +74,7 @@ namespace MonoDevelop.Components
 		public override bool HasFocus {
 			get {
 				if (nativeWidget is Gtk.Window)
-					return ((Gtk.Window)nativeWidget).HasToplevelFocus;
+					return ((Gtk.Window)nativeWidget).IsActive;
 #if MAC
 				if (nativeWidget is AppKit.NSWindow)
 					return nativeWidget == AppKit.NSApplication.SharedApplication.KeyWindow;
@@ -114,7 +114,7 @@ namespace MonoDevelop.Components
 		public bool HasTopLevelFocus {
 			get {
 				if (nativeWidget is Gtk.Window gtkWindow)
-					return gtkWindow.HasToplevelFocus;
+					return gtkWindow.IsActive;
 #if MAC
 				if (nativeWidget is AppKit.NSWindow nsWindow)
 					return AppKit.NSApplication.SharedApplication.KeyWindow == nsWindow;
@@ -146,15 +146,8 @@ namespace MonoDevelop.Components
 			if (d == null)
 				return null;
 
-			var window = GetImplicit<Window, Gtk.Window>(d);
-			if (window == null) {
-				window = new Window (d);
-				d.Destroyed += delegate {
-					GC.SuppressFinalize (window);
-					window.Dispose (true);
-				};
-			}
-			return window;
+			// GTK 4 has no ::destroy signal; the wrapper cache is weak.
+			return GetImplicit<Window, Gtk.Window>(d) ?? new Window (d);
 		}
 
 #if MAC
@@ -202,7 +195,7 @@ namespace MonoDevelop.Components
 				return d.GetNativeWidget<Xwt.WindowFrame> ();
 
 			if (d.nativeWidget is Gtk.Window)
-				return Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk).WrapWindow ((Gtk.Window)d);
+				return Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk4).WrapWindow ((Gtk.Window)d);
 #if MAC
 			if (d.nativeWidget is AppKit.NSWindow)
 				return Xwt.Toolkit.Load (Xwt.ToolkitType.XamMac).WrapWindow ((AppKit.NSWindow)d);

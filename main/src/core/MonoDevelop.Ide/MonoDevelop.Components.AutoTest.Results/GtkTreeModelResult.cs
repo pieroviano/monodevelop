@@ -34,19 +34,19 @@ namespace MonoDevelop.Components.AutoTest.Results
 	public class GtkTreeModelResult : GtkWidgetResult
 	{
 		Widget ParentWidget;
-		TreeModel TModel;
+		ITreeModel TModel;
 		int Column;
 		TreeIter? resultIter;
 		string DesiredText;
 
-		internal GtkTreeModelResult (Widget parent, TreeModel treeModel, int column) : base (parent)
+		internal GtkTreeModelResult (Widget parent, ITreeModel treeModel, int column) : base (parent)
 		{
 			ParentWidget = parent;
 			TModel = treeModel;
 			Column = column;
 		}
 
-		internal GtkTreeModelResult (Widget parent, TreeModel treeModel, int column, TreeIter iter) : base (parent)
+		internal GtkTreeModelResult (Widget parent, ITreeModel treeModel, int column, TreeIter iter) : base (parent)
 		{
 			ParentWidget = parent;
 			TModel = treeModel;
@@ -86,9 +86,9 @@ namespace MonoDevelop.Components.AutoTest.Results
 			return this;
 		}
 
-		bool CheckForText (TreeModel model, TreeIter iter, bool exact)
+		bool CheckForText (ITreeModel model, TreeIter iter, bool exact)
 		{
-			string modelText = model.GetValue (iter, Column) as string;
+			string modelText = GetModelValue (model, iter, Column) as string;
 			if (modelText == null) {
 				return false;
 			}
@@ -123,7 +123,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 		public override AppResult Property (string propertyName, object value)
 		{
 			if (resultIter.HasValue) {
-				var objectToCompare = TModel.GetValue (resultIter.Value, Column);
+				var objectToCompare = GetModelValue (TModel, resultIter.Value, Column);
 				return MatchProperty (propertyName, objectToCompare, value);
 			}
 
@@ -133,7 +133,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 		public override ObjectProperties Properties ()
 		{
 			if (resultIter.HasValue) {
-				var objectForProperties = TModel.GetValue (resultIter.Value, Column);
+				var objectForProperties = GetModelValue (TModel, resultIter.Value, Column);
 				return base.GetProperties (objectForProperties);
 			}
 			return base.Properties ();
@@ -269,10 +269,9 @@ namespace MonoDevelop.Components.AutoTest.Results
 		public override bool Toggle (bool active)
 		{
 			if (resultIter.HasValue) {
-				var modelValue = TModel.GetValue ((TreeIter)resultIter, Column);
+				var modelValue = GetModelValue (TModel, (TreeIter)resultIter, Column);
 				if (modelValue is bool) {
-					TModel.SetValue ((TreeIter)resultIter, Column, active);
-					return true;
+					return SetModelValue (TModel, (TreeIter)resultIter, Column, active);
 				}
 			}
 			return false;
@@ -281,9 +280,41 @@ namespace MonoDevelop.Components.AutoTest.Results
 		public override void SetProperty (string propertyName, object value)
 		{
 			if (resultIter.HasValue) {
-				var modelValue = TModel.GetValue ((TreeIter)resultIter, Column);
+				var modelValue = GetModelValue (TModel, (TreeIter)resultIter, Column);
 
 				base.SetProperty (modelValue, propertyName, value);
+			}
+		}
+
+		// GTK 4 ITreeModel only exposes GetValue (iter, column, ref GLib.Value).
+		internal static object GetModelValue (ITreeModel model, TreeIter iter, int column)
+		{
+			GLib.Value value = default (GLib.Value);
+			model.GetValue (iter, column, ref value);
+			try {
+				return value.Val;
+			} finally {
+				value.Dispose ();
+			}
+		}
+
+		static bool SetModelValue (ITreeModel model, TreeIter iter, int column, object value)
+		{
+			switch (model) {
+			case ListStore store:
+				store.SetValue (iter, column, value);
+				return true;
+			case TreeStore store:
+				store.SetValue (iter, column, value);
+				return true;
+			case TreeModelFilter filter:
+				filter.SetValue (iter, column, value);
+				return true;
+			case TreeModelSort sort:
+				sort.SetValue (iter, column, value);
+				return true;
+			default:
+				return false;
 			}
 		}
 

@@ -29,7 +29,8 @@ namespace MonoDevelop.Components
 {
 	public class IdeWindow: Gtk.Window
 	{
-		public IdeWindow (Gtk.WindowType type): base (type)
+		// GTK 4 has no popup toplevels (Gtk.WindowType is gone): popups are Gtk.Popover (see PopoverHelper).
+		public IdeWindow ()
 		{
 			IdeTheme.ApplyTheme (this);
 		}

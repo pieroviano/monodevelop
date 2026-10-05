@@ -47,15 +47,8 @@ namespace MonoDevelop.Components
 			if (d == null)
 				return null;
 
-			var dialog = GetImplicit<Dialog, Gtk.Dialog>(d);
-			if (dialog == null) {
-				dialog = new Dialog (d);
-				d.Destroyed += delegate {
-					GC.SuppressFinalize (dialog);
-					dialog.Dispose (true);
-				};
-			}
-			return dialog;
+			// GTK 4 has no ::destroy signal; the wrapper cache is weak.
+			return GetImplicit<Dialog, Gtk.Dialog>(d) ?? new Dialog (d);
 		}
 	}
 }

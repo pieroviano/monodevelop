@@ -29,14 +29,13 @@
 using System;
 using System.IO;
 using Gtk;
-using Gdk;
 
 using MonoDevelop.Core;
 using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Components
 {
-	public abstract class BaseFileEntry : Gtk.HBox
+	public abstract class BaseFileEntry : Gtk.Box
 	{
 		readonly Entry pathEntry;
 		readonly Button browseButton;
@@ -45,10 +44,10 @@ namespace MonoDevelop.Components
 		
 		public event EventHandler PathChanged;
 		
-		protected BaseFileEntry (string name) : base (false, 6)
+		protected BaseFileEntry (string name) : base (Gtk.Orientation.Horizontal, 6)
 		{
 			this.BrowserTitle = name;
-			pathEntry = new Entry ();
+			pathEntry = new Entry { Hexpand = true };
 			browseButton = Button.NewWithMnemonic (GettextCatalog.GetString ("_Browse..."));
 			browseButton.SetCommonAccessibilityAttributes ("FileEntry.Browse",
 			                                               GettextCatalog.GetString ("Browse"),
@@ -57,8 +56,8 @@ namespace MonoDevelop.Components
 			pathEntry.Changed += OnTextChanged;
 			browseButton.Clicked += OnButtonClicked;
 			
-			PackStart (pathEntry, true, true, 0);
-			PackEnd (browseButton, false, false, 0);
+			Append (pathEntry);
+			Append (browseButton);
 		}
 		
 		protected abstract string ShowBrowseDialog (string name, string startIn);
@@ -89,10 +88,10 @@ namespace MonoDevelop.Components
 		
 		protected Gtk.Window GetTransientFor ()
 		{
-			return TransientFor ?? Toplevel as Gtk.Window;
+			return TransientFor ?? Root as Gtk.Window;
 		}
 
-		public new string Path {
+		public string Path {
 			get {
 				try {
 					FilePath path = pathEntry.Text;
@@ -155,14 +154,14 @@ namespace MonoDevelop.Components
 		}
 
 
-		public void SetEntryAccessibleTitleUIElement (Atk.Object accessible)
+		public void SetEntryAccessibleTitleUIElement (Gtk.IAccessible accessible)
 		{
-			pathEntry.Accessible.SetTitleUIElement (accessible);
+			pathEntry.SetTitleUIElement (accessible);
 		}
 
-		public Atk.Object EntryAccessible {
+		public Gtk.IAccessible EntryAccessible {
 			get {
-				return pathEntry.Accessible;
+				return pathEntry;
 			}
 		}
 	}

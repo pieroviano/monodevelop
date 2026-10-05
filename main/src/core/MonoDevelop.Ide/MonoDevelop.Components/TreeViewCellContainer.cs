@@ -27,71 +27,94 @@
 //
 using System;
 using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
-	public class TreeViewCellContainer: Entry
+	/// <summary>
+	/// Cell editor hosting an arbitrary widget inside a TreeView cell (GTK 4: a widget implementing GtkCellEditable,
+	/// parented by the TreeView over the cell area). If the child is itself a cell editable (e.g. a ComboBox), its
+	/// editing-done / remove-widget signals are forwarded.
+	/// </summary>
+	public class TreeViewCellContainer: BinWidget, ICellEditableImplementor
 	{
-		EventBox box;
-		
-		public new event EventHandler EditingDone;
-		
+		readonly Gtk.Widget child;
+		bool editingCanceled;
+		bool finished;
+
+		public event EventHandler EditingDone;
+
 		public TreeViewCellContainer (Gtk.Widget child)
 		{
-			box = new EventBox ();
-			box.ButtonPressEvent += new ButtonPressEventHandler (OnClickBox);
-			box.Add (child);
-			child.Show ();
-			Show ();
-		}
-		
-		[GLib.ConnectBefore]
-		void OnClickBox (object s, ButtonPressEventArgs args)
-		{
-			// Avoid forwarding the button press event to the
-			// tree, since it would hide the cell editor.
-			args.RetVal = true;
-		}
-		
-		protected override void OnParentSet (Gtk.Widget parent)
-		{
-			base.OnParentSet (parent);
-			
-			if (Parent != null) {
-				if (ParentWindow != null)
-					box.ParentWindow = ParentWindow;
-				box.Parent = Parent;
-				box.Show ();
+			this.child = child;
+			Child = child;
+			Focusable = true;
+
+			// Avoid forwarding the button press to the tree, since it would hide the cell editor.
+			this.AddClickHandler (c => c.Claim ());
+
+			this.AddKeyPressHandler ((keyval, keycode, state) => {
+				if ((Gdk.Key)keyval != Gdk.Key.Escape)
+					return false;
+				editingCanceled = true;
+				Finish ();
+				return true;
+			});
+
+			if (child is ICellEditable ce) {
+				ce.EditingDone += OnChildEditingDone;
+				ce.WidgetRemoved += OnChildWidgetRemoved;
 			}
-			else {
-				box.Unparent ();
-				if (EditingDone != null)
-					EditingDone (this, EventArgs.Empty);
-			}
-		}
-		
-		protected override void OnShown ()
-		{
-			// Do nothing.
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
-			if (box.Child != null) {
-				requisition = box.Child.SizeRequest ();
-				requisition.Height += 2 * box.Child.Style?.YThickness ?? 0;
-			}
-			else
-				requisition = box.SizeRequest ();
+		[GLib.Property ("editing-canceled")]
+		public bool EditingCanceled {
+			get { return editingCanceled; }
+			set { editingCanceled = value; }
 		}
-		
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+
+		void ICellEditableImplementor.StartEditing (Gdk.Event evnt)
 		{
-			base.OnSizeAllocated (allocation);
-			box.SizeRequest ();
-			box.Allocation = allocation;
+			finished = false;
+			editingCanceled = false;
+			if (child is ICellEditable ce)
+				ce.StartEditing (evnt);
+			child.GrabFocus ();
+		}
+
+		void OnChildEditingDone (object sender, EventArgs e)
+		{
+			Finish ();
+		}
+
+		void OnChildWidgetRemoved (object sender, EventArgs e)
+		{
+			Finish ();
+		}
+
+		/// <summary>Emits editing-done + remove-widget so the TreeView ends editing and removes this widget.</summary>
+		void Finish ()
+		{
+			if (finished)
+				return;
+			finished = true;
+			var editable = CellEditableAdapter.GetObject (this);
+			editable.FinishEditing ();
+			editable.RemoveWidget ();
+		}
+
+		protected override void OnUnroot ()
+		{
+			base.OnUnroot ();
+			EditingDone?.Invoke (this, EventArgs.Empty);
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && child is ICellEditable ce && child.Handle != IntPtr.Zero) {
+				ce.EditingDone -= OnChildEditingDone;
+				ce.WidgetRemoved -= OnChildWidgetRemoved;
+			}
+			base.Dispose (disposing);
 		}
 	}
 }

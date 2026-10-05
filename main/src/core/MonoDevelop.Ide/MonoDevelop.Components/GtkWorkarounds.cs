@@ -25,14 +25,10 @@
 //
 
 using System;
-using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
-using System.Reflection;
-using System.Reflection.Emit;
 using Gtk;
 using MonoDevelop.Core;
-using MonoDevelop.Ide.Editor.Highlighting;
 using System.Text.RegularExpressions;
 
 #if MAC
@@ -50,88 +46,36 @@ namespace MonoDevelop.Components
 	{
 		const string USER32DLL = "User32.dll";
 
-		static System.Reflection.MethodInfo glibObjectGetProp, glibObjectSetProp;
-
-		public static int GtkMinorVersion = 12, GtkMicroVersion = 0;
-
-		static GtkWorkarounds ()
-		{
-			var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
-			glibObjectSetProp = typeof (GLib.Object).GetMethod ("SetProperty", flags);
-			glibObjectGetProp = typeof (GLib.Object).GetMethod ("GetProperty", flags);
-
-			// Gtk2 stopped at 24, most likely to be installed
-			for (int i = 24; i >= 14; i -= 2) {
-				if (Global.CheckVersion (2, (uint)i, 0) == null) {
-					GtkMinorVersion = i;
-					break;
-				}
-			}
-
-			for (int i = 1; i < 99; i++) {
-				if (Global.CheckVersion (2, (uint)GtkMinorVersion, (uint)i) == null) {
-					GtkMicroVersion = i;
-				} else {
-					break;
-				}
-			}
-
-			// opt into the fixes on GTK+ >= 2.24.8
-			if (Platform.IsMac && GtkMinorVersion >= 24 && GtkMicroVersion >= 8) {
-				try {
-					gdk_quartz_set_fix_modifiers (true);
-				} catch (EntryPointNotFoundException) {
-					// Do nothing, we removed the code which had backwards compat as we depend on a mono with the fix
-				}
-			}
-
-			keymap.KeysChanged += delegate {
-				mappedKeys.Clear ();
-			};
-		}
+		/// <summary>GTK 2 feature-level checks; GTK 4 provides every feature these guarded, so they report the last GTK 2 level.</summary>
+		public static int GtkMinorVersion = 24, GtkMicroVersion = 0;
 
 #if MAC
-		static Gdk.Rectangle MacGetUsableMonitorGeometry (Gdk.Screen screen, int monitor)
+		static Gdk.Rectangle MacGetUsableMonitorGeometry (Gdk.Monitor monitor)
 		{
+			var geometry = monitor.Geometry;
+			int index = IndexOfMonitor (monitor);
 			var screens = NSScreen.Screens;
-			if ((uint)monitor >= screens.Length)
-				return screen.GetMonitorGeometry (monitor);
+			if (index < 0 || (uint)index >= screens.Length)
+				return geometry;
 
-			var macScreen = screens [monitor];
+			var macScreen = screens [index];
 			CGRect visible = macScreen.VisibleFrame;
 			CGRect frame = macScreen.Frame;
 
-			Gdk.Rectangle ygeometry = screen.GetMonitorGeometry (monitor);
-			Gdk.Rectangle xgeometry = screen.GetMonitorGeometry (0);
-
-			// Note: Frame and VisibleFrame rectangles are relative to monitor 0, but we need absolute
-			// coordinates.
-			visible.X += xgeometry.X;
-			frame.X += xgeometry.X;
-
-			// VisibleFrame.Y is the height of the Dock if it is at the bottom of the screen, so in order
-			// to get the menu height, we just figure out the difference between the visibleFrame height
-			// and the actual frame height, then subtract the Dock height.
-			//
-			// We need to swap the Y offset with the menu height because our callers expect the Y offset
-			// to be from the top of the screen, not from the bottom of the screen.
+			// VisibleFrame.Y is the height of the Dock if it is at the bottom of the screen; the menu height is the
+			// difference between the visible and full frame heights minus the Dock height.
 			double x, y, width, height;
-
 			if (visible.Height < frame.Height) {
 				double dockHeight = visible.Y - frame.Y;
 				double menubarHeight = (frame.Height - visible.Height) - dockHeight;
-
 				height = frame.Height - menubarHeight - dockHeight;
-				y = ygeometry.Y + menubarHeight;
+				y = geometry.Y + menubarHeight;
 			} else {
 				height = frame.Height;
-				y = ygeometry.Y;
+				y = geometry.Y;
 			}
-
-			// Takes care of the possibility of the Dock being positioned on the left or right edge of the screen.
 			width = System.Math.Min (visible.Width, frame.Width);
-			x = System.Math.Max (visible.X, frame.X);
-
+			x = geometry.X + System.Math.Max (0, visible.X - frame.X);
 			return new Gdk.Rectangle ((int) x, (int) y, (int) width, (int) height);
 		}
 
@@ -150,13 +94,9 @@ namespace MonoDevelop.Components
 			public int Right;
 			public int Bottom;
 
-			public int X { get { return Left; } }
-			public int Y { get { return Top; } }
 			public int Width { get { return Right - Left; } }
 			public int Height { get { return Bottom - Top; } }
 		}
-
-		const int MonitorInfoFlagsPrimary = 0x01;
 
 		[StructLayout (LayoutKind.Sequential)]
 		unsafe struct MonitorInfo {
@@ -176,61 +116,87 @@ namespace MonoDevelop.Components
 		[DllImport (USER32DLL)]
 		extern static int GetMonitorInfoA (IntPtr hmonitor, ref MonitorInfo info);
 
-		static Gdk.Rectangle WindowsGetUsableMonitorGeometry (Gdk.Screen screen, int monitor_id)
+		static Gdk.Rectangle WindowsGetUsableMonitorGeometry (Gdk.Monitor monitor)
 		{
-			Gdk.Rectangle geometry = screen.GetMonitorGeometry (monitor_id);
-			List<MonitorInfo> screens = new List<MonitorInfo> ();
+			// GDK reports logical pixels, Win32 physical ones: match the monitor by its scaled frame.
+			Gdk.Rectangle geometry = monitor.Geometry;
+			double scale = monitor.Scale > 0 ? monitor.Scale : 1;
+			Gdk.Rectangle result = geometry;
 
 			EnumDisplayMonitors (IntPtr.Zero, IntPtr.Zero, delegate (IntPtr hmonitor, IntPtr hdc, IntPtr prect, IntPtr user_data) {
 				var info = new MonitorInfo ();
-
 				unsafe {
 					info.Size = sizeof (MonitorInfo);
 				}
-
 				GetMonitorInfoA (hmonitor, ref info);
-
-				// In order to keep the order the same as Gtk, we need to put the primary monitor at the beginning.
-				if ((info.Flags & MonitorInfoFlagsPrimary) != 0)
-					screens.Insert (0, info);
-				else
-					screens.Add (info);
-
+				if (Math.Abs (info.Frame.Width / scale - geometry.Width) <= 1 && Math.Abs (info.Frame.Height / scale - geometry.Height) <= 1
+				    && Math.Abs (info.Frame.Left / scale - geometry.X) <= 1 && Math.Abs (info.Frame.Top / scale - geometry.Y) <= 1) {
+					var visible = info.VisibleFrame;
+					var frame = info.Frame;
+					result = new Gdk.Rectangle (
+						geometry.X + (int)((visible.Left - frame.Left) / scale),
+						geometry.Y + (int)((visible.Top - frame.Top) / scale),
+						(int)(visible.Width / scale),
+						(int)(visible.Height / scale));
+					return 0;
+				}
 				return 1;
 			}, IntPtr.Zero);
 
-			MonitorInfo monitor = screens[monitor_id];
-			Rect visible = monitor.VisibleFrame;
-			Rect frame = monitor.Frame;
-
-			// Rebase the VisibleFrame off of Gtk's idea of this monitor's geometry (since they use different coordinate systems)
-			int x = geometry.X + (visible.Left - frame.Left);
-			int width = visible.Width;
-
-			int y = geometry.Y + (visible.Top - frame.Top);
-			int height = visible.Height;
-
-			return new Gdk.Rectangle (x, y, width, height);
+			return result;
 		}
 
-		public static Gdk.Rectangle GetUsableMonitorGeometry (this Gdk.Screen screen, int monitor)
+		/// <summary>Monitor work area (excluding task bar / dock / menu bar), in GDK logical coordinates.</summary>
+		public static Gdk.Rectangle GetUsableMonitorGeometry (this Gdk.Monitor monitor)
 		{
 #if WIN32
-			return WindowsGetUsableMonitorGeometry (screen, monitor);
+			return WindowsGetUsableMonitorGeometry (monitor);
 #elif MAC
-			return MacGetUsableMonitorGeometry (screen, monitor);
+			return MacGetUsableMonitorGeometry (monitor);
 #else
-			return screen.GetMonitorGeometry (monitor);
+			return monitor.Geometry;
 #endif
 		}
 
+		/// <summary>The monitor showing <paramref name="widget"/> (first monitor if the widget is not realized).</summary>
+		public static Gdk.Monitor GetMonitor (this Gtk.Widget widget)
+		{
+			var display = widget?.Display ?? Gdk.Display.Default;
+			var surface = widget?.Native?.Surface;
+			if (surface != null) {
+				var m = display.GetMonitorAtSurface (surface);
+				if (m != null)
+					return m;
+			}
+			return GetMonitors (display).Count > 0 ? GetMonitors (display) [0] : null;
+		}
+
+		/// <summary>Monitors of <paramref name="display"/> (default display when null).</summary>
+		public static IList<Gdk.Monitor> GetMonitors (Gdk.Display display = null)
+		{
+			var list = new List<Gdk.Monitor> ();
+			var model = (display ?? Gdk.Display.Default)?.Monitors;
+			if (model == null)
+				return list;
+			for (uint i = 0; i < model.NItems; i++) {
+				if (GLib.Object.GetObject (model.GetItem (i), true) is Gdk.Monitor m)
+					list.Add (m);
+			}
+			return list;
+		}
+
+		static int IndexOfMonitor (Gdk.Monitor monitor)
+		{
+			return GetMonitors (monitor.Display).IndexOf (monitor);
+		}
+
+		/// <summary>Runs <paramref name="dialog"/> modally (see <see cref="ModalRunner"/>), requesting user attention on Mac.</summary>
 		public static int RunDialogWithNotification (Gtk.Dialog dialog)
 		{
 #if MAC
 			MacRequestAttention (dialog.Modal);
 #endif
-
-			return dialog.Run ();
+			return dialog.RunModal ();
 		}
 
 		public static void PresentWindowWithNotification (this Gtk.Window window)
@@ -242,23 +208,27 @@ namespace MonoDevelop.Components
 #endif
 		}
 
-		public static GLib.Value GetProperty (this GLib.Object obj, string name)
+		public static GLib.Value GetProperty (GLib.Object obj, string name)
 		{
-			return (GLib.Value) glibObjectGetProp.Invoke (obj, new object[] { name });
+			return obj.GetProperty (name);
 		}
 
-		public static void SetProperty (this GLib.Object obj, string name, GLib.Value value)
+		public static void SetProperty (GLib.Object obj, string name, GLib.Value value)
 		{
-			glibObjectSetProp.Invoke (obj, new object[] { name, value });
+			obj.SetProperty (name, value);
 		}
 
-		public static bool TriggersContextMenu (this Gdk.EventButton evt)
+		/// <summary>True for a single press that should open a context menu.</summary>
+		public static bool TriggersContextMenu (this ClickInfo evt)
 		{
-			return evt.Type == Gdk.EventType.ButtonPress && IsContextMenuButton (evt);
+			return evt != null && evt.NPress == 1 && IsContextMenuButton (evt);
 		}
 
-		public static bool IsContextMenuButton (this Gdk.EventButton evt)
+		/// <summary>Right button (no other button held), or Ctrl+left on Mac.</summary>
+		public static bool IsContextMenuButton (this ClickInfo evt)
 		{
+			if (evt == null)
+				return false;
 			if (evt.Button == 3 &&
 				(evt.State & (Gdk.ModifierType.Button1Mask | Gdk.ModifierType.Button2Mask)) == 0)
 				return true;
@@ -275,6 +245,7 @@ namespace MonoDevelop.Components
 			return false;
 		}
 
+		/// <summary>Current keyboard modifier state (GTK 4 names: Alt = AltMask, Command/Windows = MetaMask).</summary>
 		public static Gdk.ModifierType GetCurrentKeyModifiers ()
 		{
 #if WIN32
@@ -285,37 +256,32 @@ namespace MonoDevelop.Components
 			if ((mod & ModifierKeys.Control) > 0)
 				mtype |= Gdk.ModifierType.ControlMask;
 			if ((mod & ModifierKeys.Alt) > 0)
-				mtype |= Gdk.ModifierType.Mod1Mask; // Alt key
+				mtype |= Gdk.ModifierType.AltMask;
 			if ((mod & ModifierKeys.Windows) > 0)
-				mtype |= Gdk.ModifierType.Mod2Mask; // Command key
+				mtype |= Gdk.ModifierType.MetaMask;
 			return mtype;
 #elif MAC
 			return GtkMacInterop.ConvertModifierMask (NSEvent.CurrentModifierFlags);
 #else
-			Gdk.ModifierType mtype;
-			Gtk.Global.GetCurrentEventState (out mtype);
-			return mtype;
+			var kb = Gdk.Display.Default?.DefaultSeat?.Keyboard;
+			return kb != null ? kb.ModifierState : Gdk.ModifierType.None;
 #endif
 		}
 
-		public static void GetPageScrollPixelDeltas (this Gdk.EventScroll evt, double pageSizeX, double pageSizeY,
+		/// <summary>
+		/// Converts the deltas of a <see cref="Gtk.EventControllerScroll"/> Scroll signal to pixels: smooth (surface unit)
+		/// deltas are already pixels, wheel steps are scaled to pageSize^(2/3) like GTK 2 did.
+		/// </summary>
+		public static void GetPageScrollPixelDeltas (this Gtk.EventControllerScroll controller, double dx, double dy, double pageSizeX, double pageSizeY,
 			out double deltaX, out double deltaY)
 		{
-			if (!GetEventScrollDeltas (evt, out deltaX, out deltaY)) {
-				var direction = evt.Direction;
-				deltaX = deltaY = 0;
-				if (pageSizeY != 0 && (direction == Gdk.ScrollDirection.Down || direction == Gdk.ScrollDirection.Up)) {
-					deltaY = System.Math.Pow (pageSizeY, 2.0 / 3.0);
-					deltaX = 0.0;
-					if (direction == Gdk.ScrollDirection.Up)
-						deltaY = -deltaY;
-				} else if (pageSizeX != 0) {
-					deltaX = System.Math.Pow (pageSizeX, 2.0 / 3.0);
-					deltaY = 0.0;
-					if (direction == Gdk.ScrollDirection.Left)
-						deltaX = -deltaX;
-				}
+			if (controller != null && controller.Unit == Gdk.ScrollUnit.Surface) {
+				deltaX = dx;
+				deltaY = dy;
+				return;
 			}
+			deltaX = pageSizeX != 0 ? dx * System.Math.Pow (pageSizeX, 2.0 / 3.0) : 0;
+			deltaY = pageSizeY != 0 ? dy * System.Math.Pow (pageSizeY, 2.0 / 3.0) : 0;
 		}
 
 		public static void AddValueClamped (this Gtk.Adjustment adj, double value)
@@ -323,289 +289,160 @@ namespace MonoDevelop.Components
 			adj.Value = System.Math.Max (adj.Lower, System.Math.Min (adj.Value + value, adj.Upper - adj.PageSize));
 		}
 
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		extern static bool gdk_event_get_scroll_deltas (IntPtr eventScroll, out double deltaX, out double deltaY);
-		static bool scrollDeltasNotSupported;
-
-		public static bool GetEventScrollDeltas (Gdk.EventScroll evt, out double deltaX, out double deltaY)
+		/// <summary>Pops up <paramref name="menu"/> anchored to <paramref name="parent"/> at (x, y) in parent coordinates.</summary>
+		public static void ShowContextMenu (Gtk.PopoverMenu menu, Gtk.Widget parent, int x, int y)
 		{
-			if (!scrollDeltasNotSupported) {
-				try {
-					return gdk_event_get_scroll_deltas (evt.Handle, out deltaX, out deltaY);
-				} catch (EntryPointNotFoundException) {
-					scrollDeltasNotSupported = true;
-				}
+			if (menu.Parent != parent) {
+				if (menu.Parent != null)
+					menu.Unparent ();
+				menu.Parent = parent;
+				menu.Closed += (sender, e) => GLib.Idle.Add (() => {
+					if (menu.Handle != IntPtr.Zero && menu.Parent != null && !menu.Visible)
+						menu.Unparent ();
+					return false;
+				});
 			}
-			deltaX = deltaY = 0;
-			return false;
+			menu.HasArrow = false;
+			menu.Halign = Gtk.Align.Start;
+			menu.PointingTo = new Gdk.Rectangle (x, y, 1, 1);
+			menu.Popup ();
 		}
 
-		static void ShowContextMenuInternal (Gtk.Menu menu, Gtk.Widget parent, int ix, int iy, Gdk.Rectangle caret, Gdk.Window window, uint time, uint button)
+		/// <summary>Pops up <paramref name="menu"/> at the click position, or at the parent's origin when <paramref name="evt"/> is null.</summary>
+		public static void ShowContextMenu (Gtk.PopoverMenu menu, Gtk.Widget parent, ClickInfo evt)
 		{
-			Gtk.MenuPositionFunc posFunc = null;
-
-			if (parent != null) {
-				menu.AttachToWidget (parent, null);
-				menu.Hidden += (sender, e) => {
-					if (menu.AttachWidget != null)
-						menu.Detach ();
-				};
-				posFunc = delegate (Gtk.Menu m, out int x, out int y, out bool pushIn) {
-					x = ix;
-					y = iy;
-
-					Gtk.Requisition request = m.SizeRequest ();
-					var screen = parent.Screen;
-					Gdk.Rectangle geometry = GetUsableMonitorGeometry (screen, screen.GetMonitorAtPoint (x, y));
-
-					//whether to push or flip menus that would extend offscreen
-					//FIXME: this is the correct behaviour for mac, check other platforms
-					bool flip_left = true;
-					bool flip_up   = false;
-
-					if (x + request.Width > geometry.X + geometry.Width) {
-						if (flip_left) {
-							x -= request.Width;
-						} else {
-							x = geometry.X + geometry.Width - request.Width;
-						}
-
-						if (x < geometry.Left)
-							x = geometry.Left;
-					}
-
-					if (y + request.Height > geometry.Y + geometry.Height) {
-						if (flip_up) {
-							y -= request.Height;
-						} else {
-							y = geometry.Y + geometry.Height - request.Height;
-						}
-
-						if (y < geometry.Top)
-							y = geometry.Top;
-					}
-
-					pushIn = false;
-				};
-			}
-
-			menu.Popup (null, null, posFunc, button, time);
+			ShowContextMenu (menu, parent, evt != null ? (int)evt.X : 0, evt != null ? (int)evt.Y : 0);
 		}
 
-		public static void ShowContextMenu (Gtk.Menu menu, Gtk.Widget parent, Gdk.EventButton evt, Gdk.Rectangle caret)
+		/// <summary>Pops up <paramref name="menu"/> at the caret rectangle (parent coordinates).</summary>
+		public static void ShowContextMenu (Gtk.PopoverMenu menu, Gtk.Widget parent, Gdk.Rectangle caret)
 		{
-			int x, y;
-			uint time, button;
-
-			var window = evt != null ? evt.Window : parent.GdkWindow;
-
-			if (window == null)
-				return;
-
-			window.GetOrigin (out x, out y);
-
-			if (evt == null) {
-				evt = Global.CurrentEvent as Gdk.EventButton;
-			}
-
-			if (evt != null) {
-				button = evt.Button;
-				time = evt.Time;
-				x += (int)evt.X;
-				y += (int)evt.Y;
-			} else {
-				button = 3;
-				time = 0;
-				x += caret.X;
-				y += caret.Y;
-			}
-
-			ShowContextMenuInternal (menu, parent, x, y, caret, window, time, button);
+			ShowContextMenu (menu, parent, caret.X, caret.Y + caret.Height);
 		}
 
-		public static void ShowContextMenu (Gtk.Menu menu, Gtk.Widget parent, int ix, int iy, Gdk.Rectangle caret)
-		{
-			int x, y;
-			var window = parent.GdkWindow;
-			var alloc = parent.Allocation;
+		const Gdk.ModifierType accelMods = Gdk.ModifierType.ShiftMask | Gdk.ModifierType.AltMask
+			| Gdk.ModifierType.ControlMask | Gdk.ModifierType.SuperMask | Gdk.ModifierType.MetaMask;
 
-			window.GetOrigin (out x, out y);
-			x += ix;
-			y += iy;
-
-			if (caret.X >= alloc.X && caret.Y >= alloc.Y) {
-				x += caret.X;
-				y += caret.Y;
-			} else {
-				x += alloc.X;
-				y += alloc.Y;
-			}
-
-			ShowContextMenuInternal (menu, parent, x, y, caret, window, Gtk.Global.CurrentEventTime, 0);
-		}
-
-		public static void ShowContextMenu (Gtk.Menu menu, Gtk.Widget parent, Gdk.EventButton evt)
-		{
-			ShowContextMenu (menu, parent, evt, Gdk.Rectangle.Zero);
-		}
-
-		public static void ShowContextMenu (Gtk.Menu menu, Gtk.Widget parent, int x, int y)
-		{
-			ShowContextMenu (menu, parent, x, y, Gdk.Rectangle.Zero);
-		}
-
-		public static void ShowContextMenu (Gtk.Menu menu, Gtk.Widget parent, Gdk.Rectangle caret)
-		{
-			ShowContextMenu (menu, parent, null, caret);
-		}
-
-		struct MappedKeys
-		{
-			public Gdk.Key Key;
-			public Gdk.ModifierType State;
-			public KeyboardShortcut[] Shortcuts;
-		}
-
-		//introduced in GTK 2.20
-		[DllImport (PangoUtil.LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		extern static void gdk_keymap_add_virtual_modifiers (IntPtr keymap, ref Gdk.ModifierType state);
-
-		//Custom patch in Mono Mac w/GTK+ 2.24.8+
-		[DllImport (PangoUtil.LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		extern static void gdk_quartz_set_fix_modifiers (bool fix);
-
-		static Gdk.Keymap keymap = Gdk.Keymap.Default;
-		static Dictionary<ulong,MappedKeys> mappedKeys = new Dictionary<ulong,MappedKeys> ();
-
-		/// <summary>Map raw GTK key input to work around platform bugs and decompose accelerator keys</summary>
-		/// <param name='evt'>The raw key event</param>
+		/// <summary>Map raw GTK key input to work around platform bugs and decompose accelerator keys.</summary>
+		/// <param name="controller">The key controller that received the key (gives display and layout group).</param>
+		/// <param name="keyval">Keyval from <c>KeyPressed</c>.</param>
+		/// <param name="keycode">Hardware keycode from <c>KeyPressed</c>.</param>
+		/// <param name="modifiers">Modifier state from <c>KeyPressed</c>.</param>
 		/// <param name='key'>The composed key</param>
 		/// <param name='state'>The composed modifiers</param>
 		/// <param name='shortcuts'>All the key/modifier decompositions that can be used as accelerators</param>
-		public static void MapKeys (Gdk.EventKey evt, out Gdk.Key key, out Gdk.ModifierType state,
-			out KeyboardShortcut[] shortcuts)
+		public static void MapKeys (Gtk.EventControllerKey controller, uint keyval, uint keycode, Gdk.ModifierType modifiers,
+			out Gdk.Key key, out Gdk.ModifierType state, out KeyboardShortcut[] shortcuts)
 		{
-			//this uniquely identifies the raw key
-			ulong id;
-			unchecked {
-				id = (((ulong)(uint)evt.State) | (((ulong)evt.HardwareKeycode) << 32) | (((ulong)evt.Group) << 48));
-			}
-
-			bool remapKey = Platform.IsWindows && evt.HardwareKeycode == 0;
-			MappedKeys mapped;
-			if (remapKey || !mappedKeys.TryGetValue (id, out mapped))
-				mappedKeys[id] = mapped = MapKeys (evt);
-
-			shortcuts = mapped.Shortcuts;
-			state = mapped.State;
-			key = mapped.Key;
-
-			if (remapKey) {
-				key = (Gdk.Key)evt.KeyValue;
-			}
+			var display = controller?.Widget?.Display ?? Gdk.Display.Default;
+			int group = controller != null ? (int)controller.Group : 0;
+			MapKeys (display, keyval, keycode, modifiers, group, out key, out state, out shortcuts);
 		}
 
-		static MappedKeys MapKeys (Gdk.EventKey evt)
+		/// <summary>Map raw GTK key input to work around platform bugs and decompose accelerator keys.</summary>
+		public static void MapKeys (Gdk.Display display, uint keyval, uint keycode, Gdk.ModifierType modifiers, int group,
+			out Gdk.Key key, out Gdk.ModifierType state, out KeyboardShortcut[] shortcuts)
 		{
-			MappedKeys mapped;
-			Gdk.ModifierType modifier = evt.State;
-			byte grp = evt.Group;
-
-			if (GtkMinorVersion >= 20) {
-				gdk_keymap_add_virtual_modifiers (keymap.Handle, ref modifier);
-			}
+			bool remapKey = Platform.IsWindows && keycode == 0;
+			Gdk.ModifierType modifier = modifiers;
 
 			//full key mapping
-			uint keyval;
+			uint kv;
 			int effectiveGroup, level;
 			Gdk.ModifierType consumedModifiers;
-			TranslateKeyboardState (evt, modifier, grp, out keyval, out effectiveGroup,
+			TranslateKeyboardState (display, keycode, keyval, modifier, group, out kv, out effectiveGroup,
 				out level, out consumedModifiers);
-			mapped.Key = (Gdk.Key)keyval;
-			mapped.State = evt.State & ~consumedModifiers;
+			key = (Gdk.Key)kv;
+			state = modifiers & ~consumedModifiers;
 
 			//decompose the key into accel combinations
 			var accelList = new List<KeyboardShortcut> ();
-
-			const Gdk.ModifierType accelMods = Gdk.ModifierType.ShiftMask | Gdk.ModifierType.Mod1Mask
-				| Gdk.ModifierType.ControlMask | Gdk.ModifierType.SuperMask |Gdk.ModifierType.MetaMask;
 
 			//all accels ignore the lock key
 			modifier &= ~Gdk.ModifierType.LockMask;
 
 			//fully decomposed
-			TranslateKeyboardState (evt, Gdk.ModifierType.None, 0,
-				out keyval, out effectiveGroup, out level, out consumedModifiers);
-			accelList.Add (new KeyboardShortcut ((Gdk.Key)keyval, modifier & accelMods));
+			TranslateKeyboardState (display, keycode, keyval, Gdk.ModifierType.None, 0,
+				out kv, out effectiveGroup, out level, out consumedModifiers);
+			accelList.Add (new KeyboardShortcut ((Gdk.Key)kv, modifier & accelMods));
 
 			//with shift composed
 			if ((modifier & Gdk.ModifierType.ShiftMask) != 0) {
-				keymap.TranslateKeyboardState (evt.HardwareKeycode, Gdk.ModifierType.ShiftMask, 0,
-					out keyval, out effectiveGroup, out level, out consumedModifiers);
+				if (display == null || !display.TranslateKey (keycode, Gdk.ModifierType.ShiftMask, 0,
+					out kv, out effectiveGroup, out level, out consumedModifiers)) {
+					kv = keyval;
+					consumedModifiers = Gdk.ModifierType.None;
+				}
 
-				if (Platform.IsWindows && evt.HardwareKeycode == 0) {
-					keyval = (ushort)evt.KeyValue;
+				if (Platform.IsWindows && keycode == 0) {
+					kv = keyval;
 				}
 
 				// Prevent consumption of non-Shift modifiers (that we didn't even provide!)
 				consumedModifiers &= Gdk.ModifierType.ShiftMask;
 
 				var m = (modifier & ~consumedModifiers) & accelMods;
-				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)keyval, m));
+				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)kv, m));
 			}
 
 			//with group 1 composed
-			if (grp == 1) {
-				TranslateKeyboardState (evt, modifier & ~Gdk.ModifierType.ShiftMask, 1,
-					out keyval, out effectiveGroup, out level, out consumedModifiers);
+			if (group == 1) {
+				TranslateKeyboardState (display, keycode, keyval, modifier & ~Gdk.ModifierType.ShiftMask, 1,
+					out kv, out effectiveGroup, out level, out consumedModifiers);
 
 				// Prevent consumption of Shift modifier (that we didn't even provide!)
 				consumedModifiers &= ~Gdk.ModifierType.ShiftMask;
 
 				var m = (modifier & ~consumedModifiers) & accelMods;
-				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)keyval, m));
+				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)kv, m));
 			}
 
 			//with group 1 and shift composed
-			if (grp == 1 && (modifier & Gdk.ModifierType.ShiftMask) != 0) {
-				TranslateKeyboardState (evt, modifier, 1,
-					out keyval, out effectiveGroup, out level, out consumedModifiers);
+			if (group == 1 && (modifier & Gdk.ModifierType.ShiftMask) != 0) {
+				TranslateKeyboardState (display, keycode, keyval, modifier, 1,
+					out kv, out effectiveGroup, out level, out consumedModifiers);
 				var m = (modifier & ~consumedModifiers) & accelMods;
-				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)keyval, m));
+				AddIfNotDuplicate (accelList, new KeyboardShortcut ((Gdk.Key)kv, m));
 			}
 
 			//and also allow the fully mapped key as an accel
-			AddIfNotDuplicate (accelList, new KeyboardShortcut (mapped.Key, mapped.State & accelMods));
+			AddIfNotDuplicate (accelList, new KeyboardShortcut (key, state & accelMods));
 
-			mapped.Shortcuts = accelList.ToArray ();
-			return mapped;
+			shortcuts = accelList.ToArray ();
+
+			if (remapKey) {
+				key = (Gdk.Key)keyval;
+			}
 		}
 
 		// Workaround for bug "Bug 688247 - Ctrl+Alt key not work on windows7 with bootcamp on a Mac Book Pro"
-		// Ctrl+Alt should behave like right alt key - unfortunately TranslateKeyboardState doesn't handle it. 
-		static void TranslateKeyboardState (Gdk.EventKey evt, Gdk.ModifierType state, int group, out uint keyval,
+		// Ctrl+Alt should behave like right alt key - unfortunately TranslateKeyboardState doesn't handle it.
+		static void TranslateKeyboardState (Gdk.Display display, uint hardware_keycode, uint keyval, Gdk.ModifierType state, int group, out uint resultKeyval,
 			out int effective_group, out int level, out Gdk.ModifierType consumed_modifiers)
 		{
-			uint hardware_keycode = evt.HardwareKeycode;
-
 			if (Platform.IsWindows) {
-				const Gdk.ModifierType ctrlAlt = Gdk.ModifierType.ControlMask | Gdk.ModifierType.Mod1Mask;
+				const Gdk.ModifierType ctrlAlt = Gdk.ModifierType.ControlMask | Gdk.ModifierType.AltMask;
 				if ((state & ctrlAlt) == ctrlAlt) {
-					state = (state & ~ctrlAlt) | Gdk.ModifierType.Mod2Mask;
+					state = (state & ~ctrlAlt);
 					group = 1;
 				}
-				// Case: Caps lock on + shift + key 
+				// Case: Caps lock on + shift + key
 				// See: Bug 8069 - [UI Refresh] If caps lock is on, holding the shift key prevents typed characters from appearing
 				if (state.HasFlag (Gdk.ModifierType.ShiftMask)) {
 					state &= ~Gdk.ModifierType.ShiftMask;
 				}
 			}
 
-			keymap.TranslateKeyboardState (hardware_keycode, state, group, out keyval, out effective_group,
-				out level, out consumed_modifiers);
+			if (display == null || !display.TranslateKey (hardware_keycode, state, group, out resultKeyval, out effective_group,
+				out level, out consumed_modifiers)) {
+				resultKeyval = keyval;
+				effective_group = group;
+				level = 0;
+				consumed_modifiers = Gdk.ModifierType.None;
+			}
 
 			if (Platform.IsWindows && hardware_keycode == 0) {
-				keyval = evt.KeyValue;
+				resultKeyval = keyval;
 			}
 		}
 
@@ -614,14 +451,15 @@ namespace MonoDevelop.Components
 			switch (mod) {
 			case Gdk.ModifierType.ControlMask:
 				return new Gdk.Key [] { Gdk.Key.Control_R, Gdk.Key.Control_L };
-			case Gdk.ModifierType.Mod1Mask:
+			case Gdk.ModifierType.AltMask:
 				return new Gdk.Key [] { Gdk.Key.Alt_R, Gdk.Key.Alt_L };
 			case Gdk.ModifierType.ShiftMask:
 				return new Gdk.Key [] { Gdk.Key.Shift_R, Gdk.Key.Shift_L };
 			case Gdk.ModifierType.MetaMask:
+			case Gdk.ModifierType.SuperMask:
 				// Just in case we get both of the modifiers
-			case Gdk.ModifierType.Mod2Mask | Gdk.ModifierType.MetaMask:
-				return new Gdk.Key [] { Gdk.Key.Meta_R, Gdk.Key.Meta_L };
+			case Gdk.ModifierType.SuperMask | Gdk.ModifierType.MetaMask:
+				return new Gdk.Key [] { Gdk.Key.Meta_R, Gdk.Key.Meta_L, Gdk.Key.Super_R, Gdk.Key.Super_L };
 			}
 			return new Gdk.Key [0];
 		}
@@ -632,66 +470,9 @@ namespace MonoDevelop.Components
 				list.Add (item);
 		}
 
-		[System.Runtime.InteropServices.DllImport (PangoUtil.LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gdk_win32_drawable_get_handle (IntPtr drawable);
-
-		enum DwmWindowAttribute
+		/// <summary>Sets the IM cursor rectangle (in <paramref name="clientWidget"/> coordinates; the IM context's client widget).</summary>
+		public static void SetImCursorLocation (Gtk.IMContext ctx, Gtk.Widget clientWidget, Gdk.Rectangle cursor)
 		{
-			NcRenderingEnabled = 1,
-			NcRenderingPolicy,
-			TransitionsForceDisabled,
-			AllowNcPaint,
-			CaptionButtonBounds,
-			NonClientRtlLayout,
-			ForceIconicRepresentation,
-			Flip3DPolicy,
-			ExtendedFrameBounds,
-			HasIconicBitmap,
-			DisallowPeek,
-			ExcludedFromPeek,
-			Last,
-		}
-
-		struct Win32Rect
-		{
-			public int Left, Top, Right, Bottom;
-
-			public Win32Rect (int left, int top, int right, int bottom)
-			{
-				this.Left = left;
-				this.Top = top;
-				this.Right = right;
-				this.Bottom = bottom;
-			}
-		}
-
-		[DllImport ("dwmapi.dll")]
-		static extern int DwmGetWindowAttribute (IntPtr hwnd, DwmWindowAttribute attribute, out Win32Rect value, int valueSize);
-
-		[DllImport ("dwmapi.dll")]
-		static extern int DwmIsCompositionEnabled (out bool enabled);
-
-		[DllImport (USER32DLL)]
-		static extern bool GetWindowRect (IntPtr hwnd, out Win32Rect rect);
-
-		public static void SetImCursorLocation (Gtk.IMContext ctx, Gdk.Window clientWindow, Gdk.Rectangle cursor)
-		{
-			// work around GTK+ Bug 663096 - Windows IME position is wrong when Aero glass is enabled
-			// https://bugzilla.gnome.org/show_bug.cgi?id=663096
-			if (Platform.IsWindows && System.Environment.OSVersion.Version.Major >= 6) {
-				bool enabled;
-				if (DwmIsCompositionEnabled (out enabled) == 0 && enabled) {
-					var hwnd = gdk_win32_drawable_get_handle (clientWindow.Toplevel.Handle);
-					Win32Rect rect;
-					// this module gets the WINVER=6 version of GetWindowRect, which returns the correct value
-					if (GetWindowRect (hwnd, out rect)) {
-						int x, y;
-						clientWindow.Toplevel.GetPosition (out x, out y);
-						cursor.X = cursor.X - x + rect.Left;
-						cursor.Y = cursor.Y - y + rect.Top - cursor.Height;
-					}
-				}
-			}
 			ctx.CursorLocation = cursor;
 		}
 
@@ -730,168 +511,16 @@ namespace MonoDevelop.Components
 #endif
 		}
 
-		[DllImport (PangoUtil.LIBGTKGLUE, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gtksharp_container_leak_fixed_marker ();
-
-		static HashSet<Type> fixedContainerTypes;
-		static Dictionary<IntPtr,ForallDelegate> forallCallbacks;
-		static bool containerLeakFixed;
-
-		// Works around BXC #3801 - Managed Container subclasses are incorrectly resurrected, then leak.
-		// It does this by registering an alternative callback for gtksharp_container_override_forall, which
-		// ignores callbacks if the wrapper no longer exists. This means that the objects no longer enter a
-		// finalized->release->dispose->re-wrap resurrection cycle.
-		// We use a dynamic method to access internal/private GTK# API in a performant way without having to track
-		// per-instance delegates.
-		public static void FixContainerLeak (Gtk.Container c)
+		/// <summary>No-op: the GTK# 2 container resurrection leak (BXC #3801) does not exist with GTK 4 widgets.</summary>
+		public static void FixContainerLeak (Gtk.Widget c)
 		{
-			if (containerLeakFixed) {
-				return;
-			}
-
-			FixContainerLeak (c.GetType ());
 		}
-
-		static void FixContainerLeak (Type t)
-		{
-			if (containerLeakFixed) {
-				return;
-			}
-
-			if (fixedContainerTypes == null) {
-				try {
-					gtksharp_container_leak_fixed_marker ();
-					containerLeakFixed = true;
-					return;
-				} catch (EntryPointNotFoundException) {
-				}
-				fixedContainerTypes = new HashSet<Type>();
-				forallCallbacks = new Dictionary<IntPtr, ForallDelegate> ();
-			}
-
-			if (!fixedContainerTypes.Add (t)) {
-				return;
-			}
-
-			//need to fix the callback for the type and all the managed supertypes
-			var lookupGType = typeof (GLib.Object).GetMethod ("LookupGType", BindingFlags.Static | BindingFlags.NonPublic);
-			do {
-				var gt = (GLib.GType) lookupGType.Invoke (null, new[] { t });
-				var cb = CreateForallCallback (gt.Val);
-				forallCallbacks[gt.Val] = cb;
-				gtksharp_container_override_forall (gt.Val, cb);
-				t = t.BaseType;
-			} while (fixedContainerTypes.Add (t) && t.Assembly != typeof (Gtk.Container).Assembly);
-		}
-
-		static ForallDelegate CreateForallCallback (IntPtr gtype)
-		{
-			var dm = new DynamicMethod (
-				"ContainerForallCallback",
-				typeof(void),
-				new Type[] { typeof(IntPtr), typeof(bool), typeof(IntPtr), typeof(IntPtr) },
-				typeof(GtkWorkarounds).Module,
-				true);
-
-			var invokerType = typeof(Gtk.Container.CallbackInvoker);
-
-			//this was based on compiling a similar method and disassembling it
-			ILGenerator il = dm.GetILGenerator ();
-			var IL_002b = il.DefineLabel ();
-			var IL_003f = il.DefineLabel ();
-			var IL_0060 = il.DefineLabel ();
-			var label_return = il.DefineLabel ();
-
-			var loc_container = il.DeclareLocal (typeof(Gtk.Container));
-			var loc_obj = il.DeclareLocal (typeof(object));
-			var loc_invoker = il.DeclareLocal (invokerType);
-			var loc_ex = il.DeclareLocal (typeof(Exception));
-
-			//check that the type is an exact match
-			// prevent stack overflow, because the callback on a more derived type will handle everything
-			il.Emit (OpCodes.Ldarg_0);
-			il.Emit (OpCodes.Call, typeof(GLib.ObjectManager).GetMethod ("gtksharp_get_type_id", BindingFlags.Static | BindingFlags.NonPublic));
-
-			il.Emit (OpCodes.Ldc_I8, gtype.ToInt64 ());
-			il.Emit (OpCodes.Newobj, typeof (IntPtr).GetConstructor (new Type[] { typeof (Int64) }));
-			il.Emit (OpCodes.Call, typeof (IntPtr).GetMethod ("op_Equality", BindingFlags.Static | BindingFlags.Public));
-			il.Emit (OpCodes.Brfalse, label_return);
-
-			il.BeginExceptionBlock ();
-			il.Emit (OpCodes.Ldnull);
-			il.Emit (OpCodes.Stloc, loc_container);
-			il.Emit (OpCodes.Ldsfld, typeof (GLib.Object).GetField ("Objects", BindingFlags.Static | BindingFlags.NonPublic));
-			il.Emit (OpCodes.Ldarg_0);
-			il.Emit (OpCodes.Box, typeof (IntPtr));
-			il.Emit (OpCodes.Callvirt, typeof (System.Collections.Hashtable).GetProperty ("Item").GetGetMethod ());
-			il.Emit (OpCodes.Stloc, loc_obj);
-			il.Emit (OpCodes.Ldloc, loc_obj);
-			il.Emit (OpCodes.Brfalse, IL_002b);
-
-			var tref = typeof (GLib.Object).Assembly.GetType ("GLib.ToggleRef");
-			il.Emit (OpCodes.Ldloc, loc_obj);
-			il.Emit (OpCodes.Castclass, tref);
-			il.Emit (OpCodes.Callvirt, tref.GetProperty ("Target").GetGetMethod ());
-			il.Emit (OpCodes.Isinst, typeof (Gtk.Container));
-			il.Emit (OpCodes.Stloc, loc_container);
-
-			il.MarkLabel (IL_002b);
-			il.Emit (OpCodes.Ldloc, loc_container);
-			il.Emit (OpCodes.Brtrue, IL_003f);
-
-			il.Emit (OpCodes.Ldarg_0);
-			il.Emit (OpCodes.Ldarg_1);
-			il.Emit (OpCodes.Ldarg_2);
-			il.Emit (OpCodes.Ldarg_3);
-			il.Emit (OpCodes.Call, typeof (Gtk.Container).GetMethod ("gtksharp_container_base_forall", BindingFlags.Static | BindingFlags.NonPublic));
-			il.Emit (OpCodes.Br, IL_0060);
-
-			il.MarkLabel (IL_003f);
-			il.Emit (OpCodes.Ldloca_S, 2);
-			il.Emit (OpCodes.Ldarg_2);
-			il.Emit (OpCodes.Ldarg_3);
-			il.Emit (OpCodes.Call, invokerType.GetConstructor (
-				BindingFlags.Instance | BindingFlags.NonPublic, null, new Type[] { typeof (IntPtr), typeof (IntPtr) }, null));
-			il.Emit (OpCodes.Ldloc, loc_container);
-			il.Emit (OpCodes.Ldarg_1);
-			il.Emit (OpCodes.Ldloc, loc_invoker);
-			il.Emit (OpCodes.Box, invokerType);
-			il.Emit (OpCodes.Ldftn, invokerType.GetMethod ("Invoke"));
-			il.Emit (OpCodes.Newobj, typeof (Gtk.Callback).GetConstructor (
-				BindingFlags.Instance | BindingFlags.Public, null, new Type[] { typeof (object), typeof (IntPtr) }, null));
-			var forallMeth = typeof (Gtk.Container).GetMethod ("ForAll",
-				BindingFlags.Instance | BindingFlags.NonPublic, null, new Type[] { typeof (bool), typeof (Gtk.Callback) }, null);
-			il.Emit (OpCodes.Callvirt, forallMeth);
-
-			il.MarkLabel (IL_0060);
-
-			il.BeginCatchBlock (typeof (Exception));
-			il.Emit (OpCodes.Stloc, loc_ex);
-			il.Emit (OpCodes.Ldloc, loc_ex);
-			il.Emit (OpCodes.Ldc_I4_0);
-			il.Emit (OpCodes.Call, typeof (GLib.ExceptionManager).GetMethod ("RaiseUnhandledException"));
-			il.Emit (OpCodes.Leave, label_return);
-			il.EndExceptionBlock ();
-
-			il.MarkLabel (label_return);
-			il.Emit (OpCodes.Ret);
-
-			return (ForallDelegate) dm.CreateDelegate (typeof (ForallDelegate));
-		}
-
-		[UnmanagedFunctionPointer (CallingConvention.Cdecl)]
-		delegate void ForallDelegate (IntPtr container, bool include_internals, IntPtr cb, IntPtr data);
-
-		[DllImport(PangoUtil.LIBGTKGLUE, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gtksharp_container_override_forall (IntPtr gtype, ForallDelegate cb);
 
 		const string urlRegexStr = @"(http|ftp)s?\:\/\/[\w\d\.,;_/\-~%@()+:?&^=#!]*[\w\d/]";
 		static readonly Regex UrlRegex  = new Regex (urlRegexStr, RegexOptions.Compiled | RegexOptions.ExplicitCapture);
 
 		public static string MarkupLinks (string text)
 		{
-			if (GtkMinorVersion < 18)
-				return text;
 			return UrlRegex.Replace (text, MatchToUrl);
 		}
 
@@ -903,179 +532,39 @@ namespace MonoDevelop.Components
 
 		public static void SetLinkHandler (this Gtk.Label label, Action<string> urlHandler)
 		{
-			if (GtkMinorVersion >= 18)
-				new UrlHandlerClosure (urlHandler).ConnectTo (label);
-		}
-
-		//create closure manually so we can apply ConnectBefore
-		class UrlHandlerClosure
-		{
-			Action<string> urlHandler;
-
-			public UrlHandlerClosure (Action<string> urlHandler)
-			{
-				this.urlHandler = urlHandler;
-			}
-
-			[GLib.ConnectBefore]
-			void HandleLink (object sender, ActivateLinkEventArgs args)
-			{
-				urlHandler (args.Url);
+			label.ActivateLink += (sender, args) => {
+				// GtkSharp's ActivateLinkArgs has no Uri accessor: the uri is the first signal argument.
+				urlHandler ((string)args.Args [0]);
 				args.RetVal = true;
-			}
-
-			public void ConnectTo (Gtk.Label label)
-			{
-				var signal = GLib.Signal.Lookup (label, "activate-link", typeof(ActivateLinkEventArgs));
-				signal.AddDelegate (new EventHandler<ActivateLinkEventArgs> (HandleLink));
-			}
-
-			class ActivateLinkEventArgs : GLib.SignalArgs
-			{
-				public string Url { get { return (string)base.Args [0]; } }
-			}
+			};
 		}
 
-		static bool canSetOverlayScrollbarPolicy = true;
-
-		[DllImport (PangoUtil.LIBQUARTZ)]
-		static extern void gtk_scrolled_window_set_overlay_policy (IntPtr sw, Gtk.PolicyType hpolicy, Gtk.PolicyType vpolicy);
-
-		[DllImport (PangoUtil.LIBQUARTZ)]
-		static extern void gtk_scrolled_window_get_overlay_policy (IntPtr sw, out Gtk.PolicyType hpolicy, out Gtk.PolicyType vpolicy);
-
+		/// <summary>Sets the scrollbar policies (GTK 4 scrollbars are overlay scrollbars by default).</summary>
 		public static void SetOverlayScrollbarPolicy (Gtk.ScrolledWindow sw, Gtk.PolicyType hpolicy, Gtk.PolicyType vpolicy)
 		{
-			// we know the .dll isn't there on Windows, so don't even try (avoids a first-chance DllNotFoundException)
-			if (Platform.IsWindows) {
-				canSetOverlayScrollbarPolicy = false;
-				return;
-			}
-
-			if (!canSetOverlayScrollbarPolicy) {
-				return;
-			}
-			try {
-				gtk_scrolled_window_set_overlay_policy (sw.Handle, hpolicy, vpolicy);
-				return;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			canSetOverlayScrollbarPolicy = false;
+			sw.OverlayScrolling = true;
+			sw.SetPolicy (hpolicy, vpolicy);
 		}
 
 		public static void GetOverlayScrollbarPolicy (Gtk.ScrolledWindow sw, out Gtk.PolicyType hpolicy, out Gtk.PolicyType vpolicy)
 		{
-			if (!canSetOverlayScrollbarPolicy) {
-				hpolicy = vpolicy = 0;
-				return;
-			}
-			try {
-				gtk_scrolled_window_get_overlay_policy (sw.Handle, out hpolicy, out vpolicy);
-				return;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			hpolicy = vpolicy = 0;
-			canSetOverlayScrollbarPolicy = false;
+			sw.GetPolicy (out hpolicy, out vpolicy);
 		}
 
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern bool gtk_tree_view_get_tooltip_context (IntPtr raw, ref int x, ref int y, bool keyboard_tip, out IntPtr model, out IntPtr path, IntPtr iter);
-
-		//the GTK# version of this has 'out' instead of 'ref', preventing passing the x,y values in
-		public static bool GetTooltipContext (this TreeView tree, ref int x, ref int y, bool keyboardTip,
-			out TreeModel model, out TreePath path, out Gtk.TreeIter iter)
-		{
-			IntPtr intPtr = Marshal.AllocHGlobal (Marshal.SizeOf (typeof(TreeIter)));
-			IntPtr handle;
-			IntPtr intPtr2;
-			bool result = gtk_tree_view_get_tooltip_context (tree.Handle, ref x, ref y, keyboardTip, out handle, out intPtr2, intPtr);
-			model = TreeModelAdapter.GetObject (handle, false);
-			path = intPtr2 == IntPtr.Zero ? null : ((TreePath)GLib.Opaque.GetOpaque (intPtr2, typeof(TreePath), false));
-			iter = TreeIter.New (intPtr);
-			Marshal.FreeHGlobal (intPtr);
-			return result;
-		}
-
-		static bool supportsHiResIcons = true;
-
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gtk_icon_source_set_scale (IntPtr source, double scale);
-
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gtk_icon_source_set_scale_wildcarded (IntPtr source, bool setting);
-
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern double gtk_widget_get_scale_factor (IntPtr widget);
-
-		[DllImport (PangoUtil.LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern double gdk_screen_get_monitor_scale_factor (IntPtr widget, int monitor);
-
-		[DllImport (PangoUtil.LIBGOBJECT, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr g_object_get_data (IntPtr source, string name);
-
-		[DllImport (PangoUtil.LIBGOBJECT, CallingConvention = CallingConvention.Cdecl)]
-		static extern void g_object_set_data (IntPtr source, string name, IntPtr dataHandle);
-
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gtk_icon_set_render_icon_scaled (IntPtr handle, IntPtr style, int direction, int state, int size, IntPtr widget, IntPtr intPtr, ref double scale);
-
+		/// <summary>Managed per-object data (the GTK 2 version wrapped g_object_get_data for patched GTK features).</summary>
 		public static IntPtr GetData (GLib.Object o, string name)
 		{
-			return g_object_get_data (o.Handle, name);
+			return o.Data [name] is IntPtr p ? p : IntPtr.Zero;
 		}
 
 		public static void SetData (GLib.Object o, string name, IntPtr dataHandle)
 		{
-			g_object_set_data (o.Handle, name, dataHandle);
+			o.Data [name] = dataHandle;
 		}
 
-		public static bool SetSourceScale (Gtk.IconSource source, double scale)
-		{
-			if (!supportsHiResIcons)
-				return false;
-
-			try {
-				gtk_icon_source_set_scale (source.Handle, scale);
-				return true;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
-			return false;
-		}
-
-		public static bool SetSourceScaleWildcarded (Gtk.IconSource source, bool setting)
-		{
-			if (!supportsHiResIcons)
-				return false;
-
-			try {
-				gtk_icon_source_set_scale_wildcarded (source.Handle, setting);
-				return true;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
-			return false;
-		}
-
+		/// <summary>Always null: GTK 4 has no "gdk-pixbuf-2x-variant" (hi-dpi is handled by textures/scale factor).</summary>
 		public static Gdk.Pixbuf Get2xVariant (Gdk.Pixbuf px)
 		{
-			if (!supportsHiResIcons)
-				return null;
-
-			try {
-				IntPtr res = g_object_get_data (px.Handle, "gdk-pixbuf-2x-variant");
-				if (res != IntPtr.Zero && res != px.Handle)
-					return (Gdk.Pixbuf) GLib.Object.GetObject (res);
-				else
-					return null;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
 			return null;
 		}
 
@@ -1085,221 +574,39 @@ namespace MonoDevelop.Components
 
 		public static double GetScaleFactor (Gtk.Widget w)
 		{
-			if (!supportsHiResIcons)
-				return 1;
-
-			try {
-				return gtk_widget_get_scale_factor (w.Handle);
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
-			return 1;
+			return w != null ? w.ScaleFactor : GetScaleFactor ();
 		}
 
-		public static double GetScaleFactor (this Gdk.Screen screen, int monitor)
+		public static double GetScaleFactor (this Gdk.Monitor monitor)
 		{
-			if (!supportsHiResIcons)
-				return 1;
-
-			try {
-				return gdk_screen_get_monitor_scale_factor (screen.Handle, monitor);
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
-			return 1;
+			return monitor != null && monitor.Scale > 0 ? monitor.Scale : 1;
 		}
 
+		/// <summary>Scale factor of the primary (first) monitor.</summary>
 		public static double GetScaleFactor ()
 		{
-			return GetScaleFactor (Gdk.Screen.Default, 0);
+			var monitors = GetMonitors ();
+			return monitors.Count > 0 ? GetScaleFactor (monitors [0]) : 1;
 		}
 
-		public static Gdk.Pixbuf RenderIcon (this Gtk.IconSet iconset, Gtk.Style style, Gtk.TextDirection direction, Gtk.StateType state, Gtk.IconSize size, Gtk.Widget widget, string detail, double scale)
-		{
-			if (scale == 1d)
-				return iconset.RenderIcon (style, direction, state, size, widget, detail);
-
-			if (!supportsHiResIcons)
-				return null;
-
-			try {
-				IntPtr intPtr = GLib.Marshaller.StringToPtrGStrdup (detail);
-				IntPtr o = gtk_icon_set_render_icon_scaled (iconset.Handle, (style != null) ? style.Handle : IntPtr.Zero, (int)direction, (int)state, (int)size, (widget != null) ? widget.Handle : IntPtr.Zero, intPtr, ref scale);
-				Gdk.Pixbuf result = (Gdk.Pixbuf) GLib.Object.GetObject (o);
-				GLib.Marshaller.Free (intPtr);
-				return result;
-			} catch (DllNotFoundException) {
-			} catch (EntryPointNotFoundException) {
-			}
-			supportsHiResIcons = false;
-			return null;
-		}
-
-		[DllImport (PangoUtil.LIBGTK, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gtk_object_set_data (IntPtr raw, IntPtr key, IntPtr data);
-
-		public static void SetData<T> (Gtk.Object gtkobject, string key, T data) where T: struct
-		{
-			IntPtr pkey = GLib.Marshaller.StringToPtrGStrdup (key);
-			IntPtr pdata = Marshal.AllocHGlobal(Marshal.SizeOf(data));
-			Marshal.StructureToPtr(data, pdata, false);
-			gtk_object_set_data (gtkobject.Handle, pkey, pdata);
-			Marshal.FreeHGlobal(pdata);
-			GLib.Marshaller.Free (pkey);
-			gtkobject.Data [key] = data;
-		}
-
+		/// <summary>No-op (GTK 2 Mac patch hint).</summary>
 		public static void SetTransparentBgHint (this Widget widget, bool enable)
 		{
-			SetData (widget, "transparent-bg-hint", enable);
 		}
 
 		public static void SetMarkup (this Gtk.TextView view, string pangoMarkup)
 		{
 			view.Buffer.Clear ();
-			view.Buffer.InsertMarkup (view.Buffer.StartIter, pangoMarkup);
+			var iter = view.Buffer.StartIter;
+			view.Buffer.InsertMarkup (ref iter, pangoMarkup);
 		}
 
+		/// <summary>Replaces the buffer content with <paramref name="pangoMarkup"/> (same behaviour as the GTK 2 version).</summary>
 		public static void InsertMarkup (this Gtk.TextBuffer buffer, TextIter iter, string pangoMarkup)
 		{
-			Pango.AttrList attrList;
-			string text;
-			char accel_char;
-			if (Pango.Global.ParseMarkup (pangoMarkup, (char)0, out attrList, out text, out accel_char)) {
-				buffer.Clear ();
-				var mark = buffer.CreateMark (null, iter, false);
-				var attrIter = attrList.Iterator;
-				//HACK: the parsed attribute indexes are byte based and need to be converted
-				//      to char indexes. Otherwise they won't match multibyte characters.
-				var indexer = new TextIndexer (text);
-
-				do {
-					int start, end;
-
-					attrIter.Range (out start, out end);
-
-					if (end == int.MaxValue) // last chunk
-						end = indexer.IndexToByteIndex (text.Length - 1);
-					if (end <= start)
-						break;
-
-					start = indexer.ByteIndexToIndex (start);
-					end = indexer.ByteIndexToIndex (end);
-
-					TextTag tag;
-					if (attrIter.GetTagForAttributes (null, out tag)) {
-						using (tag) {
-							buffer.TagTable.Add (tag);
-							buffer.InsertWithTags (ref iter, text.Substring (start, end - start), tag);
-						}
-					} else
-						buffer.Insert (ref iter, text.Substring (start, end - start));
-
-					iter = buffer.GetIterAtMark (mark);
-				}
-				while (attrIter.Next ());
-
-				attrList.Dispose ();
-			}
-		}
-
-		public static bool GetTagForAttributes (this Pango.AttrIterator iter, string name, out TextTag tag)
-		{
-			tag = new TextTag (name);
-			bool result = false;
-			Pango.Attribute attr;
-
-			if (iter.SafeGet (Pango.AttrType.Family, out attr)) {
-				tag.Family = ((Pango.AttrFamily)attr).Family;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Style, out attr)) {
-				tag.Style = ((Pango.AttrStyle)attr).Style;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Style, out attr)) {
-				tag.Style = ((Pango.AttrStyle)attr).Style;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Weight, out attr)) {
-				tag.Weight = ((Pango.AttrWeight)attr).Weight;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Variant, out attr)) {
-				tag.Variant = ((Pango.AttrVariant)attr).Variant;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Stretch, out attr)) {
-				tag.Stretch = ((Pango.AttrStretch)attr).Stretch;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.FontDesc, out attr)) {
-				tag.FontDesc = ((Pango.AttrFontDesc)attr).Desc;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Foreground, out attr)) {
-				tag.Foreground = ((Pango.AttrForeground)attr).Color.ToString ();
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Background, out attr)) {
-				tag.Background = ((Pango.AttrBackground)attr).Color.ToString ();
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Underline, out attr)) {
-				tag.Underline = ((Pango.AttrUnderline)attr).Underline;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Strikethrough, out attr)) {
-				tag.Strikethrough = ((Pango.AttrStrikethrough)attr).Strikethrough;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Strikethrough, out attr)) {
-				tag.Strikethrough = ((Pango.AttrStrikethrough)attr).Strikethrough;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Rise, out attr)) {
-				tag.Rise = ((Pango.AttrRise)attr).Rise;
-				result = true;
-			}
-
-			if (iter.SafeGet (Pango.AttrType.Scale, out attr)) {
-				tag.Scale = ((Pango.AttrScale)attr).Scale;
-				result = true;
-			}
-
-			return result;
-		}
-
-		[DllImport (PangoUtil.LIBPANGO, CallingConvention = CallingConvention.Cdecl)]
-		private static extern IntPtr pango_attr_iterator_get (IntPtr raw, int type);
-
-		public static bool SafeGet (this Pango.AttrIterator iter, Pango.AttrType type, out Pango.Attribute attr)
-		{
-			attr = null;
-			try {
-				IntPtr raw = pango_attr_iterator_get (iter.Handle, (int)type);
-				if (raw != IntPtr.Zero) {
-					attr = Pango.Attribute.GetAttribute (raw);
-					return true;
-				} else
-					return false;
-			} catch {
-				return false;
-			}
+			buffer.Clear ();
+			iter = buffer.StartIter;
+			buffer.InsertMarkup (ref iter, pangoMarkup);
 		}
 
 		public static bool IsChildOf (this Gtk.Widget child, Gtk.Widget widget)
@@ -1325,9 +632,6 @@ namespace MonoDevelop.Components
 
 		static void DisableButtonsInternal (Gtk.Window window)
 		{
-			// GtkQuartz appears to ignore any attempts to set the window's type hint or window functions to disable
-			// minimize/maximize buttons. This may be because on Cocoa these are set at window creation and can only
-			// be changed afterwards by directly accessing the window button and disabling it like so.
 			NSWindow nsWindow = GtkMacInterop.GetNSWindow (window);
 			if (nsWindow == null)
 				return;
@@ -1349,22 +653,14 @@ namespace MonoDevelop.Components
 #endif
 		}
 
-
-		public static void EmitAddSignal(Container container, Widget child)
+		/// <summary>No-op: GTK 4 accessibility tracks children itself (was a Mac GTK 2 a11y workaround).</summary>
+		public static void EmitAddSignal (Gtk.Widget container, Gtk.Widget child)
 		{
-#if MAC
-			// On Mac if we add a widget to a parent by hand, we need to inform the accessibility system of the fact
-			// If this is called from Linux or Windows custom Gtk then it will trigger warnings because we've protected
-			// for the situation in the Mac version of Gtk
-			GLib.Signal.Emit(container, "add", child);
-#endif
 		}
 
-		public static void EmitRemoveSignal(Container container, Widget child)
+		/// <summary>No-op: GTK 4 accessibility tracks children itself (was a Mac GTK 2 a11y workaround).</summary>
+		public static void EmitRemoveSignal (Gtk.Widget container, Gtk.Widget child)
 		{
-#if MAC
-			GLib.Signal.Emit(container, "remove", child);
-#endif
 		}
 
 		internal static bool IsRunFromBundle ()
@@ -1385,20 +681,6 @@ namespace MonoDevelop.Components
 			}
 #endif
 			return result;
-		}
-
-		[DllImport ("libgtk-win32-2.0-0.dll", CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gtk_get_current_event ();
-
-		public static IntPtr GetCurrentEventHandle () => gtk_get_current_event ();
-
-		[DllImport ("libgdk-win32-2.0-0.dll", CallingConvention = CallingConvention.Cdecl)]
-		static extern void gdk_event_free (IntPtr raw);
-
-		public static void FreeEvent (IntPtr raw)
-		{
-			if (raw != IntPtr.Zero)
-				gdk_event_free (raw);
 		}
 	}
 

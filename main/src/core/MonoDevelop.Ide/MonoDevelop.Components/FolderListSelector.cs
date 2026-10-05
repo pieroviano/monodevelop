@@ -34,7 +34,7 @@ using MonoDevelop.Core;
 namespace MonoDevelop.Components
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class FolderListSelector : Gtk.Bin
+	public partial class FolderListSelector : BinWidget
 	{
 		ListStore store;
 		List<string> directories = new List<string> ();
@@ -180,7 +180,7 @@ namespace MonoDevelop.Components
 			FocusRow (it);
 		}
 
-		internal Atk.Object EntryAccessible {
+		internal Gtk.IAccessible EntryAccessible {
 			get {
 				return folderentry.EntryAccessible;
 			}

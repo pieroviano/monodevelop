@@ -54,12 +54,9 @@ namespace MonoDevelop.Components.AutoTest
 
 		void GenerateChildrenForContainer (AppResult parent, Gtk.Widget widget)
 		{
-			if (!(widget is Gtk.Container container))
-				return;
-
 			AppResult lastChild = null;
 
-			foreach (var child in container.Children) {
+			for (var child = widget.FirstChild; child != null; child = child.NextSibling) {
 				AppResult node = AddGtkResult (child);
 				if (node == null)
 					continue;

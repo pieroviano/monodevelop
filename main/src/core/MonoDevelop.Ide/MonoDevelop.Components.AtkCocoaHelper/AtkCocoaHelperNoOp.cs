@@ -27,15 +27,15 @@
 #if !MAC
 
 using System;
-using Gdk;
-using Gtk;
 
 namespace MonoDevelop.Components.AtkCocoaHelper
 {
+	// Non-Mac: maps onto GTK 4 Gtk.Accessible where GTK has an equivalent; NSAccessibility-only concepts are no-ops.
 	public static class AtkCocoaNoopExtensions
 	{
-		public static void SetLabel (this Atk.Object o, string label)
+		public static void SetLabel (this Gtk.IAccessible o, string label)
 		{
+			GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.Label, label);
 		}
 
 		public static void SetLabel (this Gtk.CellRenderer r, string label)
@@ -46,135 +46,154 @@ namespace MonoDevelop.Components.AtkCocoaHelper
 		{
 		}
 
-		public static void SetShouldIgnore (this Atk.Object o, bool ignore)
+		public static void SetShouldIgnore (this Gtk.IAccessible o, bool ignore)
 		{
 		}
 
-		public static void SetTitle (this Atk.Object o, string title)
+		public static void SetTitle (this Gtk.IAccessible o, string title)
 		{
 		}
 
-		public static void SetDocument (this Atk.Object o, string documentUrl)
+		public static void SetDocument (this Gtk.IAccessible o, string documentUrl)
 		{
 		}
 
-		public static void SetFilename (this Atk.Object o, string filename)
+		public static void SetFilename (this Gtk.IAccessible o, string filename)
 		{
 		}
 
-		public static void SetIsMainWindow (this Atk.Object o, bool isMainWindow)
+		public static void SetIsMainWindow (this Gtk.IAccessible o, bool isMainWindow)
 		{
 		}
 
-		public static void SetMainWindow (this Atk.Object o, Atk.Object mainWindow)
+		public static void SetMainWindow (this Gtk.IAccessible o, Gtk.IAccessible mainWindow)
 		{
 		}
 
-		public static void SetValue (this Atk.Object o, string stringValue)
+		public static void SetValue (this Gtk.IAccessible o, string stringValue)
+		{
+			GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.ValueText, stringValue);
+		}
+
+		public static void SetUrl (this Gtk.IAccessible o, string url)
 		{
 		}
 
-		public static void SetUrl (this Atk.Object o, string url)
+		public static void SetRole (this Gtk.IAccessible o, string role, string description = null)
+		{
+			// NSAccessibility role strings have no GTK 4 mapping; only the description survives.
+			if (!string.IsNullOrEmpty (description))
+				GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.RoleDescription, description);
+		}
+
+		public static void SetRole (this Gtk.IAccessible o, AtkCocoa.Roles role, string description = null)
+		{
+			var gtkRole = GtkAccessibleHelper.ToGtkRole (role);
+			if (gtkRole.HasValue)
+				GtkAccessibleHelper.SetRole (o, gtkRole.Value);
+			if (!string.IsNullOrEmpty (description))
+				GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.RoleDescription, description);
+		}
+
+		public static void SetSubRole (this Gtk.IAccessible o, string subrole)
 		{
 		}
 
-		public static void SetRole (this Atk.Object o, string role, string description = null)
+		public static void SetSubRole (this Gtk.IAccessible o, AtkCocoa.SubRoles subrole)
 		{
 		}
 
-		public static void SetRole (this Atk.Object o, AtkCocoa.Roles role, string description = null)
+		public static void SetValue (this Gtk.IAccessible o, object value)
+		{
+			GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.ValueText, value?.ToString ());
+		}
+
+		public static void SetHidden (this Gtk.IAccessible o, bool hidden)
+		{
+			GtkAccessibleHelper.SetState (o, Gtk.AccessibleState.Hidden, hidden);
+		}
+
+		public static void SetCurrentFocus (this Gtk.IAccessible o)
 		{
 		}
 
-		public static void SetSubRole (this Atk.Object o, string subrole)
+		public static void SetTitleUIElement (this Gtk.IAccessible o, Gtk.IAccessible title)
+		{
+			GtkAccessibleHelper.SetRelation (o, Gtk.AccessibleRelation.LabelledBy, title);
+		}
+
+		public static void SetAlternateUIVisible (this Gtk.IAccessible o, bool visible)
 		{
 		}
 
-		public static void SetSubRole (this Atk.Object o, AtkCocoa.SubRoles subrole)
+		public static void SetOrientation (this Gtk.IAccessible o, Gtk.Orientation orientation)
+		{
+			GtkAccessibleHelper.SetProperty (o, Gtk.AccessibleProperty.Orientation, orientation);
+		}
+
+		public static void SetTitleFor (this Gtk.IAccessible o, params Gtk.IAccessible [] objects)
+		{
+			if (objects == null)
+				return;
+			foreach (var labelled in objects)
+				GtkAccessibleHelper.SetRelation (labelled, Gtk.AccessibleRelation.LabelledBy, o);
+		}
+
+		public static void SetTabs (this Gtk.IAccessible o, AccessibilityElementProxy [] tabs)
 		{
 		}
 
-		public static void SetValue (this Atk.Object o, object value)
+		public static void SetTabs (this Gtk.IAccessible o, Gtk.IAccessible [] tabs)
 		{
 		}
 
-		public static void SetHidden (this Atk.Object o, bool hidden)
+		public static void AddElementToTitle (this Gtk.IAccessible title, Gtk.IAccessible o)
 		{
 		}
 
-		public static void SetCurrentFocus (this Atk.Object o)
+		public static void RemoveElementFromTitle (this Gtk.IAccessible title, Gtk.IAccessible o)
 		{
 		}
 
-		public static void SetTitleUIElement (this Atk.Object o, Atk.Object title)
+		public static void ReplaceAccessibilityElements (this Gtk.IAccessible parent, AccessibilityElementProxy [] children)
 		{
 		}
 
-		public static void SetAlternateUIVisible (this Atk.Object o, bool visible)
+		public static void SetColumns (this Gtk.IAccessible parent, AccessibilityElementProxy [] columns)
 		{
 		}
 
-		public static void SetOrientation (this Atk.Object o, Gtk.Orientation orientation)
+		public static void SetRows (this Gtk.IAccessible parent, AccessibilityElementProxy [] rows)
 		{
 		}
 
-		public static void SetTitleFor (this Atk.Object o, params Atk.Object [] objects)
+		public static void AddAccessibleElement (this Gtk.IAccessible o, AccessibilityElementProxy child)
 		{
 		}
 
-		public static void SetTabs (this Atk.Object o, AccessibilityElementProxy [] tabs)
+		public static void RemoveAccessibleElement (this Gtk.IAccessible o, AccessibilityElementProxy child)
 		{
 		}
 
-		public static void SetTabs (this Atk.Object o, Atk.Object [] tabs)
+		public static void SetAccessibleChildren (this Gtk.IAccessible o, AccessibilityElementProxy [] children)
 		{
 		}
 
-		public static void AddElementToTitle (this Atk.Object title, Atk.Object o)
+		public static void AddLinkedUIElement (this Gtk.IAccessible o, Gtk.IAccessible linked)
 		{
 		}
 
-		public static void RemoveElementFromTitle (this Atk.Object title, Atk.Object o)
-		{
-		}
-
-		public static void ReplaceAccessibilityElements (this Atk.Object parent, AccessibilityElementProxy [] children)
-		{
-		}
-
-		public static void SetColumns (this Atk.Object parent, AccessibilityElementProxy [] columns)
-		{
-		}
-
-		public static void SetRows (this Atk.Object parent, AccessibilityElementProxy [] rows)
-		{
-		}
-
-		public static void AddAccessibleElement (this Atk.Object o, AccessibilityElementProxy child)
-		{
-		}
-
-		public static void RemoveAccessibleElement (this Atk.Object o, AccessibilityElementProxy child)
-		{
-		}
-
-		public static void SetAccessibleChildren (this Atk.Object o, AccessibilityElementProxy [] children)
-		{
-		}
-
-		public static void AddLinkedUIElement (this Atk.Object o, Atk.Object linked)
-		{
-		}
-
-		public static void AddLinkedUIElement (this Atk.Object o, params Atk.Object [] linked)
+		public static void AddLinkedUIElement (this Gtk.IAccessible o, params Gtk.IAccessible [] linked)
 		{
 		}
 	
-		public static void MakeAccessibilityAnnouncement (this Atk.Object o,  string message)
+		public static void MakeAccessibilityAnnouncement (this Gtk.IAccessible o,  string message)
 		{
+			if (o != null && !string.IsNullOrEmpty (message))
+				o.Announce (message, Gtk.AccessibleAnnouncementPriority.Medium);
 		}
 
-		public static void TransferAccessibleChild (this Atk.Object from, Atk.Object to, Atk.Object child)
+		public static void TransferAccessibleChild (this Gtk.IAccessible from, Gtk.IAccessible to, Gtk.IAccessible child)
 		{
 		}
 	}
@@ -312,7 +331,7 @@ namespace MonoDevelop.Components.AtkCocoaHelper
 			set {
 			}
 		}
-		public Func<AtkCocoa.Range, Rectangle> FrameForRange {
+		public Func<AtkCocoa.Range, Gdk.Rectangle> FrameForRange {
 			set {
 			}
 		}
@@ -336,7 +355,7 @@ namespace MonoDevelop.Components.AtkCocoaHelper
 			set {
 			}
 		}
-		public Func<Point, AtkCocoa.Range> RangeForPosition {
+		public Func<Gdk.Point, AtkCocoa.Range> RangeForPosition {
 			set {
 			}
 		}

@@ -72,10 +72,7 @@ namespace MonoDevelop.Components
 				if (w is Gtk.Widget) {
 					var gtkWidget = (Gtk.Widget)w;
 					var c = new CommandRouterContainer (gtkWidget, this, true);
-					c.FocusChain = new [] { gtkWidget };
-					c.Show ();
 					nativeWidget = c;
-					c.Destroyed += OnGtkDestroyed;
 					toCache = c;
 				} else {
 					nativeWidget = w;
@@ -102,12 +99,6 @@ namespace MonoDevelop.Components
 			return false;
 		}
 
-		void OnGtkDestroyed (object sender, EventArgs args)
-		{
-			GC.SuppressFinalize (this);
-			Dispose (true);
-		}
-
 		static object ConvertToType (Type t, object w)
 		{
 			if (t.IsInstanceOfType (w))
@@ -115,9 +106,7 @@ namespace MonoDevelop.Components
 
 #if MAC
 			if (w is NSView && t == typeof (Gtk.Widget)) {
-				var ww = GtkMacInterop.NSViewToGtkWidget ((NSView)w);
-				ww.Show ();
-				return ww;
+				return GtkMacInterop.NSViewToGtkWidget ((NSView)w);
 			}
 			if (w is Gtk.Widget && t == typeof (NSView)) {
 				return new GtkEmbed ((Gtk.Widget)w);
@@ -151,15 +140,11 @@ namespace MonoDevelop.Components
 			if (d == null)
 				return null;
 
+			// GTK 4 has no ::destroy signal; the cache is weak, so the wrapper lives as long as the widget does.
 			var control = GetImplicit<Control, Gtk.Widget>(d);
 			if (control == null) {
 				Debug.Assert (!(d is Gtk.Window));
-
 				control = new Control (d);
-				d.Destroyed += delegate {
-					GC.SuppressFinalize (control);
-					control.Dispose (true);
-				};
 			}
 			return control;
 		}
@@ -170,7 +155,7 @@ namespace MonoDevelop.Components
 				return ((AbstractXwtControl)d).Widget;
 			
 			object nativeWidget;
-			if (Xwt.Toolkit.CurrentEngine.Type == Xwt.ToolkitType.Gtk && (nativeWidget = d?.GetNativeWidget<Gtk.Widget> ()) != null) {
+			if (Xwt.Toolkit.CurrentEngine.Type == Xwt.ToolkitType.Gtk4 && (nativeWidget = d?.GetNativeWidget<Gtk.Widget> ()) != null) {
 				return Xwt.Toolkit.CurrentEngine.WrapWidget (nativeWidget, Xwt.NativeWidgetSizing.DefaultPreferredSize);
 			}
 #if MAC
@@ -225,11 +210,6 @@ namespace MonoDevelop.Components
 		{
 			if (nativeWidget != null)
 				cache.Remove (nativeWidget);
-
-			var gtkWidget = nativeWidget as Gtk.Widget;
-			if (gtkWidget != null) {
-				gtkWidget.Destroyed -= OnGtkDestroyed;
-			}
 		}
 
 		protected virtual object GetNextCommandTarget ()

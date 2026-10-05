@@ -54,12 +54,12 @@ namespace MonoDevelop.Components
 			PromptMultiLineString = ">> ";
 			
 			textView = new TextView ();
-			Add (textView);
-			ShowAll ();
+			Child = textView;
 			
 			textView.WrapMode = Gtk.WrapMode.Word;
-			textView.KeyPressEvent += TextViewKeyPressEvent;
-			textView.PopulatePopup += TextViewPopulatePopup;
+			// Capture phase: intercept keys before the TextView handles them (was a ConnectBefore KeyPressEvent).
+			textView.AddKeyPressHandler (TextViewKeyPressed, null, PropagationPhase.Capture);
+			SetupContextMenu ();
 
 			inputBeginMark = Buffer.CreateMark (null, Buffer.EndIter, true);
 
@@ -71,27 +71,67 @@ namespace MonoDevelop.Components
 			Prompt (false);
 		}
 
-		void TextViewPopulatePopup (object o, PopulatePopupArgs args)
+		// GTK 4: PopulatePopup is gone; extra context-menu items come from TextView.ExtraMenu (a menu model + actions).
+		void SetupContextMenu ()
 		{
-			MenuItem item = new MenuItem (GettextCatalog.GetString ("Clear"));
-			SeparatorMenuItem sep = new SeparatorMenuItem ();
-			
-			item.Activated += ClearActivated;
-			item.Show ();
-			sep.Show ();
-			
-			args.Menu.Add (sep);
-			args.Menu.Add (item);
+			var clearAction = new GLib.SimpleAction ("clear", null);
+			clearAction.Activated += (o, a) => Clear ();
+			var group = new GLib.SimpleActionGroup ();
+			group.AddAction (clearAction);
+			textView.InsertActionGroup ("console", group);
+
+			var section = new GLib.Menu ();
+			section.Append (GettextCatalog.GetString ("Clear"), "console.clear");
+			var menu = new GLib.Menu ();
+			menu.AppendSection (null, section);
+			textView.ExtraMenu = menu;
 		}
 
-		void ClearActivated (object sender, EventArgs e)
-		{
-			Clear ();
-		}
-		
+		static int fontClassCounter;
+		string fontClass;
+		CssProvider fontProvider;
+
+		// GTK 4: ModifyFont is gone; the font is applied through a CSS class unique to this view.
 		public void SetFont (Pango.FontDescription font)
 		{
-			textView.ModifyFont (font);
+			if (fontClass == null) {
+				fontClass = "md-console-view-" + (++fontClassCounter);
+				textView.AddCssClass (fontClass);
+				fontProvider = new CssProvider ();
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.AddProviderForDisplay (display, fontProvider, StyleProviderPriority.Application);
+			}
+			fontProvider.LoadFromString (font != null ? "textview." + fontClass + " { " + FontToCss (font) + " }" : "");
+		}
+
+		static string FontToCss (Pango.FontDescription font)
+		{
+			var css = new System.Text.StringBuilder ();
+			if (!string.IsNullOrEmpty (font.Family))
+				css.Append ("font-family: \"").Append (font.Family.Replace ("\"", "")).Append ("\"; ");
+			if (font.Size > 0) {
+				var size = font.Size / Pango.Scale.PangoScale;
+				css.Append ("font-size: ").Append (size.ToString (System.Globalization.CultureInfo.InvariantCulture))
+					.Append (font.SizeIsAbsolute ? "px; " : "pt; ");
+			}
+			css.Append ("font-weight: ").Append ((int)font.Weight).Append ("; ");
+			if (font.Style == Pango.Style.Italic)
+				css.Append ("font-style: italic; ");
+			else if (font.Style == Pango.Style.Oblique)
+				css.Append ("font-style: oblique; ");
+			return css.ToString ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && fontProvider != null) {
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.RemoveProviderForDisplay (display, fontProvider);
+				fontProvider = null;
+			}
+			base.Dispose (disposing);
 		}
 
 		protected TextView TextView {
@@ -104,11 +144,9 @@ namespace MonoDevelop.Components
 
 		public string PromptMultiLineString { get; set; }
 		
-		[GLib.ConnectBeforeAttribute]
-		void TextViewKeyPressEvent (object o, KeyPressEventArgs args)
+		bool TextViewKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (ProcessKeyPressEvent (args))
-				args.RetVal = true;
+			return ProcessKeyPressEvent ((Gdk.Key)keyval, state);
 		}
 
 		bool ProcessReturn ()
@@ -198,11 +236,11 @@ namespace MonoDevelop.Components
 			return true;
 		}
 		
-		protected virtual bool ProcessKeyPressEvent (KeyPressEventArgs args)
+		protected virtual bool ProcessKeyPressEvent (Gdk.Key key, Gdk.ModifierType state)
 		{
 			// Short circuit to avoid getting moved back to the input line
 			// when paging up and down in the shell output
-			if (args.Event.Key == Gdk.Key.Page_Up || args.Event.Key == Gdk.Key.Page_Down)
+			if (key == Gdk.Key.Page_Up || key == Gdk.Key.Page_Down)
 				return false;
 			
 			// Needed so people can copy and paste, but always end up
@@ -219,7 +257,7 @@ namespace MonoDevelop.Components
 //			if (ev.State == Gdk.ModifierType.ControlMask && ev.Key == Gdk.Key.space)
 //				TriggerCodeCompletion ();
 
-			switch (args.Event.Key) {
+			switch (key) {
 			case Gdk.Key.KP_Enter:
 			case Gdk.Key.Return:
 				return ProcessReturn ();
@@ -232,11 +270,11 @@ namespace MonoDevelop.Components
 			case Gdk.Key.KP_Left:
 			case Gdk.Key.Left:
 				// On Mac, when using a small keyboard, Home is Command+Left
-				if (Platform.IsMac && args.Event.State.HasFlag (Gdk.ModifierType.MetaMask)) {
+				if (Platform.IsMac && state.HasFlag (Gdk.ModifierType.MetaMask)) {
 					Buffer.MoveMark (Buffer.InsertMark, InputLineBegin);
 
 					// Move the selection mark too, if shift isn't held
-					if (!args.Event.State.HasFlag (Gdk.ModifierType.ShiftMask))
+					if (!state.HasFlag (Gdk.ModifierType.ShiftMask))
 						Buffer.MoveMark (Buffer.SelectionBound, InputLineBegin);
 
 					return true;
@@ -252,16 +290,16 @@ namespace MonoDevelop.Components
 				Buffer.MoveMark (Buffer.InsertMark, InputLineBegin);
 
 				// Move the selection mark too, if shift isn't held
-				if (!args.Event.State.HasFlag (Gdk.ModifierType.ShiftMask))
+				if (!state.HasFlag (Gdk.ModifierType.ShiftMask))
 					Buffer.MoveMark (Buffer.SelectionBound, InputLineBegin);
 
 				return true;
 			case Gdk.Key.a:
-				if (args.Event.State.HasFlag (Gdk.ModifierType.ControlMask)) {
+				if (state.HasFlag (Gdk.ModifierType.ControlMask)) {
 					Buffer.MoveMark (Buffer.InsertMark, InputLineBegin);
 
 					// Move the selection mark too, if shift isn't held
-					if (!args.Event.State.HasFlag (Gdk.ModifierType.ShiftMask))
+					if (!state.HasFlag (Gdk.ModifierType.ShiftMask))
 						Buffer.MoveMark (Buffer.SelectionBound, InputLineBegin);
 
 					return true;
@@ -284,7 +322,7 @@ namespace MonoDevelop.Components
 			get { return Buffer.EndIter; }
 		}
 		
-		public TextIter Cursor {
+		public new TextIter Cursor {
 			get { return Buffer.GetIterAtMark (Buffer.InsertMark); }
 		}
 		

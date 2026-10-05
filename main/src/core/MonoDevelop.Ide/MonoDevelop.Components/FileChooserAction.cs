@@ -41,11 +41,10 @@ namespace MonoDevelop.Components
 
 	static class FileChooserActionExtensions
 	{
+		// GTK 4 has no CreateFolder action: it maps to SelectFolder + FileChooser.CreateFolders (see AllowsCreateFolders).
 		public static Gtk.FileChooserAction ToGtkAction(this FileChooserAction action)
 		{
-			if ((action & FileChooserAction.CreateFolder) != 0)
-				return Gtk.FileChooserAction.CreateFolder;
-			else if ((action & FileChooserAction.SelectFolder) != 0)
+			if ((action & FileChooserAction.FolderFlags) != 0)
 				return Gtk.FileChooserAction.SelectFolder;
 			else if ((action & FileChooserAction.Open) != 0)
 				return Gtk.FileChooserAction.Open;
@@ -53,6 +52,12 @@ namespace MonoDevelop.Components
 				return Gtk.FileChooserAction.Save;
 			else
 				throw new NotSupportedException ();
+		}
+
+		/// <summary>Value for <c>Gtk.IFileChooser.CreateFolders</c> (replaces GTK 2 <c>FileChooserAction.CreateFolder</c>).</summary>
+		public static bool AllowsCreateFolders (this FileChooserAction action)
+		{
+			return (action & (FileChooserAction.CreateFolder | FileChooserAction.Save)) != 0;
 		}
 	}
 }

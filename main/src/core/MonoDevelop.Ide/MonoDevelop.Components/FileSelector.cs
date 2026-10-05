@@ -50,18 +50,19 @@ namespace MonoDevelop.Components
 
 		public FileSelector (string title, Gtk.FileChooserAction action) : base (title, null, action)
 		{
+			// Gtk.Stock is gone in GTK 4: use mnemonic labels.
 			switch (action) {
 				case Gtk.FileChooserAction.Open:
-					AddButton (Gtk.Stock.Cancel, ResponseType.Cancel);
-					AddButton (Gtk.Stock.Open, ResponseType.Ok);
+					AddButton (GettextCatalog.GetString ("_Cancel"), ResponseType.Cancel);
+					AddButton (GettextCatalog.GetString ("_Open"), ResponseType.Ok);
 					break;
 				case Gtk.FileChooserAction.SelectFolder:
-					AddButton (Gtk.Stock.Cancel, ResponseType.Cancel);
+					AddButton (GettextCatalog.GetString ("_Cancel"), ResponseType.Cancel);
 					AddButton (GettextCatalog.GetString ("Select Folder"), ResponseType.Ok);
 					break;
 				case Gtk.FileChooserAction.Save:
-					AddButton (Gtk.Stock.Cancel, ResponseType.Cancel);
-					AddButton (Gtk.Stock.Save, ResponseType.Ok);
+					AddButton (GettextCatalog.GetString ("_Cancel"), ResponseType.Cancel);
+					AddButton (GettextCatalog.GetString ("_Save"), ResponseType.Ok);
 					break;
 				default:
 					break;
@@ -69,6 +70,45 @@ namespace MonoDevelop.Components
 			DefaultResponse = ResponseType.Ok;
 
 			CommonSetup ();
+		}
+
+		/// <summary>Sets the current folder from a local path (GTK 4 FileChooser takes a GLib.IFile).</summary>
+		public bool SetCurrentFolder (string path)
+		{
+			if (string.IsNullOrEmpty (path))
+				return false;
+			return SetCurrentFolder (GLib.FileFactory.NewForPath (path));
+		}
+
+		/// <summary>Selects a local file (GTK 4 FileChooser takes a GLib.IFile).</summary>
+		public bool SetFilename (string path)
+		{
+			if (string.IsNullOrEmpty (path))
+				return false;
+			return SetFile (GLib.FileFactory.NewForPath (path));
+		}
+
+		/// <summary>Local path of the current folder (null when none or not local).</summary>
+		public string CurrentFolderPath {
+			get { return CurrentFolder?.Path; }
+		}
+
+		/// <summary>Local paths of the selected files (replaces GTK 2 <c>Filenames</c>).</summary>
+		public string[] Filenames {
+			get {
+				var model = Files;
+				if (model == null)
+					return new string [0];
+				var n = (int)model.NItems;
+				var list = new System.Collections.Generic.List<string> (n);
+				for (uint i = 0; i < n; i++) {
+					var obj = model.GetObject (i);
+					var path = obj != null ? GLib.FileAdapter.GetObject (obj)?.Path : null;
+					if (path != null)
+						list.Add (path);
+				}
+				return list.ToArray ();
+			}
 		}
 
 		void CommonSetup ()
@@ -85,22 +125,22 @@ namespace MonoDevelop.Components
 
 			if (FileService.IsDirectory (pathName)) {
 				try {
-					this.AddShortcutFolder (pathName);
+					this.AddShortcutFolder (GLib.FileFactory.NewForPath (pathName));
 				} catch {
 					// This may fail if the folder is already registered, and the ShortcutFolders is not
 					// giving the correct values, so there isn't another way to check it.
 				}
 			}
 
-			// FIXME: only set this once per-dialog
-			// perhaps in Dispose ()? or only when a file or dir is selected
-			this.CurrentFolderChanged += new EventHandler (OnCurrentFolderChanged);
+			// GTK 4 has no current-folder-changed signal: remember the folder when the dialog responds.
+			this.Response += OnResponse;
 		}
 
-		void OnCurrentFolderChanged (object o, EventArgs args)
+		void OnResponse (object o, ResponseArgs args)
 		{
-			PropertyService.Set (LastPathProperty, this.CurrentFolder);
+			var folder = CurrentFolderPath;
+			if (!string.IsNullOrEmpty (folder))
+				PropertyService.Set (LastPathProperty, folder);
 		}
 	}
 }
-

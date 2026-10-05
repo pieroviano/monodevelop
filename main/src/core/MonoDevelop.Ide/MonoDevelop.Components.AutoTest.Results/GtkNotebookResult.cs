@@ -41,7 +41,7 @@ namespace MonoDevelop.Components.AutoTest.Results
 
 		public override string ToString ()
 		{
-			return String.Format ("{0} - {1} - {2} - {3}, - {4} - Tab: {5}", noteBook, noteBook.Allocation, noteBook.Name, noteBook.GetType ().FullName, noteBook.Toplevel.Name, toBeSelected);
+			return String.Format ("{0} - {1} - {2} - {3}, - {4} - Tab: {5}", noteBook, noteBook.Allocation, noteBook.Name, noteBook.GetType ().FullName, (noteBook.Root as Widget)?.Name, toBeSelected);
 		}
 
 		public override AppResult Text (string text, bool exact)
