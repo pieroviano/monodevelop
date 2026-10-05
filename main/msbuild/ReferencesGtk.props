@@ -1,32 +1,26 @@
 <Project>
 
+  <!-- Gtk 4 bindings (GtkSharp4, netstandard2.0, glue-free). Atk and Glade have no Gtk 4 counterpart. -->
   <PropertyGroup>
+    <GtkSharp4Version Condition="'$(GtkSharp4Version)' == ''">4.22.4.*</GtkSharp4Version>
     <ReferencesGtkCopyToOutput Condition="$(ReferencesGtkCopyToOutput) == ''">false</ReferencesGtkCopyToOutput>
+    <!-- Gtk assemblies are copied once, into build/bin, by the projects that set ReferencesGtkCopyToOutput=true. -->
+    <_GtkSharp4ExcludeAssets Condition="!$(ReferencesGtkCopyToOutput)">runtime</_GtkSharp4ExcludeAssets>
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="atk-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="gdk-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="glade-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="glib-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="gtk-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="Mono.Cairo, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
+    <PackageReference Include="GtkSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="GdkSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="GskSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="GLibSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="GioSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="PangoSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="CairoSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+    <PackageReference Include="GrapheneSharp4" Version="$(GtkSharp4Version)" ExcludeAssets="$(_GtkSharp4ExcludeAssets)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="Mono.Posix, Version=2.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756">
-      <Private>$(ReferencesGtkCopyToOutput)</Private>
-    </Reference>
-    <Reference Include="pango-sharp, Version=2.12.0.0, Culture=neutral, PublicKeyToken=35e10195dab3c99f">
       <Private>$(ReferencesGtkCopyToOutput)</Private>
     </Reference>
   </ItemGroup>
