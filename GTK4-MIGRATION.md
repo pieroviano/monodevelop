@@ -23,6 +23,22 @@
 - Projects with inline `gtk-sharp 2.12` references switch to `$(ReferencesGtk)`.
 - `Xwt.Gtk.csproj` refs → `Xwt.Gtk4.csproj`; toolkit loaded as `ToolkitType.Gtk4`.
 
+## Linux build (WSL Ubuntu 24.04)
+
+| Item | Value |
+|---|---|
+| Toolchain | Mono 6.12 + `msbuild` 16.10 (mono-project `stable-focal`), `gtk-sharp2` (unported GTK 2 projects), `fsharp`; `~/.dotnet` off `PATH` so Mono msbuild uses its bundled `Microsoft.NET.Sdk` |
+| Command | `msbuild Main.sln -restore -m -p:Configuration=DebugGnome -p:NuGetAudit=false -p:GenerateAssemblyVersionInfo=false` |
+| GtkSharp4 packages | add the feed holding them, e.g. `-p:RestoreAdditionalProjectSources=<Windows NuGet cache>` |
+| VS editor | vs-editor-api built from source (the Mac path); WPF types come from the net472 reference assemblies (`UseWpfReferenceAssemblies`, `external/vs-editor-api/build/Project.targets`) — compile-only, WPF code paths fail at run time |
+
+Environment workarounds (not repo defects):
+
+| Flag | Why |
+|---|---|
+| `NuGetAudit=false` | vs-editor-api treats warnings as errors; the audit fails on the dead `dotnet.myget.org` feed (NU1900) and flags `Newtonsoft.Json` 9.0.1 (NU1903) |
+| `GenerateAssemblyVersionInfo=false` | `Nerdbank.GitVersioning` 2.1.23 (LibGit2Sharp) loads a libgit2 needing `libssl.so.1.0.0`/`CURL_OPENSSL_3`; the load failure crashes the MSBuild node and cancels the build. Side effect: LibGit2Sharp itself fails (`UniqueId` not generated) |
+
 ## Porting rules (GTK 2 → GTK 4)
 
 | GTK 2 | GTK 4 |
@@ -69,7 +85,7 @@ Agents in one batch build with a private `IntermediateOutputPath`/`OutputPath` a
 
 ## Verification
 
-- `winbuild.bat` (DebugWin32) builds Main.sln with 0 errors; Linux `msbuild Main.sln /p:Configuration=Debug`.
+- `winbuild.bat` (DebugWin32) builds Main.sln with 0 errors; Linux `msbuild Main.sln` (`DebugGnome`, see [Linux build](#linux-build-wsl-ubuntu-2404)).
 - IDE launches, opens a solution, edits/builds/debugs a console app.
 - `tests/IdeUnitTests`, `tests/Ide.Tests` pass.
 
