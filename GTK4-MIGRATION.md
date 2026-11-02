@@ -110,3 +110,13 @@ Agents in one batch build with a private `IntermediateOutputPath`/`OutputPath` a
 | Add-in helpers | Add-ins outside the Ide `InternalsVisibleTo` list carry a local `DesignerLayout.cs` (Deployment, VBNetBinding, mdmonitor); `WindowsPlatform` references `Xwt.Gtk4` for native window handles |
 | Binding gaps | No gspell (GtkSpell), no `ImContext` input-method menu, no global screen coordinates, no Gdk event filters, no Win32 `gdk_win32_*` binding |
 | Build note | A running Visual Studio locks `main/msbuild/MDBuildTasks/bin/MDBuildTasks.dll`; rename the locked file and copy the fresh obj output over it before the solution build |
+
+## Addin tier 1, round 2 notes
+
+| Area | Note |
+|---|---|
+| Status | No new porting. `Main.sln` (DebugWin32) fails only in `MonoDevelop.Debugger` (GTK 2 source, ~85 errors) and `libstetic` (batch 5); every project depending on them is skipped |
+| Blocked on Debugger | `MonoDevelop.SourceEditor` (`PinnedWatchWidget`, `DebugValueTooltipProvider`: 12 errors) and `MonoDevelop.HexEditor` (`HexEditorVisualizer`: 2 errors) need `ObjectValueTreeView`/`GtkObjectValueTreeView` on GTK 4 `Gtk.TreeView`, `DebugValueWindow : PopoverWindow`, and `ValueVisualizer.GetVisualizerWidget` returning a GTK 4 widget; `IdeApp.CommandService.RegisterTopWindow` must accept the popover window |
+| Other leftovers | `Mono.TextEditor.Tests` (`Gtk.Clipboard.Get`), `ResultTooltipProvider` (Refactoring) and Ide `TooltipProvider.cs:116-123` still treat the tip window as `Gtk.Window` |
+| Contract notes | `IToolboxConsumer`/`ICustomTooltipToolboxNode` changes must be adopted by `SourceEditorView`, `TextViewContent.Toolbox`, `ClipboardRingService` and `GuiBuilderView` |
+| Binding gaps | `RemoteDesignerProcess` GtkPlug (removed); Mac-only toolbox drag code behind `#if MAC` not ported |
