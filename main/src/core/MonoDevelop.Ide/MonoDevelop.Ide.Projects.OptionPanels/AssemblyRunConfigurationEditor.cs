@@ -198,7 +198,6 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 				var w = new MonoExecutionParametersWidget ();
 				var mparams = config.MonoParameters.Clone ();
 				w.Load (mparams);
-				w.ShowAll ();
 				dlg.Content = Surface.ToolkitEngine.WrapWidget (w);
 				dlg.Buttons.Add (Command.Ok, Command.Cancel);
 				dlg.TransientFor = ParentWindow;

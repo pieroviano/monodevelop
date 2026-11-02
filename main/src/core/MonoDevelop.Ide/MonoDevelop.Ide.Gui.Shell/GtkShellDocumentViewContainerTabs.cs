@@ -34,28 +34,26 @@ namespace MonoDevelop.Ide.Gui.Shell
 {
 	class GtkShellDocumentViewContainerTabs: IGtkShellDocumentViewContainer
 	{
-		EventBox notebook;
+		BinWidget notebook;
 		Tabstrip tabstrip;
-		VBox rootTabsBox;
+		Gtk.Box rootTabsBox;
 
 		public GtkShellDocumentViewContainerTabs ()
 		{
-			rootTabsBox = new VBox ();
-			rootTabsBox.Accessible.SetShouldIgnore (true);
+			rootTabsBox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			rootTabsBox.SetShouldIgnore (true);
 
-			var bottomBarBox = new HBox (false, 0);
-			bottomBarBox.Show ();
-			rootTabsBox.PackEnd (bottomBarBox, false, false, 0);
+			notebook = new BinWidget ();
+			notebook.Hexpand = true;
+			notebook.Vexpand = true;
+			rootTabsBox.Append (notebook);
 
-			notebook = new EventBox ();
-			notebook.Show ();
-			rootTabsBox.PackStart (notebook, true, true, 0);
+			var bottomBarBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			rootTabsBox.Append (bottomBarBox);
 
 			tabstrip = new Tabstrip ();
-			//tabstrip.Show ();
-			bottomBarBox.PackStart (tabstrip, true, true, 0);
-
-			rootTabsBox.Show ();
+			tabstrip.Hexpand = true;
+			bottomBarBox.Append (tabstrip);
 		}
 
 		public Widget Widget => rootTabsBox;
@@ -133,7 +131,6 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public void ReorderView (int currentIndex, int newIndex)
 		{
-			var child = (GtkShellDocumentViewItem)notebook.Children [currentIndex];
 			tabstrip.ReorderTabs (currentIndex, newIndex);
 			ShowActiveContent ();
 		}
@@ -143,12 +140,10 @@ namespace MonoDevelop.Ide.Gui.Shell
 			if (tabstrip.ActiveTab != -1) {
 				var newChild = (GtkShellDocumentViewItem)tabstrip.Tabs [tabstrip.ActiveTab].Tag;
 				if (newChild != notebook.Child) {
-					if (notebook.Child != null)
-						notebook.Remove (notebook.Child);
-					notebook.Add (newChild);
+					notebook.Child = newChild;
 				}
 			} else if (notebook.Child != null)
-				notebook.Remove (notebook.Child);
+				notebook.Child = null;
 		}
 
 		public void ReplaceView (int position, GtkShellDocumentViewItem view)

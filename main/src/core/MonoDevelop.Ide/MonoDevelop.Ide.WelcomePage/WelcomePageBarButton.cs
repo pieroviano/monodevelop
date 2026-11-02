@@ -32,7 +32,7 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageBarButton: EventBox
+	public class WelcomePageBarButton: BinWidget
 	{
 		Xwt.ImageView image;
 		Widget imageWidget;
@@ -41,7 +41,7 @@ namespace MonoDevelop.Ide.WelcomePage
 		Xwt.Drawing.Image imageNormal, imageHover;
 		bool mouseOver;
 		string actionLink;
-		private static Gdk.Cursor hand_cursor = new Gdk.Cursor(Gdk.CursorType.Hand1);
+		static Gdk.Cursor hand_cursor;
 
 		public string FontFamily { get; set; }
 		public string HoverColor { get; set; }
@@ -53,7 +53,7 @@ namespace MonoDevelop.Ide.WelcomePage
 			get { return FontWeight == Pango.Weight.Bold; }
 			set { FontWeight = value ? Pango.Weight.Bold : Pango.Weight.Normal; }
 		}
-		HBox box = new HBox ();
+		Gtk.Box box = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
 
 		public int IconTextSpacing {
 			get { return box.Spacing; }
@@ -78,17 +78,16 @@ namespace MonoDevelop.Ide.WelcomePage
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += HandlePress;
 
-			Accessible.Role = Atk.Role.Link;
+			this.SetRole (AtkCocoa.Roles.AXLink);
 
-			Accessible.SetTitle (title);
+			this.SetTitle (title);
 			if (!string.IsNullOrEmpty (href)) {
-				Accessible.SetUrl (href);
+				this.SetUrl (href);
 			}
-			Accessible.Description = "Opens the link in a web browser";
+			this.SetCommonAttributes (null, null, "Opens the link in a web browser");
 
 			UpdateStyle ();
 
-			VisibleWindow = false;
 			this.Text = title;
 			this.actionLink = href;
 			if (!string.IsNullOrEmpty (iconResource)) {
@@ -96,27 +95,52 @@ namespace MonoDevelop.Ide.WelcomePage
 				imageNormal = imageHover.WithAlpha (0.7);
 			}
 
-			box.Accessible.SetShouldIgnore (true);
+			box.SetShouldIgnore (true);
 
 			IconTextSpacing = Styles.WelcomeScreen.Links.IconTextSpacing;
 			image = new Xwt.ImageView ();
 			label = CreateLabel ();
 			imageWidget = image.ToGtkWidget ();
 
-			label.Accessible.SetShouldIgnore (true);
-			imageWidget.Accessible.SetShouldIgnore (true);
+			label.SetShouldIgnore (true);
+			imageWidget.SetShouldIgnore (true);
 
-			box.PackStart (imageWidget, false, false, 0);
+			box.Append (imageWidget);
 			if (imageNormal == null)
-				imageWidget.NoShowAll = true;
-			box.PackStart (label, false, false, 0);
-			box.ShowAll ();
-			Add (box);
+				imageWidget.Visible = false;
+			box.Append (label);
+			Child = box;
 
-			Gui.Styles.Changed += UpdateStyle;
 			Update ();
 
-			Events |= (Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask | Gdk.EventMask.ButtonReleaseMask);
+			this.AddMotionHandler (null, (x, y) => {
+				if (hand_cursor == null)
+					hand_cursor = new Gdk.Cursor ("pointer", null);
+				Cursor = hand_cursor;
+				mouseOver = true;
+				Update ();
+			}, () => {
+				Cursor = null;
+				mouseOver = false;
+				Update ();
+			});
+			this.AddClickHandler (null, click => {
+				if (click.Button == 1 && click.X >= 0 && click.Y >= 0 && click.X < Width && click.Y < Height)
+					OnClicked ();
+			}, 1);
+		}
+
+		protected override void OnRoot ()
+		{
+			base.OnRoot ();
+			Gui.Styles.Changed -= UpdateStyle;
+			Gui.Styles.Changed += UpdateStyle;
+		}
+
+		protected override void OnUnroot ()
+		{
+			Gui.Styles.Changed -= UpdateStyle;
+			base.OnUnroot ();
 		}
 
 		void UpdateStyle (object sender = null, EventArgs e = null)
@@ -124,8 +148,8 @@ namespace MonoDevelop.Ide.WelcomePage
 			OnUpdateStyle ();
 			if (label != null) {
 				box.Remove (label);
-				box.PackStart (label = CreateLabel ());
-				box.ShowAll ();
+				label = CreateLabel ();
+				box.Append (label);
 				Update ();
 			}
 			QueueResize ();
@@ -150,40 +174,9 @@ namespace MonoDevelop.Ide.WelcomePage
 			imageHover = hover;
 			imageNormal = normal;
 
-			if (imageNormal == null) {
-				imageWidget.NoShowAll = true;
-				image.Hide ();
-			} else {
-				imageWidget.NoShowAll = false;
-				ShowAll ();
-			}
+			imageWidget.Visible = imageNormal != null;
 
 			Update ();
-		}
-
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = hand_cursor;
-			mouseOver = true;
-			Update ();
-			return base.OnEnterNotifyEvent (evnt);
-		}
-		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = null;
-			mouseOver = false;
-			Update ();
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
-		{
-			if (evnt.Button == 1 && new Gdk.Rectangle (0, 0, Allocation.Width, Allocation.Height).Contains ((int)evnt.X, (int)evnt.Y)) {
-				OnClicked ();
-				return true;
-			}
-			return base.OnButtonReleaseEvent (evnt);
 		}
 
 		void HandlePress (object sender, EventArgs args)
@@ -203,12 +196,5 @@ namespace MonoDevelop.Ide.WelcomePage
 			var color = mouseOver ? HoverColor : Color;
 			label.Markup = WelcomePageSection.FormatText (FontFamily, FontSize, FontWeight, color, Text);
 		}
-
-		protected override void OnDestroyed ()
-		{
-			Gui.Styles.Changed -= UpdateStyle;
-			base.OnDestroyed ();
-		}
 	}
 }
-

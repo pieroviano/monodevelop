@@ -65,7 +65,7 @@ namespace MonoDevelop.Ide.Projects
 			
 			//auto height
 			folderEntry.WidthRequest = 380;
-			Resize (1, 1);
+			SetDefaultSize (1, 1);
 			
 			folderEntry.Path = item.ItemDirectory;
 			UpdateControls ();

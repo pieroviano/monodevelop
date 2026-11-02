@@ -118,7 +118,7 @@ namespace MonoDevelop.Ide.Editor
 			if (tipWindow is XwtWindowControl)
 				requiredWidth = (int)tipWindow.GetNativeWidget<Xwt.WindowFrame> ().Width;
 			else
-				requiredWidth = ((Gtk.Window)tipWindow).SizeRequest ().Width;
+				((Gtk.Window)tipWindow).Measure (Gtk.Orientation.Horizontal, -1, out _, out requiredWidth, out _, out _);
 			xalign = 0.5;
 		}
 
@@ -170,9 +170,9 @@ namespace MonoDevelop.Ide.Editor
 			var xwtWindow = (Xwt.WindowFrame)tipWindow;
 			xwtWindow.Location = CalculateWindowLocation (editor, item, xwtWindow, mouseX, mouseY, origin);
 
-			var gtkWindow = Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk).GetNativeWindow (xwtWindow) as Gtk.Window;
+			var gtkWindow = Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk4).GetNativeWindow (xwtWindow) as Gtk.Window;
 			if (gtkWindow != null)
-				gtkWindow.ShowAll ();
+				gtkWindow.Present ();
 			else
 				xwtWindow.Show ();
 		}
@@ -188,7 +188,7 @@ namespace MonoDevelop.Ide.Editor
 			int x = (int)(mouseX + origin.X + allocation.X);
 			int y = (int)(mouseY + origin.Y + allocation.Y);
 			Gtk.Widget widget = editor;
-			var geometry = widget.Screen.GetUsableMonitorGeometry (widget.Screen.GetMonitorAtPoint (x, y));
+			var geometry = widget.GetMonitor ().GetUsableMonitorGeometry ();
 
 			x -= (int)((double)w * xalign);
 			y += 10;

@@ -95,9 +95,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			buffer.TagTable.Add (tag);
 			tags.Add (tag);
 			
-			int w,h;
-			GetSize (out w, out h);
-			Resize (w, 1);
+			// Keep the width and shrink the height to the minimum the content needs
+			SetDefaultSize (DefaultWidth, 1);
 		}
 		
 		public CancellationTokenSource CancellationTokenSource {
@@ -109,16 +108,12 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			get { return title.Text; }
 			set {
 				if (string.IsNullOrEmpty (value)) {
-					if (title.Visible) {
-						title.Hide ();
+					if (title.Visible)
 						title.Visible = false;
-					}
 				} else {
 					title.Markup = "<big><b>" + value + "</b></big>";
-					if (!title.Visible) {
+					if (!title.Visible)
 						title.Visible = true;
-						title.Show ();
-					}
 				}
 			}
 		}
@@ -234,8 +229,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			}
 		}
 		
-		[GLib.ConnectBefore]
-		protected virtual void DeleteActivated (object o, DeleteEventArgs args)
+		protected virtual void DeleteActivated (object o, CloseRequestArgs args)
 		{
 			args.RetVal = true;
 			if (completed)

@@ -54,7 +54,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 	}
 	
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class MonoRuntimePanelWidget : Gtk.Bin
+	internal partial class MonoRuntimePanelWidget : MonoDevelop.Components.BinWidget
 	{
 		readonly List<TargetRuntime> removedRuntimes = new List<TargetRuntime> ();
 		readonly List<MonoRuntimeInfo> newInfos = new List<MonoRuntimeInfo> ();
@@ -144,7 +144,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		protected virtual void OnButtonAddClicked (object sender, System.EventArgs e)
 		{
 			var dlg = new SelectFolderDialog (GettextCatalog.GetString ("Select the mono installation prefix")) {
-				TransientFor = this.Toplevel as Gtk.Window,
+				TransientFor = this.Root as Gtk.Window,
 			};
 			
 			//set a platform-dependent default folder for the dialog if possible

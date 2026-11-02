@@ -47,6 +47,8 @@ namespace MonoDevelop.Components.Docking
 
 			topFrame = new CustomFrame ();
 			topFrame.SetPadding (3,3,3,3);
+			// Hidden until the first widget is added
+			topFrame.Visible = false;
 
 /*			switch (position) {
 				case PositionType.Top:
@@ -69,18 +71,17 @@ namespace MonoDevelop.Components.Docking
 
 			this.position = position;
 			if (position == DockPositionType.Top || position == DockPositionType.Bottom)
-				box = new HBox (false, 3);
+				box = new Box (Orientation.Horizontal, 3);
 			else
-				box = new VBox (false, 3);
-			box.Show ();
+				box = new Box (Orientation.Vertical, 3);
 //			frame = box;
 			frame = topFrame;
-			topFrame.Add (box);
+			topFrame.Child = box;
 
 //			topFrame.GradientBackround = true;
 
-			box.Accessible.SetShouldIgnore (false);
-			box.Accessible.Role = Atk.Role.ToolBar;
+			box.SetShouldIgnore (false);
+			box.AccessibleRole = AccessibleRole.Toolbar;
 
 			UpdateAccessibilityLabel ();
 		}
@@ -106,7 +107,7 @@ namespace MonoDevelop.Components.Docking
 				break;
 			}
 
-			box.Accessible.SetCommonAttributes ("padtoolbar", name, "");
+			box.SetCommonAttributes ("padtoolbar", name, "");
 		}
 
 		internal void SetStyle (DockVisualStyle style)
@@ -114,9 +115,9 @@ namespace MonoDevelop.Components.Docking
 			topFrame.BackgroundColor = style.PadBackgroundColor.Value.ToGdkColor ();
 		}
 
-		internal Atk.Object Accessible {
+		internal Gtk.IAccessible Accessible {
 			get {
-				return box.Accessible;
+				return box;
 			}
 		}
 
@@ -153,7 +154,7 @@ namespace MonoDevelop.Components.Docking
 
 			Widget widget = control;
 			if (widget is Button) {
-				((Button)widget).Relief = ReliefStyle.None;
+				((Button)widget).HasFrame = false;
 				((Button)widget).FocusOnClick = false;
 				defaultPadding = 0;
 			}
@@ -163,20 +164,32 @@ namespace MonoDevelop.Components.Docking
 			else if (widget is ComboBox) {
 				((ComboBox)widget).HasFrame = false;
 			}
-			else if (widget is VSeparator)
-				((VSeparator)widget).HeightRequest = 10;
+			else if (widget is Separator && ((Separator)widget).Orientation == Orientation.Vertical)
+				((Separator)widget).HeightRequest = 10;
 			
 			if (padding == -1)
 				padding = defaultPadding;
-			
-			box.PackStart (widget, fill, fill, (uint)padding);
+
+			// Box packing: 'fill' maps to expanding along the main axis, 'padding' to margins on both ends of it
+			if (position == DockPositionType.Top || position == DockPositionType.Bottom) {
+				widget.Hexpand = fill;
+				widget.MarginStart = widget.MarginEnd = padding;
+			} else {
+				widget.Vexpand = fill;
+				widget.MarginTop = widget.MarginBottom = padding;
+			}
+
+			box.Append (widget);
 			if (empty) {
 				empty = false;
-				frame.Show ();
+				frame.Visible = true;
 			}
 			if (index != -1) {
-				Box.BoxChild bc = (Box.BoxChild) box [widget];
-				bc.Position = index;
+				var children = box.GetChildren ().ToList ();
+				children.Remove (widget);
+				if (index > children.Count)
+					index = children.Count;
+				box.ReorderChildAfter (widget, index > 0 ? children [index - 1] : null);
 			}
 		}
 		
@@ -206,19 +219,29 @@ namespace MonoDevelop.Components.Docking
 		
 		public void ShowAll ()
 		{
-			frame.ShowAll ();
+			frame.Visible = true;
 		}
 		
 		public Control[] Children {
-			get { return box.Children.Select (child => (Control)child).ToArray (); }
+			get { return box.GetChildren ().Select (child => (Control)child).ToArray (); }
 		}
 	}
 	
 	public class DockToolButton : Control
 	{
+		ImageView image;
+		Gtk.Label label;
+		Gtk.Box content;
+
 		public ImageView Image {
-			get { return (ImageView)button.Image; }
-			set { button.Image = value; }
+			get { return image; }
+			set {
+				if (image != null)
+					content.Remove (image);
+				image = value;
+				if (image != null)
+					content.Prepend (image);
+			}
 		}
 
 		public string TooltipText {
@@ -227,8 +250,21 @@ namespace MonoDevelop.Components.Docking
 		}
 
 		public string Label {
-			get { return button.Label; }
-			set { button.Label = value; }
+			get { return label?.LabelProp; }
+			set {
+				if (string.IsNullOrEmpty (value)) {
+					if (label != null) {
+						content.Remove (label);
+						label = null;
+					}
+					return;
+				}
+				if (label == null) {
+					label = new Gtk.Label ();
+					content.Append (label);
+				}
+				label.LabelProp = value;
+			}
 		}
 
 		public bool Sensitive {
@@ -245,10 +281,11 @@ namespace MonoDevelop.Components.Docking
 		public DockToolButton (string stockId, string label)
 		{
 			button = new Button ();
+			content = new Gtk.Box (Orientation.Horizontal, 3);
+			button.Child = content;
 			Label = label;
 
-			Image = new ImageView (stockId, IconSize.Menu);
-			Image.Show ();
+			Image = new ImageView (stockId, StockIconSize.Menu);
 		}
 
 		protected override object CreateNativeWidget<T> ()

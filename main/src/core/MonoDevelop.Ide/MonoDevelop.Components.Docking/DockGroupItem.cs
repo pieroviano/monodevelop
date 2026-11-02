@@ -77,10 +77,10 @@ namespace MonoDevelop.Components.Docking
 		
 		internal override Requisition SizeRequest ()
 		{
-			var req = item.Widget.SizeRequest ();
+			var req = item.Widget.GetRequisition ();
 
 			if (ParentGroup.Type != DockGroupType.Tabbed || ParentGroup.VisibleObjects.Count == 1) {
-				var tr = item.TitleTab.SizeRequest ();
+				var tr = item.TitleTab.GetRequisition ();
 				req.Height += tr.Height;
 				req.Width = Math.Max (req.Width, tr.Width);
 				return req;
@@ -92,15 +92,15 @@ namespace MonoDevelop.Components.Docking
 		{
 			if ((ParentGroup.Type != DockGroupType.Tabbed || ParentGroup.VisibleObjects.Count == 1) && (item.Behavior & DockItemBehavior.NoGrip) == 0) {
 				var tr = newAlloc;
-				tr.Height = item.TitleTab.SizeRequest ().Height;
-				item.TitleTab.SizeAllocate (tr);
+				tr.Height = item.TitleTab.GetRequisition ().Height;
+				item.TitleTab.SizeAllocate (tr, -1);
 				var wr = newAlloc;
 				wr.Y += tr.Height;
 				wr.Height -= tr.Height;
-				item.Widget.SizeAllocate (wr);
+				item.Widget.SizeAllocate (wr, -1);
 			}
 			else
-				item.Widget.SizeAllocate (newAlloc);
+				item.Widget.SizeAllocate (newAlloc, -1);
 
 			base.SizeAllocate (newAlloc);
 		}
@@ -259,14 +259,8 @@ namespace MonoDevelop.Components.Docking
 				
 				if (status == DockItemStatus.Floating) {
 					if (floatRect.Equals (Gdk.Rectangle.Zero)) {
-						int x, y;
-						item.Widget.TranslateCoordinates (item.Widget.Toplevel, 0, 0, out x, out y);
-						Gtk.Window win = Frame.Toplevel as Gtk.Window;
-						if (win != null) {
-							int wx, wy;
-							win.GetPosition (out wx, out wy);
-							floatRect = new Gdk.Rectangle (wx + x, wy + y, Allocation.Width, Allocation.Height);
-						}
+						// GTK 4 windows can't be positioned: only the size of the floating window is meaningful
+						floatRect = new Gdk.Rectangle (0, 0, Allocation.Width, Allocation.Height);
 					}
 					item.SetFloatMode (floatRect);
 				}
@@ -370,13 +364,13 @@ namespace MonoDevelop.Components.Docking
 		{
 			if (Allocation.Width < Allocation.Height) {
 				int mid = Allocation.Left + Allocation.Width / 2;
-				if (mid > Frame.Allocation.Left + Frame.Allocation.Width / 2)
+				if (mid > Frame.Width / 2)
 					return PositionType.Right;
 				else
 					return PositionType.Left;
 			} else {
 				int mid = Allocation.Top + Allocation.Height / 2;
-				if (mid > Frame.Allocation.Top + Frame.Allocation.Height / 2)
+				if (mid > Frame.Height / 2)
 					return PositionType.Bottom;
 				else
 					return PositionType.Top;

@@ -28,9 +28,10 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using Gtk; 
+using Gtk;
 
 using System;
+using System.Collections.Generic;
 using MonoDevelop.Ide.Gui;
 using System.Linq;
 using MonoDevelop.Components.AtkCocoaHelper;
@@ -39,88 +40,91 @@ using MonoDevelop.Ide;
 
 namespace MonoDevelop.Components.Docking
 {
-	class TabStrip: Gtk.EventBox
+	/// <summary>
+	/// Row of pad title tabs. The tabs are the children of the strip and are laid out from the strip itself.
+	/// </summary>
+	class TabStrip: ContainerWidget
 	{
 		int currentTab = -1;
-		HBox box = new HBox ();
-		Label bottomFiller = new Label ();
+		int bottomPadding;
 		DockVisualStyle visualStyle;
+		static Xwt.Drawing.Image tabbarBackImage = Xwt.Drawing.Image.FromResource ("tabbar-back.9.png");
 
 		public TabStrip (DockFrame frame)
 		{
-			Accessible.SetRole (AtkCocoa.Roles.AXTabGroup);
-			Accessible.SetCommonAttributes ("Docking.TabStrip",
-			                                GettextCatalog.GetString ("Pad Tab Bar"),
-			                                GettextCatalog.GetString ("The different pads in this dock position"));
+			this.SetRole (AtkCocoa.Roles.AXTabGroup);
+			this.SetCommonAttributes ("Docking.TabStrip",
+			                          GettextCatalog.GetString ("Pad Tab Bar"),
+			                          GettextCatalog.GetString ("The different pads in this dock position"));
 
-			VBox vbox = new VBox ();
-			vbox.Accessible.SetShouldIgnore (true);
-			box = new TabStripBox () { TabStrip = this };
-			box.Accessible.SetShouldIgnore (true);
-			vbox.PackStart (box, false, false, 0);
-		//	vbox.PackStart (bottomFiller, false, false, 0);
-			Add (vbox);
-			ShowAll ();
-			bottomFiller.Hide ();
 			BottomPadding = 3;
-			WidthRequest = 0;
-			box.Removed += HandleRemoved;
 		}
 
 		public int BottomPadding {
-			get { return bottomFiller.HeightRequest; }
-			set {
-				bottomFiller.HeightRequest = value;
-				bottomFiller.Visible = value > 0;
-			}
+			get { return bottomPadding; }
+			set { bottomPadding = value; }
 		}
 
 		public DockVisualStyle VisualStyle {
 			get { return visualStyle; }
 			set {
 				visualStyle = value;
-				box.QueueDraw ();
+				QueueDraw ();
 			}
 		}
-		
+
+		IEnumerable<DockItemTitleTab> Tabs => Children.Cast<DockItemTitleTab> ();
+
+		internal bool IsFirstTab (DockItemTitleTab tab) => Children.Count > 0 && Children [0] == tab;
+
+		internal bool IsLastTab (DockItemTitleTab tab) => Children.Count > 0 && Children [Children.Count - 1] == tab;
+
+		int IndexOf (DockItemTitleTab tab)
+		{
+			for (int n = 0; n < Children.Count; n++) {
+				if (Children [n] == tab)
+					return n;
+			}
+			return -1;
+		}
+
 		public void AddTab (DockItemTitleTab tab)
 		{
-			if (tab.Parent != null)
-				((Gtk.Container)tab.Parent).Remove (tab);
+			DockUtil.RemoveFromParent (tab);
 
-			box.PackStart (tab, false, false, 0);
+			AddChild (tab);
 
 			if (currentTab == -1)
-				CurrentTab = box.Children.Length - 1;
+				CurrentTab = Children.Count - 1;
 			else {
 				tab.Active = false;
 				tab.Page.Hide ();
 			}
-			
+
 			tab.TabPressed += OnTabPress;
 			tab.UpdateRole (true, this);
 
 			UpdateAccessibilityTabs ();
 		}
 
-		void HandleRemoved (object o, RemovedArgs args)
+		protected override void OnChildRemoved (Gtk.Widget child)
 		{
-			var w = (DockItemTitleTab)args.Widget;
+			var w = (DockItemTitleTab)child;
 			w.UpdateRole (false, this);
 
 			w.TabPressed -= OnTabPress;
-			if (currentTab >= box.Children.Length)
-				currentTab = box.Children.Length - 1;
+			if (currentTab >= Children.Count)
+				currentTab = Children.Count - 1;
 
 			UpdateAccessibilityTabs ();
 		}
 
 		public void SetTabLabel (Gtk.Widget page, Xwt.Drawing.Image icon, string label)
 		{
-			foreach (DockItemTitleTab tab in box.Children) {
+			foreach (DockItemTitleTab tab in Tabs) {
 				if (tab.Page == page) {
 					tab.SetLabel (page, icon, label);
-					UpdateEllipsize (Allocation);
+					QueueResize ();
 					break;
 				}
 			}
@@ -128,39 +132,31 @@ namespace MonoDevelop.Components.Docking
 
 		void UpdateAccessibilityTabs ()
 		{
-			var tabs = new Atk.Object [box.Children.Length];
-			int i = 0;
-
-			foreach (DockItemTitleTab tab in box.Children) {
-				tabs [i] = tab.Accessible;
-				i++;
-			}
-
-			Accessible.SetTabs (tabs);
+			this.SetTabs (Tabs.Cast<Gtk.IAccessible> ().ToArray ());
 		}
-		
+
 		public void UpdateStyle (DockItem item)
 		{
 			QueueResize ();
 		}
 
 		public int TabCount {
-			get { return box.Children.Length; }
+			get { return Children.Count; }
 		}
-		
+
 		public int CurrentTab {
 			get { return currentTab; }
 			set {
 				if (currentTab == value)
 					return;
 				if (currentTab != -1) {
-					DockItemTitleTab t = (DockItemTitleTab) box.Children [currentTab];
+					DockItemTitleTab t = (DockItemTitleTab) Children [currentTab];
 					t.Page.Hide ();
 					t.Active = false;
 				}
 				currentTab = value;
 				if (currentTab != -1) {
-					DockItemTitleTab t = (DockItemTitleTab) box.Children [currentTab];
+					DockItemTitleTab t = (DockItemTitleTab) Children [currentTab];
 					t.Active = true;
 					t.Page.Show ();
 				}
@@ -170,7 +166,7 @@ namespace MonoDevelop.Components.Docking
 		internal DockItemTitleTab CurrentTitleTab {
 			get {
 				if (currentTab != -1)
-					return (DockItemTitleTab)box.Children [currentTab];
+					return (DockItemTitleTab)Children [currentTab];
 				return null;
 			}
 		}
@@ -178,16 +174,15 @@ namespace MonoDevelop.Components.Docking
 		public Widget CurrentPage {
 			get {
 				if (currentTab != -1) {
-					var t = (DockItemTitleTab) box.Children [currentTab];
+					var t = (DockItemTitleTab) Children [currentTab];
 					return t.Page;
 				} else
 					return null;
 			}
 			set {
 				if (value != null) {
-					Gtk.Widget[] tabs = box.Children;
-					for (int n = 0; n < tabs.Length; n++) {
-						var tab = (DockItemTitleTab) tabs [n];
+					for (int n = 0; n < Children.Count; n++) {
+						var tab = (DockItemTitleTab) Children [n];
 						if (tab.Page == value) {
 							CurrentTab = n;
 							return;
@@ -197,64 +192,83 @@ namespace MonoDevelop.Components.Docking
 				CurrentTab = -1;
 			}
 		}
-		
+
 		public void Clear ()
 		{
 			currentTab = -1;
-			foreach (DockItemTitleTab w in box.Children)
-				box.Remove (w);
+			foreach (DockItemTitleTab w in Tabs.ToArray ())
+				RemoveChild (w);
 		}
-		
+
 		void OnTabPress (object s, EventArgs args)
 		{
-			CurrentTab = Array.IndexOf (box.Children, s);
+			CurrentTab = IndexOf ((DockItemTitleTab)s);
 			DockItemTitleTab t = (DockItemTitleTab) s;
 			DockItem.SetFocus (t.Page);
 			QueueDraw ();
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			UpdateEllipsize (allocation);
-			base.OnSizeAllocated (allocation);
+			minimum = natural = 0;
+			if (orientation == Gtk.Orientation.Horizontal) {
+				foreach (var tab in Tabs)
+					minimum += tab.MinWidth;
+				natural = minimum;
+			} else {
+				foreach (var tab in Tabs) {
+					MeasureChild (tab, orientation, -1, out int cmin, out int cnat);
+					minimum = Math.Max (minimum, cmin);
+					natural = Math.Max (natural, cnat);
+				}
+			}
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeRequested (ref requisition);
-
-			int minWidth = 0;
-			foreach (var tab in box.Children.Cast<DockItemTitleTab> ())
-					 minWidth += tab.MinWidth;
-
-			requisition.Width = minWidth;
+			var tabs = Tabs.ToArray ();
+			int[] sizes = CalcTabSizes (tabs, width);
+			int x = 0;
+			for (int n = 0; n < tabs.Length; n++) {
+				AllocateChild (tabs [n], new Gdk.Rectangle (x, 0, sizes [n], height));
+				x += sizes [n];
+			}
 		}
-		
-		void UpdateEllipsize (Gdk.Rectangle allocation)
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			int width = Width, height = Height;
+			if (width > 0 && height > 0 && visualStyle != null && visualStyle.TabStyle == DockTabStyle.Normal) {
+				snapshot.DrawCairo (this, ctx => {
+					ctx.DrawImage (this, tabbarBackImage.WithSize (width, height), 0, 0);
+				});
+			}
+			base.OnSnapshot (snapshot);
+		}
+
+		int[] CalcTabSizes (DockItemTitleTab[] children, int totalWidth)
 		{
 			int tabsSize = 0;
-			var children = box.Children;
+			int allocWidth = totalWidth;
 
-			if (children == null || children.Length == 0) {
-				return;
-			}
+			if (children.Length == 0)
+				return new int [0];
 
 			foreach (DockItemTitleTab tab in children)
 				tabsSize += tab.LabelWidth;
 
-			var totalWidth = allocation.Width;
-
 			int[] sizes = new int[children.Length];
-			double ratio = (double) allocation.Width / (double) tabsSize;
+			double ratio = (double) allocWidth / (double) tabsSize;
 
-			if (ratio > 1 && visualStyle.ExpandedTabs.Value) {
-				// The tabs have to fill all the available space. To get started, assume that all tabs with have the same size 
+			if (ratio > 1 && visualStyle != null && visualStyle.ExpandedTabs.Value) {
+				// The tabs have to fill all the available space. To get started, assume that all tabs with have the same size
 				var tsize = totalWidth / children.Length;
 				// Maybe the assigned size is too small for some tabs. If it happens the extra space it requires has to be taken
 				// from tabs which have surplus of space. To calculate it, first get the difference beteen the assigned space
 				// and the required space.
 				for (int n=0; n<children.Length; n++)
-					sizes[n] = tsize - ((DockItemTitleTab)children[n]).LabelWidth;
+					sizes[n] = tsize - children[n].LabelWidth;
 
 				// If all is positive, nothing is left to do (all tabs have enough space). If there is any negative, it means
 				// that space has to be reassigned. The negative space has to be turned into positive by reducing space from other tabs
@@ -266,14 +280,14 @@ namespace MonoDevelop.Components.Docking
 				}
 				// Now calculate the final space assignment of each tab
 				for (int n=0; n<children.Length; n++) {
-					sizes[n] += ((DockItemTitleTab)children[n]).LabelWidth;
+					sizes[n] += children[n].LabelWidth;
 					totalWidth -= sizes[n];
 				}
 			} else {
 				if (ratio > 1)
 					ratio = 1;
 				for (int n=0; n<children.Length; n++) {
-					var s = (int)((double)((DockItemTitleTab)children[n]).LabelWidth * ratio);
+					var s = (int)((double)children[n].LabelWidth * ratio);
 					sizes[n] = s;
 					totalWidth -= s;
 				}
@@ -284,9 +298,7 @@ namespace MonoDevelop.Components.Docking
 				sizes[n]++;
 				totalWidth--;
 			}
-			// Assign the sizes
-			for (int n=0; n<children.Length; n++)
-				children[n].WidthRequest = sizes[n];
+			return sizes;
 		}
 
 		void ReduceSizes (int[] sizes, int amout)
@@ -314,25 +326,6 @@ namespace MonoDevelop.Components.Docking
 				}
 			}
 		}
-
-		internal class TabStripBox: HBox
-		{
-			public TabStrip TabStrip;
-			static Xwt.Drawing.Image tabbarBackImage = Xwt.Drawing.Image.FromResource ("tabbar-back.9.png");
-
-			protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-			{
-				if (TabStrip.VisualStyle.TabStyle == DockTabStyle.Normal) {
-					using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-						ctx.DrawImage (this, tabbarBackImage.WithSize (Allocation.Width, Allocation.Height), 0, 0);
-					}
-				}	
-				return base.OnExposeEvent (evnt);
-			}
-		}
-		
 	}
-	
+
 }
-
-

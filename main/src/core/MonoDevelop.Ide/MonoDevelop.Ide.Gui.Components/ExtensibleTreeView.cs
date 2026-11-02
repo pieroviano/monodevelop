@@ -125,39 +125,45 @@ namespace MonoDevelop.Ide.Gui.Components
 			public ExtensibleTreeViewWidget (ExtensibleTreeView control)
 			{
 				this.control = control;
-				ShadowType = Gtk.ShadowType.None;
 				ShowBorderLine = false;
+
+				// Capture phase: Ctrl/Cmd+scroll zooms instead of scrolling (was an OnScrollEvent override)
+				var scroll = new Gtk.EventControllerScroll (Gtk.EventControllerScrollFlags.Vertical) {
+					PropagationPhase = Gtk.PropagationPhase.Capture
+				};
+				scroll.Scroll += HandleScroll;
+				AddController (scroll);
 			}
 
-			protected override void OnStyleSet (Gtk.Style previous_style)
+			protected override void OnRealized ()
 			{
-				base.OnStyleSet (previous_style);
+				base.OnRealized ();
 				control.UpdateFont ();
 			}
 
-			protected override bool OnScrollEvent (Gdk.EventScroll evnt)
+			void HandleScroll (object sender, Gtk.ScrollArgs args)
 			{
 				control.HideStatusMessage ();
 				var modifier = !Platform.IsMac? Gdk.ModifierType.ControlMask
 				                    //Mac window manager already uses control-scroll, so use command
-				                    //Command might be either meta or mod1, depending on GTK version
-				                    : (Gdk.ModifierType.MetaMask | Gdk.ModifierType.Mod1Mask);
+				                    //Command is reported as meta or super, depending on the GDK backend
+				                    : (Gdk.ModifierType.MetaMask | Gdk.ModifierType.SuperMask);
 
-				if ((evnt.State & modifier) !=0) {
-					if (evnt.Direction == Gdk.ScrollDirection.Up)
+				var state = ((Gtk.EventControllerScroll)sender).CurrentEventState;
+				if ((state & modifier) !=0) {
+					if (args.Dy < 0)
 						control.ZoomIn ();
-					else if (evnt.Direction == Gdk.ScrollDirection.Down)
+					else if (args.Dy > 0)
 						control.ZoomOut ();
 
-					return true;
+					args.RetVal = true;
 				}
-				return base.OnScrollEvent (evnt);
 			}
 
-			protected override void OnDestroyed ()
+			public override void Destroy ()
 			{
 				control.Destroy ();
-				base.OnDestroyed ();
+				base.Destroy ();
 			}
 
 			public object GetNextCommandTarget ()
@@ -189,7 +195,9 @@ namespace MonoDevelop.Ide.Gui.Components
 
 		void UpdateFont ()
 		{
-			text_render.CustomFont = IdeApp.Preferences.CustomPadFont ?? tree.Style.FontDescription;
+			if (text_render == null || tree == null)
+				return;
+			text_render.CustomFont = IdeApp.Preferences.CustomPadFont ?? tree.PangoContext.FontDescription;
 			tree.ColumnsAutosize ();
 		}
 
@@ -247,9 +255,9 @@ namespace MonoDevelop.Ide.Gui.Components
 			compareNode2 = new TreeNodeNavigator (this);
 
 			tree.CursorChanged += OnSelectionChanged;
-			tree.KeyPressEvent += OnKeyPress;
-			tree.MotionNotifyEvent += HandleMotionNotifyEvent;
-			tree.LeaveNotifyEvent += HandleLeaveNotifyEvent;
+			// Capture phase: runs before the tree view's own key handling (was a ConnectBefore KeyPressEvent)
+			tree.AddKeyPressHandler (OnKeyPress, null, Gtk.PropagationPhase.Capture);
+			tree.AddMotionHandler (HandleMotion, null, HideStatusMessage);
 
 			if (GtkGestures.IsSupported) {
 				tree.AddGestureMagnifyHandler ((sender, args) => {
@@ -257,18 +265,12 @@ namespace MonoDevelop.Ide.Gui.Components
 				});
 			}
 
-			for (int n=3; n<16; n++) {
-				Gtk.Rc.ParseString ("style \"MonoDevelop.ExtensibleTreeView_" + n + "\" {\n GtkTreeView::expander-size = " + n + "\n }\n");
-				Gtk.Rc.ParseString ("widget \"*.MonoDevelop.ExtensibleTreeView_" + n + "\" style  \"MonoDevelop.ExtensibleTreeView_" + n + "\"\n");
-			}
-
 			if (!string.IsNullOrEmpty (Id))
 				Zoom = PropertyService.Get<double> ("MonoDevelop.Ide.ExtensibleTreeView.Zoom." + Id, 1d);
 			else
 				Zoom = 1d;
 
-			widget.Add (tree);
-			widget.ShowAll ();
+			widget.Child = tree;
 
 #if TREE_VERIFY_INTEGRITY
 			GLib.Timeout.Add (3000, Checker);
@@ -303,7 +305,7 @@ namespace MonoDevelop.Ide.Gui.Components
 		}
 #endif
 
-		static void SetIconCellData (Gtk.TreeViewColumn col, Gtk.CellRenderer renderer, Gtk.TreeModel model, Gtk.TreeIter it)
+		static void SetIconCellData (Gtk.TreeViewColumn col, Gtk.CellRenderer renderer, Gtk.ITreeModel model, Gtk.TreeIter it)
 		{
 			if (model == null)
 				return;
@@ -321,7 +323,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			cell.OverlayTopRight = info.OverlayTopRight;
 		}
 
-		static void SetTextCellData (Gtk.TreeViewColumn col, Gtk.CellRenderer renderer, Gtk.TreeModel model, Gtk.TreeIter it)
+		static void SetTextCellData (Gtk.TreeViewColumn col, Gtk.CellRenderer renderer, Gtk.ITreeModel model, Gtk.TreeIter it)
 		{
 			if (model == null)
 				return;
@@ -429,7 +431,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			return dragObjects;
 		}
 
-		bool CheckAndDrop (int x, int y, bool drop, Gdk.DragContext ctx, object[] obj)
+		bool CheckAndDrop (int x, int y, bool drop, Gdk.DragAction action, object[] obj)
 		{
 			Gtk.TreePath path;
 			Gtk.TreeViewDropPosition pos;
@@ -444,7 +446,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			NodeBuilder[] chain = nav.BuilderChain;
 			bool foundHandler = false;
 
-			DragOperation oper = ctx.Action == Gdk.DragAction.Copy ? DragOperation.Copy : DragOperation.Move;
+			DragOperation oper = action == Gdk.DragAction.Copy ? DragOperation.Copy : DragOperation.Move;
 			DropPosition dropPos;
 			if (pos == Gtk.TreeViewDropPosition.After)
 				dropPos = DropPosition.After;
@@ -486,15 +488,14 @@ namespace MonoDevelop.Ide.Gui.Components
 			return foundHandler;
 		}
 
-		[GLib.ConnectBefore]
-		void HandleMotionNotifyEvent (object o, Gtk.MotionNotifyEventArgs args)
+		void HandleMotion (double x, double y)
 		{
 			Gtk.TreePath path;
 			int cx, cy;
 			Gtk.TreeViewColumn col;
 			bool popupShown = false;
 
-			if (tree.GetPathAtPos ((int)args.Event.X, (int)args.Event.Y, out path, out col, out cx, out cy)) {
+			if (tree.GetPathAtPos ((int)x, (int)y, out path, out col, out cx, out cy)) {
 				Gtk.TreeIter it;
 				if (store.GetIter (out it, path)) {
 					var info = (NodeInfo)store.GetValue (it, NodeInfoColumn);
@@ -537,7 +538,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			statusPopover.Text = info.StatusMessage;
 			statusPopover.Severity = info.StatusSeverity;
 			rect.Y += 2;
-			statusPopover.ShowPopup (this, rect, PopupPosition.Top);
+			statusPopover.ShowPopup (tree, rect, PopupPosition.Top);
 		}
 
 		void HideStatusMessage ()
@@ -547,12 +548,6 @@ namespace MonoDevelop.Ide.Gui.Components
 				statusPopover.Destroy ();
 				statusPopover = null;
 			}
-		}
-
-		[GLib.ConnectBefore]
-		void HandleLeaveNotifyEvent (object o, Gtk.LeaveNotifyEventArgs args)
-		{
-			HideStatusMessage ();
 		}
 
 		internal void LockUpdates ()
@@ -1117,6 +1112,10 @@ namespace MonoDevelop.Ide.Gui.Components
 			}
 		}
 
+		static int expanderClassCounter;
+		string expanderClass;
+		Gtk.CssProvider expanderProvider;
+
 		void OnZoomChanged (double value)
 		{
 			pix_render.Zoom = value;
@@ -1125,14 +1124,27 @@ namespace MonoDevelop.Ide.Gui.Components
 			int expanderSize = (int) (12 * Zoom);
 			if (expanderSize < 3) expanderSize = 3;
 			if (expanderSize > 15) expanderSize = 15;
-			if (expanderSize != 12)
-				tree.Name = "MonoDevelop.ExtensibleTreeView_" + expanderSize;
-			else
-				tree.Name = "";
+			SetExpanderSize (expanderSize);
 			tree.ColumnsAutosize ();
 			if (!string.IsNullOrEmpty (Id)) {
 				PropertyService.Set ("MonoDevelop.Ide.ExtensibleTreeView.Zoom." + Id, Zoom);
 			}
+		}
+
+		// GTK 4: the "expander-size" style property (set through RC files) is gone; the expander size is CSS.
+		void SetExpanderSize (int expanderSize)
+		{
+			if (expanderClass == null) {
+				if (expanderSize == 12)
+					return;
+				expanderClass = "md-extensible-tree-view-" + (++expanderClassCounter);
+				tree.AddCssClass (expanderClass);
+				expanderProvider = new Gtk.CssProvider ();
+				var display = Gdk.Display.Default;
+				if (display != null)
+					Gtk.StyleContext.AddProviderForDisplay (display, expanderProvider, Gtk.StyleProviderPriority.Application);
+			}
+			expanderProvider.LoadFromString (expanderSize != 12 ? "treeview." + expanderClass + " { -gtk-icon-size: " + expanderSize + "px; }" : "");
 		}
 
 		[CommandHandler (ViewCommands.ZoomIn)]
@@ -1410,7 +1422,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			tree.SetCursor (store.GetPath (iter), complete_column, true);
 		}
 
-		Gtk.Editable currentLabelEditable;
+		Gtk.IEditable currentLabelEditable;
 		void HandleEditingStarted (object o, Gtk.EditingStartedArgs e)
 		{
 			currentLabelEditable = e.Editable as Gtk.Entry;
@@ -1595,7 +1607,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			return null;
 		}
 
-		internal int CompareNodes (Gtk.TreeModel model, Gtk.TreeIter a, Gtk.TreeIter b)
+		internal int CompareNodes (Gtk.ITreeModel model, Gtk.TreeIter a, Gtk.TreeIter b)
 		{
 			sorting = true;
 			try {
@@ -1955,7 +1967,7 @@ namespace MonoDevelop.Ide.Gui.Components
 				args.RetVal = false;
 		}
 
-		void ShowPopup (Gdk.EventButton evt)
+		void ShowPopup (ClickInfo evt)
 		{
 			var entryset = BuildEntrySet ();
 			if (entryset == null)
@@ -2060,52 +2072,49 @@ namespace MonoDevelop.Ide.Gui.Components
 			tree.CollapseAll();
 		}
 
-		[GLib.ConnectBefore]
-		void OnKeyPress (object o, Gtk.KeyPressEventArgs args)
+		bool OnKeyPress (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			HideStatusMessage ();
-			
-			if (args.Event.Key == Gdk.Key.Delete || args.Event.Key == Gdk.Key.KP_Delete) {
+
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Delete || key == Gdk.Key.KP_Delete) {
 				DeleteCurrentItem ();
-				args.RetVal = true;
-				return;
+				return true;
 			}
 
 			//HACK: to work around "Bug 377810 - Many errors when expanding MonoDevelop treeviews with keyboard"
 			//  The shift-right combo recursively expands all child nodes but the OnTestExpandRow callback
 			//  modifies tree and successive calls get passed an invalid iter. Using the path to regenerate the iter
 			//  causes a Gtk-Fatal.
-			bool shift = (args.Event.State & Gdk.ModifierType.ShiftMask) != 0;
-			if (args.Event.Key == Gdk.Key.asterisk || args.Event.Key == Gdk.Key.KP_Multiply
-				|| (shift && (args.Event.Key == Gdk.Key.Right || args.Event.Key == Gdk.Key.KP_Right
-					|| args.Event.Key == Gdk.Key.plus || args.Event.Key == Gdk.Key.KP_Add)))
+			bool shift = (state & Gdk.ModifierType.ShiftMask) != 0;
+			if (key == Gdk.Key.asterisk || key == Gdk.Key.KP_Multiply
+				|| (shift && (key == Gdk.Key.Right || key == Gdk.Key.KP_Right
+					|| key == Gdk.Key.plus || key == Gdk.Key.KP_Add)))
 			{
 				Gtk.TreeIter iter;
 				foreach (Gtk.TreePath path in tree.Selection.GetSelectedRows ()) {
 					store.GetIter (out iter, path);
 					Expand (iter);
 				}
-				args.RetVal = true;
-				return;
+				return true;
 			}
 
-			if (args.Event.Key == Gdk.Key.Right || args.Event.Key == Gdk.Key.KP_Right) {
+			if (key == Gdk.Key.Right || key == Gdk.Key.KP_Right) {
 				ExpandCurrentItem ();
-				args.RetVal = true;
-				return;
+				return true;
 			}
 
-			if (args.Event.Key == Gdk.Key.Left || args.Event.Key == Gdk.Key.KP_Left) {
+			if (key == Gdk.Key.Left || key == Gdk.Key.KP_Left) {
 				CollapseCurrentItem ();
-				args.RetVal = true;
-				return;
+				return true;
 			}
 
-			if (args.Event.Key == Gdk.Key.Return || args.Event.Key == Gdk.Key.KP_Enter || args.Event.Key == Gdk.Key.ISO_Enter) {
+			if (key == Gdk.Key.Return || key == Gdk.Key.KP_Enter || key == Gdk.Key.ISO_Enter) {
 				ActivateCurrentItem ();
-				args.RetVal = true;
-				return;
+				return true;
 			}
+
+			return false;
 		}
 
 		[CommandHandler (SearchCommands.Find)]
@@ -2167,16 +2176,22 @@ namespace MonoDevelop.Ide.Gui.Components
 		{
 			IsDestroyed = true;
 			IdeApp.Preferences.CustomPadFont.Changed -= CustomFontPropertyChanged;
+			if (expanderProvider != null) {
+				var display = Gdk.Display.Default;
+				if (display != null)
+					Gtk.StyleContext.RemoveProviderForDisplay (display, expanderProvider);
+				expanderProvider = null;
+			}
 			if (pix_render != null) {
-				pix_render.Destroy ();
+				pix_render.Dispose ();
 				pix_render = null;
 			}
 			if (complete_column != null) {
-				complete_column.Destroy ();
+				complete_column.Dispose ();
 				complete_column = null;
 			}
 			if (text_render != null) {
-				text_render.Destroy ();
+				text_render.Dispose ();
 				text_render = null;
 			}
 
@@ -2211,15 +2226,6 @@ namespace MonoDevelop.Ide.Gui.Components
 		internal void ClearSelectOnRelease ()
 		{
 			tree.ClearSelectOnRelease ();
-		}
-
-		internal class PadCheckMenuItem: Gtk.CheckMenuItem
-		{
-			internal string Id;
-
-			public PadCheckMenuItem (string label, string id): base (label) {
-				Id = id;
-			}
 		}
 
 		internal class TreeBuilderContext: ITreeBuilderContext
@@ -2262,7 +2268,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			{
 				Xwt.Drawing.Image icon = icons [id] as Xwt.Drawing.Image;
 				if (icon == null) {
-					icon = ImageService.GetIcon (id).WithSize (Gtk.IconSize.Menu);
+					icon = ImageService.GetIcon (id).WithSize (StockIconSize.Menu);
 					icons [id] = icon;
 				}
 				return icon;
@@ -2301,22 +2307,34 @@ namespace MonoDevelop.Ide.Gui.Components
 		class ExtensibleTreeViewTree : ContextMenuTreeView
 		{
 			ExtensibleTreeView tv;
+			Gtk.DragSource dragSource;
+			Gtk.DropTarget dropTarget;
 
 			public ExtensibleTreeViewTree (ExtensibleTreeView tv)
 			{
 				this.tv = tv;
-				EnableModelDragDest (targetTable, Gdk.DragAction.Copy | Gdk.DragAction.Move);
-				Gtk.Drag.SourceSet (this, Gdk.ModifierType.Button1Mask, targetTable, Gdk.DragAction.Copy | Gdk.DragAction.Move);
+
+				// GTK 4 tree views have no model drag handlers of their own once the signals are gone: the tree
+				// uses a DragSource/DropTarget pair and drives the drop row marker itself.
+				dragSource = new Gtk.DragSource { Actions = Gdk.DragAction.Copy | Gdk.DragAction.Move };
+				dragSource.Prepare += OnDragPrepare;
+				dragSource.DragBegin += OnDragBegin;
+				dragSource.DragEnd += OnDragEnd;
+				AddController (dragSource);
+
+				// Files dragged from outside arrive as a file list; drags started from this tree carry a string
+				// or a uri-list, and are resolved through dragObjects.
+				dropTarget = new Gtk.DropTarget (Gdk.FileList.GType, Gdk.DragAction.Copy | Gdk.DragAction.Move) {
+					Gtypes = new [] { Gdk.FileList.GType, GLib.GType.String },
+					Preload = true
+				};
+				dropTarget.Motion += OnDropMotion;
+				dropTarget.Leave += OnDropLeave;
+				dropTarget.Dropped += OnDropped;
+				AddController (dropTarget);
 			}
 
-			static Gtk.TargetEntry [] targetTable = new Gtk.TargetEntry [] {
-				new Gtk.TargetEntry ("text/uri-list", 0, 11 ),
-				new Gtk.TargetEntry ("text/plain", 0, 22),
-				new Gtk.TargetEntry ("application/x-rootwindow-drop", 0, 33)
-			};
-
 			public object[] dragObjects = null;
-			bool dropping = false;
 			Func<object,string> nodeToUri;
 
 			public void EnableDragUriSource (Func<object,string> nodeToUri)
@@ -2324,86 +2342,177 @@ namespace MonoDevelop.Ide.Gui.Components
 				this.nodeToUri = nodeToUri;
 			}
 
-			protected override void OnDragBegin (Gdk.DragContext context)
+			void OnDragPrepare (object sender, Gtk.PrepareArgs args)
 			{
-				Xwt.Drawing.Image dragIcon;
-				dragObjects = tv.GetDragObjects (out dragIcon);
-				Gtk.Drag.SetIconPixbuf (context, dragIcon != null ? dragIcon.ToPixbuf (Gtk.IconSize.Menu) : null, -10, -10);
+				if (!GetPathAtPos ((int)args.X, (int)args.Y, out Gtk.TreePath path)) {
+					args.RetVal = null;
+					return;
+				}
 
-				base.OnDragBegin (context);
-			}
-
-			protected override void OnDragEnd (Gdk.DragContext context)
-			{
-				dragObjects = null;
-				base.OnDragEnd (context);
-			}
-
-			protected override bool OnDragMotion (Gdk.DragContext context, int x, int y, uint time)
-			{
-				//OnDragDataReceived callback loses x/y values, so stash them
-				this.x = x;
-				this.y = y;
-
+				dragObjects = tv.GetDragObjects (out Xwt.Drawing.Image dragIcon);
 				if (dragObjects == null) {
-					//it's a drag from outside, need to retrieve the data. This will cause OnDragDataReceived to be called.
-					Gdk.Atom atom = Gtk.Drag.DestFindTarget (this, context, null);
-					Gtk.Drag.GetData (this, context, atom, time);
-				} else {
-					//it's from inside, can call OnDragDataReceived directly
-					OnDragDataReceived (context, x, y, null, 0, time);
-				}
-				return true;
-			}
-
-			int x, y;
-
-			protected override void OnDragDataReceived (Gdk.DragContext context, int x, int y, Gtk.SelectionData selection_data, uint info, uint time)
-			{
-				x = this.x;
-				y = this.y;
-
-				object[] data = dragObjects ?? new object[] { selection_data };
-				bool canDrop = tv.CheckAndDrop (x, y, dropping, context, data);
-				if (dropping) {
-					dropping = false;
-					SetDragDestRow (null, 0);
-					Gtk.Drag.Finish (context, canDrop, true, time);
+					args.RetVal = null;
 					return;
 				}
+				dragIconImage = dragIcon;
 
-				//let default handler handle hover-to-expand, autoscrolling, etc
-				base.OnDragMotion (context, x, y, time);
-
-				//if we can't handle it, flag as not droppable and remove the drop marker
-				if (!canDrop) {
-					Gdk.Drag.Status (context, (Gdk.DragAction)0, time);
-					SetDragDestRow (null, 0);
-				}
-			}
-
-			protected override bool OnDragDrop (Gdk.DragContext context, int x, int y, uint time_)
-			{
-				dropping = true;
-				return base.OnDragDrop (context, x, y, time_);
-			}
-
-			protected override void OnDragDataGet (Gdk.DragContext context, Gtk.SelectionData selection_data, uint info, uint time_)
-			{
-				if (dragObjects == null || nodeToUri == null)
-					return;
-
-				uint uriListTarget = targetTable [0].Info;
-				if (info == uriListTarget) {
+				// The uri-list is what other applications (and other pads) consume. Drags without an uri source still
+				// need some content for a valid drag, so an empty string stands in.
+				string uris = null;
+				if (nodeToUri != null) {
 					var sb = new StringBuilder ();
 					foreach (var dobj in dragObjects) {
 						var val = nodeToUri (dobj);
-						if (val != null) {
-							sb.AppendLine (val);
-						}
+						if (val != null)
+							sb.Append (val).Append ("\r\n");
 					}
-					selection_data.Set (selection_data.Target, selection_data.Format, Encoding.UTF8.GetBytes (sb.ToString ()));
+					uris = sb.ToString ();
 				}
+
+				if (!string.IsNullOrEmpty (uris))
+					args.RetVal = new Gdk.ContentProvider ("text/uri-list", new GLib.Bytes (Encoding.UTF8.GetBytes (uris)));
+				else
+					args.RetVal = new Gdk.ContentProvider (new GLib.Value (string.Empty));
+			}
+
+			Xwt.Drawing.Image dragIconImage;
+
+			void OnDragBegin (object sender, Gtk.DragBeginArgs args)
+			{
+				if (dragIconImage != null) {
+					var texture = dragIconImage.WithSize (StockIconSize.Menu).ToTexture ();
+					if (texture != null)
+						dragSource.SetIcon (texture, 0, 0);
+				}
+			}
+
+			void OnDragEnd (object sender, Gtk.DragEndArgs args)
+			{
+				dragObjects = null;
+				dragIconImage = null;
+				ClearDropRow ();
+			}
+
+			// Dropped files: the data of drags that come from outside the tree
+			object[] GetExternalDropData ()
+			{
+				try {
+					if (dropTarget.Value.Val is Gdk.FileList fileList)
+						return new object [] { ToExternalFiles (fileList) };
+				} catch (Exception ex) {
+					LoggingService.LogError ("Could not read the dragged files", ex);
+				}
+				return null;
+			}
+
+			static ExternalFilesDropData ToExternalFiles (Gdk.FileList fileList)
+			{
+				var files = new List<string> ();
+				var droppedFiles = new GLib.SList (fileList.Files.Handle, typeof (GLib.IFile), false, false);
+				foreach (GLib.IFile droppedFile in droppedFiles) {
+					var path = droppedFile.Path;
+					if (!string.IsNullOrEmpty (path))
+						files.Add (path);
+				}
+				return new ExternalFilesDropData (files);
+			}
+
+			Gdk.DragAction GetDropAction ()
+			{
+				// Move by default, copy when the copy modifier is held (Ctrl, Alt on Mac), like the GTK 2 drag context
+				var copyModifier = Platform.IsMac ? Gdk.ModifierType.AltMask : Gdk.ModifierType.ControlMask;
+				bool copy = (this.GetCurrentModifiers () & copyModifier) != 0;
+				var allowed = dropTarget.CurrentDrop != null ? dropTarget.CurrentDrop.Actions : (Gdk.DragAction.Copy | Gdk.DragAction.Move);
+				var action = copy ? Gdk.DragAction.Copy : Gdk.DragAction.Move;
+				if ((allowed & action) == 0)
+					action = (allowed & Gdk.DragAction.Copy) != 0 ? Gdk.DragAction.Copy : Gdk.DragAction.Move;
+				return action;
+			}
+
+			uint expandTimeout;
+			Gtk.TreePath expandPath;
+
+			void OnDropMotion (object sender, Gtk.MotionArgs args)
+			{
+				object[] data = dragObjects ?? GetExternalDropData ();
+				var action = GetDropAction ();
+				if (data == null || !tv.CheckAndDrop ((int)args.X, (int)args.Y, false, action, data)) {
+					//if we can't handle it, flag as not droppable and remove the drop marker
+					ClearDropRow ();
+					args.RetVal = (Gdk.DragAction)0;
+					return;
+				}
+
+				if (GetDestRowAtPos ((int)args.X, (int)args.Y, out Gtk.TreePath path, out Gtk.TreeViewDropPosition pos))
+					SetDragDestRow (path, pos);
+
+				AutoScroll (args.Y);
+				ScheduleExpand (path, pos);
+				args.RetVal = action;
+			}
+
+			// Scrolls while the pointer is near the top or bottom edge
+			void AutoScroll (double y)
+			{
+				var adj = Vadjustment;
+				if (adj == null)
+					return;
+				const int margin = 24;
+				double step = adj.StepIncrement;
+				if (y < margin)
+					adj.Value = Math.Max (adj.Lower, adj.Value - step);
+				else if (y > Height - margin)
+					adj.Value = Math.Min (adj.Upper - adj.PageSize, adj.Value + step);
+			}
+
+			// Hover-to-expand
+			void ScheduleExpand (Gtk.TreePath path, Gtk.TreeViewDropPosition pos)
+			{
+				if (path == null || (pos != Gtk.TreeViewDropPosition.IntoOrBefore && pos != Gtk.TreeViewDropPosition.IntoOrAfter)) {
+					CancelExpand ();
+					return;
+				}
+				if (expandPath != null && expandPath.Equals (path))
+					return;
+				CancelExpand ();
+				expandPath = path;
+				expandTimeout = GLib.Timeout.Add (500, () => {
+					expandTimeout = 0;
+					if (expandPath != null)
+						ExpandRow (expandPath, false);
+					expandPath = null;
+					return false;
+				});
+			}
+
+			void CancelExpand ()
+			{
+				if (expandTimeout != 0) {
+					GLib.Source.Remove (expandTimeout);
+					expandTimeout = 0;
+				}
+				expandPath = null;
+			}
+
+			void ClearDropRow ()
+			{
+				CancelExpand ();
+				SetDragDestRow (null, Gtk.TreeViewDropPosition.Before);
+			}
+
+			void OnDropLeave (object sender, EventArgs args)
+			{
+				ClearDropRow ();
+			}
+
+			void OnDropped (object sender, Gtk.DroppedArgs args)
+			{
+				var action = GetDropAction ();
+				ClearDropRow ();
+				object[] data = dragObjects;
+				if (data == null && args.Value.Val is Gdk.FileList fileList)
+					data = new object [] { ToExternalFiles (fileList) };
+				args.RetVal = data != null && tv.CheckAndDrop ((int)args.X, (int)args.Y, true, action, data);
 			}
 		}
 
@@ -2474,7 +2583,7 @@ namespace MonoDevelop.Ide.Gui.Components
 				this.parent = parent;
 			}
 
-			static Xwt.Size defaultIconSize = Gtk.IconSize.Menu.GetSize ();
+			static Xwt.Size defaultIconSize = StockIconSize.Menu.GetSize ();
 
 			static Xwt.Size GetZoomedIconSize (Xwt.Drawing.Image icon, double zoom)
 			{
@@ -2502,10 +2611,9 @@ namespace MonoDevelop.Ide.Gui.Components
 			void SetupLayout (Gtk.Widget widget, Gtk.CellRendererState flags = 0)
 			{
 				if (scaledFont == null) {
-					if (scaledFont != null)
-						scaledFont.Dispose ();
-					scaledFont = (customFont ?? parent.widget.Style.FontDesc).Copy ();
-					scaledFont.Size = (int)(customFont.Size * Zoom);
+					var baseFont = customFont ?? parent.widget.PangoContext.FontDescription;
+					scaledFont = baseFont.Copy ();
+					scaledFont.Size = (int)(baseFont.Size * Zoom);
 					if (layout != null)
 						layout.FontDescription = scaledFont;
 				}
@@ -2519,12 +2627,12 @@ namespace MonoDevelop.Ide.Gui.Components
 
 				string newmarkup = TextMarkup;
 				if (DisabledStyle) {
-					Gdk.Color fgColor;
+					Gdk.RGBA fgColor;
 					if (Platform.IsMac && flags.HasFlag (Gtk.CellRendererState.Selected))
-						fgColor = widget.Style.Text (IdeTheme.UserInterfaceTheme == Theme.Light ? Gtk.StateType.Selected : Gtk.StateType.Normal);
+						fgColor = GetTextColor (widget, IdeTheme.UserInterfaceTheme == Theme.Light ? Gtk.StateFlags.Selected : Gtk.StateFlags.Normal);
 					else
-						fgColor = widget.Style.Text (Gtk.StateType.Insensitive);
-					newmarkup = "<span foreground='" + fgColor.GetHex () + "'>" + TextMarkup + "</span>";
+						fgColor = GetTextColor (widget, Gtk.StateFlags.Insensitive);
+					newmarkup = "<span foreground='" + HelperMethods.GetColorString (fgColor) + "'>" + TextMarkup + "</span>";
 				}
 
 				if (!string.IsNullOrEmpty (SecondaryTextMarkup)) {
@@ -2537,17 +2645,33 @@ namespace MonoDevelop.Ide.Gui.Components
 				layout.SetMarkup (newmarkup);
 			}
 
-			protected override void Render (Gdk.Drawable window, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, Gtk.CellRendererState flags)
+			// The foreground color the widget's style gives to text in the given state
+			static Gdk.RGBA GetTextColor (Gtk.Widget widget, Gtk.StateFlags state)
 			{
-				Gtk.StateType st = Gtk.StateType.Normal;
+				var style = widget.StyleContext;
+#pragma warning disable CS0612, CS0618 // StyleContext state is deprecated in GTK 4 but is the only way to read the color of another state
+				style.Save ();
+				try {
+					style.State = state;
+					return style.Color;
+				} finally {
+					style.Restore ();
+				}
+#pragma warning restore CS0612, CS0618
+			}
+
+			protected override void OnSnapshot (Gtk.Snapshot snapshot, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gtk.CellRendererState flags)
+			{
+				Gtk.StateFlags st = Gtk.StateFlags.Normal;
 				if ((flags & Gtk.CellRendererState.Prelit) != 0)
-					st = Gtk.StateType.Prelight;
+					st = Gtk.StateFlags.Prelight;
 				if ((flags & Gtk.CellRendererState.Focused) != 0)
-					st = Gtk.StateType.Normal;
+					st = Gtk.StateFlags.Normal;
 				if ((flags & Gtk.CellRendererState.Insensitive) != 0)
-					st = Gtk.StateType.Insensitive;
-				if ((flags & Gtk.CellRendererState.Selected) != 0)
-					st = widget.HasFocus ? Gtk.StateType.Selected : Gtk.StateType.Active;
+					st = Gtk.StateFlags.Insensitive;
+				bool selected = (flags & Gtk.CellRendererState.Selected) != 0;
+				if (selected)
+					st = widget.HasFocus ? Gtk.StateFlags.Selected : (Gtk.StateFlags.Selected | Gtk.StateFlags.Backdrop);
 
 				SetupLayout (widget, flags);
 
@@ -2558,20 +2682,21 @@ namespace MonoDevelop.Ide.Gui.Components
 				int ty = cell_area.Y + (cell_area.Height - h) / 2;
 
 				bool hasStatusIcon = StatusIcon != CellRendererImage.NullImage && StatusIcon != null;
+				var textColor = GetTextColor (widget, st);
 
-				if (hasStatusIcon) {
-					var img = GetResized (StatusIcon, zoom);
-					if (st == Gtk.StateType.Selected)
-						img = img.WithStyles ("sel");
-					var x = tx + w + StatusIconSpacing;
-					using (var ctx = Gdk.CairoHelper.Create (window)) {
+				snapshot.DrawCairo (cell_area, ctx => {
+					if (hasStatusIcon) {
+						var img = GetResized (StatusIcon, zoom);
+						if (selected)
+							img = img.WithStyles ("sel");
+						var x = tx + w + StatusIconSpacing;
 						ctx.DrawImage (widget, img, x, cell_area.Y + (cell_area.Height - img.Height) / 2);
 					}
-				}
 
-				window.DrawLayout (widget.Style.TextGC (st), tx, ty, layout);
-
-				hasStatusIcon = false;
+					ctx.MoveTo (tx, ty);
+					ctx.SetSourceColor (textColor.ToCairoColor ());
+					Pango.CairoHelper.ShowLayout (ctx, layout);
+				});
 			}
 
 			public Gdk.Rectangle GetStatusIconArea (Gtk.Widget widget, Gdk.Rectangle cell_area)
@@ -2587,14 +2712,18 @@ namespace MonoDevelop.Ide.Gui.Components
 				return new Gdk.Rectangle (x, cell_area.Y, (int) iconSize.Width, (int) cell_area.Height);
 			}
 
-			public override void GetSize (Gtk.Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+			protected override Gtk.SizeRequestMode OnGetRequestMode ()
+			{
+				return Gtk.SizeRequestMode.ConstantSize;
+			}
+
+			void GetSize (Gtk.Widget widget, out int width, out int height)
 			{
 				SetupLayout (widget);
 
-				x_offset = y_offset = 0;
-
 				layout.GetPixelSize (out width, out height);
 				width += (int)Xpad * 2;
+				height += (int)Ypad * 2;
 
 				if (StatusIcon != CellRendererImage.NullImage && StatusIcon != null) {
 					var iconSize = GetZoomedIconSize (StatusIcon, zoom);
@@ -2602,11 +2731,36 @@ namespace MonoDevelop.Ide.Gui.Components
 				}
 			}
 
-			protected override void OnEditingStarted (Gtk.CellEditable editable, string path)
+			protected override void OnGetPreferredWidth (Gtk.Widget widget, out int minimum_size, out int natural_size)
+			{
+				GetSize (widget, out int width, out _);
+				minimum_size = natural_size = width;
+			}
+
+			protected override void OnGetPreferredHeight (Gtk.Widget widget, out int minimum_size, out int natural_size)
+			{
+				GetSize (widget, out _, out int height);
+				minimum_size = natural_size = height;
+			}
+
+			protected override void OnGetPreferredHeightForWidth (Gtk.Widget widget, int width, out int minimum_height, out int natural_height)
+			{
+				OnGetPreferredHeight (widget, out minimum_height, out natural_height);
+			}
+
+			protected override void OnGetPreferredWidthForHeight (Gtk.Widget widget, int height, out int minimum_width, out int natural_width)
+			{
+				OnGetPreferredWidth (widget, out minimum_width, out natural_width);
+			}
+
+			protected override void OnEditingStarted (Gtk.ICellEditable editable, string path)
 			{
 				var entry = editable as Gtk.Entry;
-				if (entry != null && scaledFont != null)
-					entry.ModifyFont (scaledFont);
+				if (entry != null && scaledFont != null) {
+					var attributes = new Pango.AttrList ();
+					attributes.Change (new Pango.AttrFontDesc (scaledFont));
+					entry.Attributes = attributes;
+				}
 				base.OnEditingStarted (editable, path);
 			}
 
@@ -2630,15 +2784,32 @@ namespace MonoDevelop.Ide.Gui.Components
 
 			public Gdk.Point PointerPosition { get; set; }
 
-			protected override void OnDestroyed ()
+			protected override void Dispose (bool disposing)
 			{
-				base.OnDestroyed ();
-				if (scaledFont != null)
-					scaledFont.Dispose ();
-				if (layout != null)
-					layout.Dispose ();
+				if (disposing) {
+					if (scaledFont != null)
+						scaledFont.Dispose ();
+					if (layout != null)
+						layout.Dispose ();
+				}
+				base.Dispose (disposing);
 			}
 		}
+	}
+
+	/// <summary>
+	/// Data object handed to <see cref="NodeCommandHandler"/> drop methods when files are dragged onto a tree from
+	/// outside the tree (replaces the GTK 2 <c>Gtk.SelectionData</c> of type "text/uri-list").
+	/// </summary>
+	public sealed class ExternalFilesDropData
+	{
+		public ExternalFilesDropData (IReadOnlyList<string> files)
+		{
+			Files = files;
+		}
+
+		/// <summary>Local paths of the dropped files.</summary>
+		public IReadOnlyList<string> Files { get; }
 	}
 
 	class NodeCommandTargetChain: ICommandDelegatorRouter
@@ -2797,7 +2968,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			if (value == null || value == CellRendererImage.NullImage)
 				return null;
 
-			var img = value.HasFixedSize ? value : value.WithSize (Gtk.IconSize.Menu);
+			var img = value.HasFixedSize ? value : value.WithSize (StockIconSize.Menu);
 
 			if (zoom == 1)
 				return img;
@@ -2815,22 +2986,11 @@ namespace MonoDevelop.Ide.Gui.Components
 			return resized;
 		}
 
-		public override void GetSize (Gtk.Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
-		{
-			base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-			/*			if (overlayBottomLeft != null || overlayBottomRight != null)
-				height += overlayOverflow;
-			if (overlayTopLeft != null || overlayTopRight != null)
-				height += overlayOverflow;
-			if (overlayBottomRight != null || overlayTopRight != null)
-				width += overlayOverflow;*/
-		}
-
 		const int overlayOverflow = 2;
 
-		protected override void Render (Gdk.Drawable window, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, Gtk.CellRendererState flags)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot, Gtk.Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gtk.CellRendererState flags)
 		{
-			base.Render (window, widget, background_area, cell_area, expose_area, flags);
+			base.OnSnapshot (snapshot, widget, background_area, cell_area, flags);
 
 			if (overlayBottomLeft != null || overlayBottomRight != null || overlayTopLeft != null || overlayTopRight != null) {
 				int x, y;
@@ -2842,7 +3002,7 @@ namespace MonoDevelop.Ide.Gui.Components
 
 				bool selected = (flags & Gtk.CellRendererState.Selected) != 0;
 
-				using (var ctx = Gdk.CairoHelper.Create (window)) {
+				snapshot.DrawCairo (cell_area, ctx => {
 					if (overlayBottomLeft != null && overlayBottomLeft != NullImage) {
 						var img = selected ? overlayBottomLeft.WithStyles ("sel") : overlayBottomLeft;
 						ctx.DrawImage (widget, img, x - overlayOverflow, y + image.Height - img.Height + overlayOverflow);
@@ -2859,7 +3019,7 @@ namespace MonoDevelop.Ide.Gui.Components
 						var img = selected ? overlayTopRight.WithStyles ("sel") : overlayTopRight;
 						ctx.DrawImage (widget, img, x + image.Width - img.Width + overlayOverflow, y - overlayOverflow);
 					}
-				}
+				});
 			}
 		}
 	}

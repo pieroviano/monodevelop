@@ -96,7 +96,7 @@ namespace MonoDevelop.Ide.Codons
 			}
 		}
 
-		public string Icon => ImageService.GetStockId (Addin, icon, Gtk.IconSize.Dnd);
+		public string Icon => ImageService.GetStockId (Addin, icon, MonoDevelop.Components.StockIconSize.Dnd);
 		public string TemplateId => templateId ?? Id;
 	}
 }

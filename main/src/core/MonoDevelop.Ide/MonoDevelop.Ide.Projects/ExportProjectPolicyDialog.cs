@@ -59,8 +59,7 @@ namespace MonoDevelop.Ide.Projects
 			};
 			
 			tree = new PoliciesListSummaryTree ();
-			policiesScroll.Add (tree);
-			tree.Show ();
+			policiesScroll.Child = tree;
 			
 			tree.SetPolicies (policyProvider.Policies);
 			if (!tree.HasPolicies) {

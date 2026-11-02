@@ -64,7 +64,7 @@ namespace MonoDevelop.Ide.Gui.Pads.ProjectPad
 			nodeInfo.Label = file.Name;
 			if (!System.IO.File.Exists (file.Path))
 				nodeInfo.Label = "<span foreground='" + Styles.ErrorForegroundColor.ToHexString (false) + "'>" + nodeInfo.Label + "</span>";
-			nodeInfo.Icon = IdeServices.DesktopService.GetIconForFile (file.Path, Gtk.IconSize.Menu);
+			nodeInfo.Icon = IdeServices.DesktopService.GetIconForFile (file.Path).WithSize (MonoDevelop.Components.StockIconSize.Menu);
 		}
 		
 		public override object GetParentObject (object dataObject)
@@ -84,7 +84,7 @@ namespace MonoDevelop.Ide.Gui.Pads.ProjectPad
 			var modifiedSolutionsToSave = new HashSet<Solution> ();
 			QuestionMessage msg = new QuestionMessage ();
 			msg.SecondaryText = GettextCatalog.GetString ("The Delete option permanently removes the file from your hard disk. Click Remove from Solution if you only want to remove it from your current solution.");
-			AlertButton removeFromSolution = new AlertButton (GettextCatalog.GetString ("_Remove from Solution"), Gtk.Stock.Remove);
+			AlertButton removeFromSolution = new AlertButton (GettextCatalog.GetString ("_Remove from Solution"), MonoDevelop.Ide.Gui.GtkStock.Remove);
 			msg.Buttons.Add (AlertButton.Delete);
 			msg.Buttons.Add (AlertButton.Cancel);
 			msg.Buttons.Add (removeFromSolution);

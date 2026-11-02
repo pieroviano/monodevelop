@@ -230,11 +230,6 @@ namespace MonoDevelop.Ide.Editor.Projection
 				}
 			}
 
-			Gtk.Style ICompletionWidget.GtkStyle {
-				get {
-					return completionWidget.GtkStyle;
-				}
-			}
 			#endregion
 		}
 

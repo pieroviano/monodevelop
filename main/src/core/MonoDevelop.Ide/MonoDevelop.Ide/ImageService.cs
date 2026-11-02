@@ -46,8 +46,6 @@ namespace MonoDevelop.Ide
 	{
 		const string IconsExtensionPath = "/MonoDevelop/Core/StockIcons";
 
-		static Gtk.IconFactory iconFactory = new Gtk.IconFactory ();
-
 		// Mapping of icon spec to stock icon id.
 		static List<Dictionary<string, string>> addinIcons = new List<Dictionary<string, string>> ();
 
@@ -65,12 +63,8 @@ namespace MonoDevelop.Ide
 		static Dictionary<string, List<StockIconCodon>> iconStock = new Dictionary<string, List<StockIconCodon>> ();
 		static Dictionary<ImageId, string> imageIdToStockId = new Dictionary<ImageId, string> ();
 
-		static Gtk.Requisition[] iconSizes = new Gtk.Requisition[7];
-
 		static ImageService ()
 		{
-			iconFactory.AddDefault ();
-
 			AddinManager.AddExtensionNodeHandler (IconsExtensionPath, delegate (object sender, ExtensionNodeEventArgs args) {
 				StockIconCodon iconCodon = (StockIconCodon)args.ExtensionNode;
 				switch (args.Change) {
@@ -87,17 +81,6 @@ namespace MonoDevelop.Ide
 				}
 			});
 
-			for (int i = 0; i < iconSizes.Length; i++) {
-				int w, h;
-				if (!Gtk.Icon.SizeLookup ((Gtk.IconSize)i, out w, out h))
-					w = h = -1;
-				iconSizes[i].Width = w;
-				iconSizes[i].Height = h;
-			}
-			if (Platform.IsWindows) {
-				iconSizes[(int)Gtk.IconSize.Menu].Width = 16;
-				iconSizes[(int)Gtk.IconSize.Menu].Height = 16;
-			}
 		}
 
 		static Xwt.Drawing.Image LoadStockIcon (StockIconCodon iconCodon, bool forceWildcard)
@@ -105,7 +88,7 @@ namespace MonoDevelop.Ide
 			return LoadStockIcon (iconCodon.Addin, iconCodon.StockId, iconCodon.Resource, iconCodon.File, iconCodon.IconId, iconCodon.IconSize, iconCodon.Animation, forceWildcard);
 		}
 
-		static Xwt.Drawing.Image LoadStockIcon (RuntimeAddin addin, string stockId, string resource, string imageFile, string iconId, Gtk.IconSize iconSize, string animation, bool forceWildcard)
+		static Xwt.Drawing.Image LoadStockIcon (RuntimeAddin addin, string stockId, string resource, string imageFile, string iconId, StockIconSize iconSize, string animation, bool forceWildcard)
 		{
 			try {
 				AnimatedIcon animatedIcon = null;
@@ -167,7 +150,7 @@ namespace MonoDevelop.Ide
 
 		static Dictionary<string,Xwt.Drawing.Image> icons = new Dictionary<string, Xwt.Drawing.Image> ();
 
-		public static Xwt.Drawing.Image GetIcon (string name, Gtk.IconSize size = IconSize.Menu)
+		public static Xwt.Drawing.Image GetIcon (string name, StockIconSize size = StockIconSize.Menu)
 		{
 			// Converts an image spec into a real stock icon id
 			name = GetStockIdForImageSpec (name, size);
@@ -245,7 +228,7 @@ namespace MonoDevelop.Ide
 
 			//if an icon name begins with '#', we assume it's a hex colour
 			if (name[0] == '#') {
-				icons [name] = img = CreateColorBlock (name, Gtk.IconSize.Dialog).ToXwtImage ();
+				icons [name] = img = CreateColorBlock (name, StockIconSize.Dialog).ToXwtImage ();
 				return img;
 			}
 
@@ -276,7 +259,7 @@ namespace MonoDevelop.Ide
 				return img;
 
 			// fallback to default Gtk icon if the Gtk theme has one
-			if (Gtk.IconTheme.Default.HasIcon ("gtk-missing-image"))
+			if (Gtk.IconTheme.GetForDisplay (Gdk.Display.Default).HasIcon ("gtk-missing-image"))
 				return icons ["gtk-missing-image"] = img = GtkUtil.GtkToolkit.WrapImage ("gtk-missing-image");
 
 			// we should never end up here, log an error
@@ -290,44 +273,6 @@ namespace MonoDevelop.Ide
 			return Xwt.Drawing.Image.FromCustomLoader (loader, resource);
 		}
 
-		static Gdk.Pixbuf GetPixbuf (string name, Gtk.IconSize size, bool generateDefaultIcon = true)
-		{
-			if (string.IsNullOrEmpty (name)) {
-				LoggingService.LogWarning ("Empty icon requested. Stack Trace: " + Environment.NewLine + Environment.StackTrace);
-				return CreateColorBlock ("#FF0000", size);
-			}
-
-			// If this name refers to an icon defined in an extension point, the images for the icon will now be laoded
-			EnsureStockIconIsLoaded (name);
-
-			//if an icon name begins with '#', we assume it's a hex colour
-			if (name[0] == '#')
-				return CreateColorBlock (name, size);
-
-			// Converts an image spec into a real stock icon id
-			string stockid = GetStockIdForImageSpec (name, size);
-
-			if (string.IsNullOrEmpty (stockid)) {
-				LoggingService.LogWarning ("Can't get stock id for " + name + " : " + Environment.NewLine + Environment.StackTrace);
-				return CreateColorBlock ("#FF0000", size);
-			}
-
-			Gtk.IconSet iconset = Gtk.IconFactory.LookupDefault (stockid);
-			if (iconset != null)
-				return iconset.RenderIcon (Gtk.Widget.DefaultStyle, Gtk.TextDirection.Ltr, Gtk.StateType.Normal, size, null, null);
-
-			if (Gtk.IconTheme.Default.HasIcon (stockid)) {
-				int h = iconSizes[(int)size].Height;
-				Gdk.Pixbuf result = Gtk.IconTheme.Default.LoadIcon (stockid, h, (Gtk.IconLookupFlags)0);
-				return result;
-			}
-			if (generateDefaultIcon) {
-				LoggingService.LogWarning ("Can't lookup icon: " + name);
-				return CreateColorBlock ("#FF0000FF", size);
-			}
-			return null;
-		}
-
 		internal static void EnsureStockIconIsLoaded (string stockId)
 		{
 			if (string.IsNullOrEmpty (stockId))
@@ -339,7 +284,7 @@ namespace MonoDevelop.Ide
 				//determine whether there's a wildcarded image
 				bool hasWildcard = false;
 				foreach (var i in stockIcon) {
-					if (i.IconSize == Gtk.IconSize.Invalid)
+					if (i.IconSize == StockIconSize.Invalid)
 						hasWildcard = true;
 				}
 				//load all the images
@@ -350,9 +295,9 @@ namespace MonoDevelop.Ide
 				}
 				//if there's no wildcard, find the "biggest" version and make it a wildcard
 				if (!hasWildcard) {
-					int biggest = 0, biggestSize = iconSizes[(int)stockIcon[0].IconSize].Width;
+					int biggest = 0, biggestSize = (int)stockIcon[0].IconSize.GetSize ().Width;
 					for (int i = 1; i < stockIcon.Count; i++) {
-						int w = iconSizes[(int)stockIcon[i].IconSize].Width;
+						int w = (int)stockIcon[i].IconSize.GetSize ().Width;
 						if (w > biggestSize) {
 							biggest = i;
 							biggestSize = w;
@@ -381,11 +326,10 @@ namespace MonoDevelop.Ide
 			}
 		}
 
-		static Gdk.Pixbuf CreateColorBlock (string name, Gtk.IconSize size)
+		static Gdk.Pixbuf CreateColorBlock (string name, StockIconSize size)
 		{
 			int w, h;
-			if (!Gtk.Icon.SizeLookup (Gtk.IconSize.Menu, out w, out h))
-				w = h = 22;
+			StockIconSize.Menu.GetSize (out w, out h);
 			Gdk.Pixbuf p = new Gdk.Pixbuf (Gdk.Colorspace.Rgb, true, 8, w, h);
 			uint color;
 			if (!TryParseColourFromHex (name, false, out color))
@@ -469,7 +413,7 @@ namespace MonoDevelop.Ide
 			return true;
 		}
 
-		public static Gtk.Image GetImage (string name, Gtk.IconSize size)
+		public static Gtk.Image GetImage (string name, StockIconSize size)
 		{
 			var img = new Gtk.Image ();
 			img.LoadIcon (name, size);
@@ -484,18 +428,18 @@ namespace MonoDevelop.Ide
 
 		public static string GetStockId (string filename)
 		{
-			return GetStockId (filename, Gtk.IconSize.Invalid);
+			return GetStockId (filename, StockIconSize.Invalid);
 		}
-		public static string GetStockId (string filename, Gtk.IconSize iconSize)
+		public static string GetStockId (string filename, StockIconSize iconSize)
 		{
 			return GetStockIdForImageSpec (filename, iconSize);
 		}
 
 		public static string GetStockId (RuntimeAddin addin, string filename)
 		{
-			return GetStockId (addin, filename, Gtk.IconSize.Invalid);
+			return GetStockId (addin, filename, StockIconSize.Invalid);
 		}
-		public static string GetStockId (RuntimeAddin addin, string filename, Gtk.IconSize iconSize)
+		public static string GetStockId (RuntimeAddin addin, string filename, StockIconSize iconSize)
 		{
 			return GetStockIdForImageSpec (addin, filename, iconSize);
 		}
@@ -505,7 +449,7 @@ namespace MonoDevelop.Ide
 			animationFactory [stockId] = aicon;
 		}
 
-		static string InternalGetStockIdFromResource (RuntimeAddin addin, string id, Gtk.IconSize size)
+		static string InternalGetStockIdFromResource (RuntimeAddin addin, string id, StockIconSize size)
 		{
 			if (!id.StartsWith ("res:", StringComparison.Ordinal))
 				return id;
@@ -529,7 +473,7 @@ namespace MonoDevelop.Ide
 			return stream;
 		}
 
-		static string InternalGetStockIdFromAnimation (RuntimeAddin addin, string id, Gtk.IconSize size)
+		static string InternalGetStockIdFromAnimation (RuntimeAddin addin, string id, StockIconSize size)
 		{
 			if (!id.StartsWith ("animation:", StringComparison.Ordinal))
 				return id;
@@ -567,16 +511,16 @@ namespace MonoDevelop.Ide
 			return result;
 		}
 
-		static string GetComposedIcon (string[] ids, Gtk.IconSize size)
+		static string GetComposedIcon (string[] ids, StockIconSize size)
 		{
 			string id = string.Join ("_", ids);
 			string cid;
 			if (composedIcons.TryGetValue (id, out cid))
 				return cid;
-			var col = size == Gtk.IconSize.Invalid ? Enum.GetValues (typeof(Gtk.IconSize)) : new object [] { size };
+			var col = size == StockIconSize.Invalid ? Enum.GetValues (typeof(StockIconSize)) : new object [] { size };
 			var frames = new List<Xwt.Drawing.Image> (col.Length);
-			foreach (Gtk.IconSize sz in col) {
-				if (sz == Gtk.IconSize.Invalid)
+			foreach (StockIconSize sz in col) {
+				if (sz == StockIconSize.Invalid)
 					continue;
 
 				var parts = new List <Xwt.Drawing.Image> (ids.Length);
@@ -603,12 +547,12 @@ namespace MonoDevelop.Ide
 			return id;
 		}
 
-		static string GetStockIdForImageSpec (string filename, Gtk.IconSize size)
+		static string GetStockIdForImageSpec (string filename, StockIconSize size)
 		{
 			return GetStockIdForImageSpec (null, filename, size);
 		}
 
-		static string GetStockIdForImageSpec (RuntimeAddin addin, string filename, Gtk.IconSize size)
+		static string GetStockIdForImageSpec (RuntimeAddin addin, string filename, StockIconSize size)
 		{
 			if (String.IsNullOrEmpty (filename))
 				return String.Empty;
@@ -622,7 +566,7 @@ namespace MonoDevelop.Ide
 			return GetComposedIcon (parts, size);
 		}
 
-		static string PrivGetStockId (RuntimeAddin addin, string filename, Gtk.IconSize size)
+		static string PrivGetStockId (RuntimeAddin addin, string filename, StockIconSize size)
 		{
 			if (addin != null && filename.StartsWith ("res:", StringComparison.Ordinal))
 				return InternalGetStockIdFromResource (addin, filename, size);
@@ -633,7 +577,7 @@ namespace MonoDevelop.Ide
 			return filename;
 		}
 
-		public static bool IsAnimation (string iconId, Gtk.IconSize size)
+		public static bool IsAnimation (string iconId, StockIconSize size)
 		{
 			EnsureStockIconIsLoaded (iconId);
 			string id = GetStockIdForImageSpec (iconId, size);
@@ -642,10 +586,10 @@ namespace MonoDevelop.Ide
 
 		public static AnimatedIcon GetAnimatedIcon (string iconId)
 		{
-			return GetAnimatedIcon (iconId, Gtk.IconSize.Button);
+			return GetAnimatedIcon (iconId, StockIconSize.Button);
 		}
 
-		public static AnimatedIcon GetAnimatedIcon (string iconId, Gtk.IconSize size)
+		public static AnimatedIcon GetAnimatedIcon (string iconId, StockIconSize size)
 		{
 			EnsureStockIconIsLoaded (iconId);
 			string id = GetStockIdForImageSpec (iconId, size);
@@ -668,7 +612,6 @@ namespace MonoDevelop.Ide
 				AnimatedIcon = anim;
 				img.Realized += HandleRealized;
 				img.Unrealized += HandleUnrealized;
-				img.Destroyed += HandleDestroyed;
 				if (img.IsRealized)
 					StartAnimation ();
 			}
@@ -677,7 +620,7 @@ namespace MonoDevelop.Ide
 			{
 				if (Animation == null) {
 					Animation = AnimatedIcon.StartAnimation (delegate (Xwt.Drawing.Image pix) {
-						Image.Pixbuf = pix.ToPixbuf ();
+						Image.FromPaintable = pix.ToTexture ();
 					});
 				}
 			}
@@ -688,11 +631,6 @@ namespace MonoDevelop.Ide
 					Animation.Dispose ();
 					Animation = null;
 				}
-			}
-
-			void HandleDestroyed (object sender, EventArgs e)
-			{
-				UnregisterImageAnimation (this);
 			}
 
 			void HandleUnrealized (object sender, EventArgs e)
@@ -710,11 +648,10 @@ namespace MonoDevelop.Ide
 				StopAnimation ();
 				Image.Realized -= HandleRealized;
 				Image.Unrealized -= HandleUnrealized;
-				Image.Destroyed -= HandleDestroyed;
 			}
 		}
 
-		public static void LoadIcon (this Gtk.Image image, string iconId, Gtk.IconSize size)
+		public static void LoadIcon (this Gtk.Image image, string iconId, StockIconSize size)
 		{
 			AnimatedImageInfo ainfo = animatedImages.Select (a => (AnimatedImageInfo) a.Target).FirstOrDefault (a => a != null && a.Image == image);
 			if (ainfo != null) {
@@ -726,11 +663,11 @@ namespace MonoDevelop.Ide
 				var anim = GetAnimatedIcon (iconId);
 				ainfo = new AnimatedImageInfo (image, anim);
 				ainfo.Animation = anim.StartAnimation (delegate (Xwt.Drawing.Image pix) {
-					image.Pixbuf = pix.ToPixbuf ();
+					image.FromPaintable = pix.ToTexture ();
 				});
 				animatedImages.Add (new WeakReference (ainfo));
 			} else
-				image.SetFromStock (iconId, size);
+				image.FromPaintable = GetIcon (iconId, size).ToTexture ();
 		}
 
 		static void UnregisterImageAnimation (AnimatedImageInfo ainfo)
@@ -796,7 +733,7 @@ namespace MonoDevelop.Ide
 			}
 		}
 
-		public static void LoadIcon (this Gtk.TreeStore treeStore, Gtk.TreeIter iter, int column, string iconId, Gtk.IconSize size)
+		public static void LoadIcon (this Gtk.TreeStore treeStore, Gtk.TreeIter iter, int column, string iconId, StockIconSize size)
 		{
 			var ainfo = animatedTreeStoreIconImages.Select (a => (AnimatedTreeStoreIconInfo)a.Target).FirstOrDefault (a => a != null && a.TreeStore == treeStore && a.Iter.Equals (iter) && a.Column == column);
 			if (ainfo != null) {
@@ -870,7 +807,7 @@ namespace MonoDevelop.Ide
 			ImageLoader gravatar = GetUserIcon (email, size);
 			gravatar.Completed += delegate {
 				if (gravatar.Image != null)
-					image.Pixbuf = gravatar.Image.ToPixbuf ();
+					image.FromPaintable = gravatar.Image.ToTexture ();
 			};
 		}
 

@@ -15,7 +15,6 @@ namespace MonoDevelop.Ide.Gui.Dialogs
         int currentTip;
 
         public TipOfTheDayWindow()
-            : base (WindowType.Toplevel)
         {
             Build ();
             TransientFor = IdeApp.Workbench.RootWindow;
@@ -42,8 +41,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
             noshowCheckbutton.Toggled += new EventHandler (OnNoShow);
             nextButton.Clicked += new EventHandler (OnNextClicked);
             closeButton.Clicked += new EventHandler (OnCloseClicked);
-            DeleteEvent += new DeleteEventHandler (OnCloseClicked);
-            
+            // Closing the window with the window manager destroys it (default close-request handling)
         }
 
         void OnNoShow (object o, EventArgs e)
@@ -66,7 +64,6 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
         void OnCloseClicked (object o, EventArgs e)
         {
-            Hide ();
             Destroy ();
         }
 	}

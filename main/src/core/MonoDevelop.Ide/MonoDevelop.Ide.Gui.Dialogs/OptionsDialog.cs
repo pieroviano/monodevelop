@@ -40,14 +40,14 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 	
 	public partial class OptionsDialog : IdeDialog
 	{
-		Gtk.HBox mainHBox;
+		Gtk.Box mainHBox;
 		Gtk.TreeView tree;
 		Gtk.Label labelTitle;
-		Gtk.HBox pageFrame;
+		Gtk.Box pageFrame;
 		Gtk.Button buttonCancel;
 		Gtk.Button buttonOk;
 		OptionsDialogHeader imageHeader;
-		Gtk.Alignment textHeader;
+		Gtk.Widget textHeader;
 
 		protected TreeStore store;
 		Dictionary<OptionsDialogSection, SectionPage> pages = new Dictionary<OptionsDialogSection, SectionPage> ();
@@ -59,8 +59,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		bool removeEmptySections;
 		
 		const string emptyCategoryIcon = "md-prefs-generic";
-		const Gtk.IconSize treeIconSize = IconSize.Menu;
-		const Gtk.IconSize headerIconSize = IconSize.Button;
+		const StockIconSize treeIconSize = StockIconSize.Menu;
+		const StockIconSize headerIconSize = StockIconSize.Button;
 		
 		public object DataObject {
 			get {
@@ -87,94 +87,80 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		public OptionsDialog (MonoDevelop.Components.Window parentWindow, object dataObject, string extensionPath, bool removeEmptySections)
 		{
-			buttonCancel = new Gtk.Button (Gtk.Stock.Cancel);
-			buttonCancel.Accessible.Name = "Dialogs.Options.Cancel";
-			buttonCancel.Accessible.Description = GettextCatalog.GetString ("Close the options dialog and discard any changes");
-			AddActionWidget (this.buttonCancel, ResponseType.Cancel);
+			buttonCancel = DesignerLayout.Button (GettextCatalog.GetString ("_Cancel"));
+			buttonCancel.SetCommonAccessibilityAttributes ("Dialogs.Options.Cancel", (string)null, GettextCatalog.GetString ("Close the options dialog and discard any changes"));
+			buttonCancel.Clicked += (sender, e) => Respond (ResponseType.Cancel);
 
-			buttonOk = new Gtk.Button (Gtk.Stock.Ok);
-			buttonOk.Accessible.Name = "Dialogs.Options.Ok";
-			buttonOk.Accessible.Description = GettextCatalog.GetString ("Close the options dialog and keep the changes");
-			this.ActionArea.PackStart (buttonOk);
+			buttonOk = DesignerLayout.Button (GettextCatalog.GetString ("_OK"));
+			buttonOk.SetCommonAccessibilityAttributes ("Dialogs.Options.Ok", (string)null, GettextCatalog.GetString ("Close the options dialog and keep the changes"));
+			// The OK button validates and applies the changes before responding, so it is not a response action widget
 			buttonOk.Clicked += OnButtonOkClicked;
 
-			mainHBox = new HBox ();
-			mainHBox.Accessible.SetShouldIgnore (true);
+			if (parentWindow != null)
+				TransientFor = parentWindow;
+
+			mainHBox = DesignerLayout.HBox (0);
 			tree = new TreeView ();
-			tree.Accessible.Name = "Dialogs.Options.Categories";
-			tree.Accessible.Description = GettextCatalog.GetString ("The categories of options that are available in this dialog");
+			tree.SetCommonAccessibilityAttributes ("Dialogs.Options.Categories", (string)null, GettextCatalog.GetString ("The categories of options that are available in this dialog"));
 
 			var sw = new ScrolledWindow ();
-			sw.Accessible.SetShouldIgnore (true);
-			sw.Add (tree);
-			sw.HscrollbarPolicy = PolicyType.Never;
-			sw.VscrollbarPolicy = PolicyType.Automatic;
-			sw.ShadowType = ShadowType.None;
+			sw.Child = tree;
+			sw.SetPolicy (PolicyType.Never, PolicyType.Automatic);
+			sw.HasFrame = false;
+			sw.Vexpand = true;
 
 			var fboxTree = new HeaderBox ();
-			fboxTree.Accessible.SetShouldIgnore (true);
-
 			fboxTree.SetMargins (0, 1, 0, 1);
 			fboxTree.SetPadding (0, 0, 0, 0);
-			fboxTree.BackgroundColor = new Gdk.Color (255, 255, 255);
-			fboxTree.Add (sw);
-			mainHBox.PackStart (fboxTree, false, false, 0);
+			fboxTree.BackgroundColor = new Gdk.RGBA { Red = 1, Green = 1, Blue = 1, Alpha = 1 };
+			fboxTree.Child = sw;
+			DesignerLayout.Pack (mainHBox, fboxTree);
 
 			Realized += delegate {
-				fboxTree.BackgroundColor = tree.Style.Base (Gtk.StateType.Normal);
+				if (tree.StyleContext.LookupColor ("theme_base_color", out Gdk.RGBA baseColor))
+					fboxTree.BackgroundColor = baseColor;
 			};
 
-			var vbox = new VBox ();
-			vbox.Accessible.SetShouldIgnore (true);
-			mainHBox.PackStart (vbox, true, true, 0);
-			var headerBox = new HBox (false, 6);
-			headerBox.Accessible.SetShouldIgnore (true);
+			var vbox = DesignerLayout.VBox (0);
+			DesignerLayout.Pack (mainHBox, vbox, true);
+			var headerBox = DesignerLayout.HBox (6);
 
 			labelTitle = new Label ();
-			labelTitle.Accessible.Name = "Dialogs.Options.PageTitle";
+			labelTitle.SetCommonAccessibilityAttributes ("Dialogs.Options.PageTitle", (string)null, null);
 			labelTitle.Xalign = 0;
-			textHeader = new Alignment (0, 0, 1, 1);
-			textHeader.Accessible.SetShouldIgnore (true);
-			textHeader.Add (labelTitle);
-			textHeader.BorderWidth = 12;
-			headerBox.PackStart (textHeader, true, true, 0);
+			DesignerLayout.Margin (labelTitle, 12);
+			textHeader = labelTitle;
+			DesignerLayout.Pack (headerBox, textHeader, true);
 
 			imageHeader = new OptionsDialogHeader ();
-			imageHeader.Hide ();
+			imageHeader.Visible = false;
 			var imageHeaderWidget = imageHeader.ToGtkWidget ();
-			imageHeaderWidget.Accessible.SetShouldIgnore (true);
-			headerBox.PackStart (imageHeaderWidget);
+			DesignerLayout.Pack (headerBox, imageHeaderWidget);
 
 			var fboxHeader = new HeaderBox ();
-			fboxHeader.Accessible.SetShouldIgnore (true);
 			fboxHeader.SetMargins (0, 1, 0, 0);
-			fboxHeader.Add (headerBox);
-//			fbox.GradientBackround = true;
-//			fbox.BackgroundColor = new Gdk.Color (255, 255, 255);
+			fboxHeader.Child = headerBox;
 			Realized += delegate {
-				var c = Style.Background (Gtk.StateType.Normal).ToXwtColor ();
-				c.Light += 0.09;
-				fboxHeader.BackgroundColor = c.ToGdkColor ();
-			};
-			StyleSet += delegate {
-				if (IsRealized) {
-					var c = Style.Background (Gtk.StateType.Normal).ToXwtColor ();
+				if (StyleContext.LookupColor ("theme_bg_color", out Gdk.RGBA bg)) {
+					var c = bg.ToXwtColor ();
 					c.Light += 0.09;
 					fboxHeader.BackgroundColor = c.ToGdkColor ();
 				}
 			};
-			vbox.PackStart (fboxHeader, false, false, 0);
+			DesignerLayout.Pack (vbox, fboxHeader);
 
-			pageFrame = new HBox ();
-			pageFrame.Accessible.SetShouldIgnore (true);
+			pageFrame = DesignerLayout.HBox (0);
 			var fbox = new HeaderBox ();
-			fbox.Accessible.SetShouldIgnore (true);
 			fbox.SetMargins (0, 1, 0, 0);
 			fbox.ShowTopShadow = true;
-			fbox.Add (pageFrame);
-			vbox.PackStart (fbox, true, true, 0);
+			fbox.Child = pageFrame;
+			DesignerLayout.Pack (vbox, fbox, true);
 
-			this.VBox.PackStart (mainHBox, true, true, 0);
+			DesignerLayout.Pack (this.ContentArea, mainHBox, true);
+			var buttonBar = DialogButtonBar.Add (this);
+			DesignerLayout.Pack (buttonBar, buttonCancel);
+			DesignerLayout.Pack (buttonBar, buttonOk);
+			DefaultWidget = buttonOk;
 
 			this.removeEmptySections = removeEmptySections;
 			extensionContext = AddinManager.CreateExtensionContext ();
@@ -206,23 +192,23 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			
 			tree.Selection.Changed += OnSelectionChanged;
 			
-			Child.ShowAll ();
-			
 			InitializeContext (extensionContext);
 			
 			FillTree ();
 			ExpandCategories ();
 			RestoreLastPanel ();
-			this.DefaultResponse = Gtk.ResponseType.Ok;
-
-			buttonOk.CanDefault = true;
-			buttonOk.GrabDefault ();
-
-			DefaultWidth = 960;
-			DefaultHeight = 680;
+			SetDefaultSize (960, 680);
+			Response += OnDialogResponse;
 		}
 
-		static void PixbufCellDataFunc (TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter)
+		static OptionsDialogSection GetSectionValue (ITreeModel model, TreeIter iter)
+		{
+			var value = new GLib.Value ();
+			model.GetValue (iter, 0, ref value);
+			return (OptionsDialogSection) value.Val;
+		}
+
+		static void PixbufCellDataFunc (TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			TreeIter parent;
 			bool toplevel = !model.IterParent (out parent, iter);
@@ -234,7 +220,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				return;
 			}
 			
-			var section = (OptionsDialogSection) model.GetValue (iter, 0);
+			var section = GetSectionValue (model, iter);
 			
 			//HACK: The mimetype panels can't register a single fake stock ID for all the possible image size.
 			// Instead, give this some awareness of the mime system.
@@ -252,13 +238,13 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			}
 		}
 		
-		static void TextCellDataFunc (TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter)
+		static void TextCellDataFunc (TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			TreeIter parent;
 			bool toplevel = !model.IterParent (out parent, iter);
 			
 			var crt = (CellRendererText) cell;
-			var section = (OptionsDialogSection) model.GetValue (iter, 0);
+			var section = GetSectionValue (model, iter);
 			
 			if (toplevel) {
 				crt.Markup = "<b>" + GLib.Markup.EscapeText (section.Label) + "</b>";
@@ -296,25 +282,50 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 		}
 
-		protected override void OnDestroyed()
+		public override void Destroy ()
 		{
 			foreach (PanelInstance pi in panels.Values) {
 				if (pi.Widget != null)
-					pi.Widget.Destroy ();
+					DestroyWidget (pi.Widget);
 				else {
 					var widget = pi.Panel as Gtk.Widget;
 					if (widget != null) {
 						//TODO: Panels shouldn't inherit/implement view directly
 						//Mostly because it will constrcut some UI(in constrcutor calling this.Build())
 						//on Preferences opening that should be defereded until CreatePanelWidget call
-						widget.Destroy ();
+						DestroyWidget (widget);
 					}
 				}
 				IDisposable disp = pi.Panel as IDisposable;
 				if (disp != null)
 					disp.Dispose ();
 			}
-			base.OnDestroyed ();
+			base.Destroy ();
+		}
+
+		/// <summary>Detaches <paramref name="widget"/> from its container and destroys it.</summary>
+		static void DestroyWidget (Gtk.Widget widget)
+		{
+			RemoveFromParent (widget);
+			widget.Destroy ();
+		}
+
+		/// <summary>Detaches <paramref name="widget"/> from whatever container currently holds it (GTK 4 has no Container.Remove).</summary>
+		static void RemoveFromParent (Gtk.Widget widget)
+		{
+			switch (widget.Parent) {
+			case null:
+				return;
+			case Gtk.Box box:
+				box.Remove (widget);
+				break;
+			case ContainerWidget container:
+				container.RemoveChild (widget);
+				break;
+			default:
+				widget.Unparent ();
+				break;
+			}
 		}
 
 		/// <summary>
@@ -401,7 +412,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 						tree.Selection.SelectIter (pi);
 				}
 			}
-			OptionsDialogSection section = (OptionsDialogSection) store.GetValue (it, 0);
+			OptionsDialogSection section = GetSectionValue (store, it);
 			if (section != null) {
 				SectionPage page;
 				if (pages.TryGetValue (section, out page)) {
@@ -413,7 +424,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 					}
 					pages.Remove (section);
 					if (page.Widget != null)
-						page.Widget.Destroy ();
+						DestroyWidget (page.Widget);
 				}
 			}
 			store.Remove (ref it);
@@ -457,24 +468,47 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		void DetachWidgets ()
 		{
-			foreach (Gtk.Widget w in pageFrame.Children)
-				pageFrame.Remove (w);
+			RemovePageFrameChildren ();
 
 			foreach (SectionPage sp in pages.Values) {
 				foreach (PanelInstance pi in sp.Panels) {
-					if (pi.Widget != null && pi.Widget.Parent != null)
-						((Gtk.Container)pi.Widget.Parent).Remove (pi.Widget);
+					if (pi.Widget != null)
+						RemoveFromParent (pi.Widget);
 				}
 				if (sp.Widget != null) {
-					sp.Widget.Destroy ();
+					DestroyWidget (sp.Widget);
 					sp.Widget = null;
 				}
 			}
 		}
 		
-		protected override void OnResponse (ResponseType resp)
+		/// <summary>Shows or hides the panel widgets directly hosted by a page widget (the box of panels, or the tabs of a notebook).</summary>
+		static void SetPanelsVisible (Gtk.Widget pageWidget, bool visible)
 		{
-			base.OnResponse (resp);
+			if (pageWidget is Notebook notebook) {
+				for (int n = 0; n < notebook.NPages; n++)
+					notebook.GetNthPage (n).Visible = visible;
+				return;
+			}
+			var child = pageWidget.FirstChild;
+			while (child != null) {
+				child.Visible = visible;
+				child = child.NextSibling;
+			}
+		}
+
+		void RemovePageFrameChildren ()
+		{
+			var child = pageFrame.FirstChild;
+			while (child != null) {
+				var next = child.NextSibling;
+				pageFrame.Remove (child);
+				child = next;
+			}
+		}
+
+		void OnDialogResponse (object sender, ResponseArgs args)
+		{
 			DetachWidgets ();
 		}
 		
@@ -506,7 +540,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			TreeIter it;
 			if (tree.Selection.GetSelected (out it)) {
-				OptionsDialogSection section = (OptionsDialogSection) store.GetValue (it, 0);
+				OptionsDialogSection section = GetSectionValue (store, it);
 				ShowPage (section);
 
 				this.UseNativeContextMenus ();
@@ -555,44 +589,37 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 					}
 				}
 			}
-			foreach (Gtk.Widget w in pageFrame.Children) {
-				Container cc = w as Gtk.Container;
-				if (cc != null) {
-					foreach (Gtk.Widget cw in cc)
-						cw.Hide ();
-				}
-				pageFrame.Remove (w);
+			// Hide the panels of the previous page so that they get their Hidden event (e.g. to save pending changes)
+			var previous = pageFrame.FirstChild;
+			while (previous != null) {
+				SetPanelsVisible (previous, false);
+				previous = previous.NextSibling;
 			}
-			
+			RemovePageFrameChildren ();
+
 			if (page.Widget == null)
 				CreatePageWidget (page);
 
 			if (section.HeaderImage == null) {
 				labelTitle.Markup = "<span weight=\"bold\" size=\"large\">" + GLib.Markup.EscapeText (section.HeaderLabel) + "</span>";
-				textHeader.Show ();
-				imageHeader.Hide ();
+				textHeader.Visible = true;
+				imageHeader.Visible = false;
 			} else {
 				imageHeader.SetImage (section.HeaderImage, section.HeaderFillerImageResource);
-				imageHeader.Show ();
-				textHeader.Hide ();
+				imageHeader.Visible = true;
+				textHeader.Visible = false;
 			}
+			RemoveFromParent (page.Widget);
+			page.Widget.Hexpand = true;
+			page.Widget.Vexpand = true;
+			pageFrame.Append (page.Widget);
 
-/*			var algn = new HeaderBox ();
-			algn.SetPadding (12, 12, 12, 12);
-			if (page.Widget.Parent != null)
-				((Gtk.Container)page.Widget).Remove (page.Widget);
-			algn.Add (page.Widget);*/
-			pageFrame.PackStart (page.Widget, true, true, 0);
-			
 			// Ensures that the Shown event is fired for each panel
-			Container c = page.Widget as Gtk.Container;
-			if (c != null) {
-				foreach (Gtk.Widget cw in c)
-					cw.Show ();
-				//HACK: weird bug - switching page away and back selects last tab. should preserve the selection.
-				if (c is Notebook)
-					((Notebook)c).Page = 0;
-			}
+			SetPanelsVisible (page.Widget, true);
+
+			//HACK: weird bug - switching page away and back selects last tab. should preserve the selection.
+			if (page.Widget is Notebook nb)
+				nb.Page = 0;
 
 			if (!IdeServices.DesktopService.AccessibilityInUse && !IdeServices.DesktopService.AccessibilityKeyboardFocusInUse || forceExpand) {
 				// Don't automatically expand trees if using accessibility
@@ -648,7 +675,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 						// reused anymore. Destroy it.
 						panels.Remove (node);
 						if (pi.Widget != null)
-							pi.Widget.Destroy ();
+							DestroyWidget (pi.Widget);
 						IDisposable d = pi.Panel as IDisposable;
 						if (d != null)
 							d.Dispose ();
@@ -704,8 +731,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 					if (pi.Widget.Name.IndexOf ("Panel") > 0)
 						pi.Widget.Name = pi.Widget.Name.Replace ("Panel", "_");
 				}
-				else if (pi.Widget.Parent != null)
-					((Gtk.Container) pi.Widget.Parent).Remove (pi.Widget);
+				else
+					RemoveFromParent (pi.Widget);
 					
 				if (pi.Node.Grouping == PanelGrouping.Tab)
 					tabPanels.Add (pi);
@@ -724,14 +751,11 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				foreach (PanelInstance pi in boxPanels) {
 					if (pi.Node.Grouping == PanelGrouping.Auto)
 						lastAuto = pi;
-					// HACK: This we are parenting/unparenting the widget here as a workaround
-					// for a layout issue. To properly calculate the size of the widget, the widget
-					// needs to have the style that it will have when added to the window.
-					pi.Widget.Parent = this;
-					mainPageSize += pi.Widget.SizeRequest ().Height + 6;
-					pi.Widget.Unparent ();
+					// GTK 4 can measure a widget that is not parented yet
+					pi.Widget.Measure (Orientation.Vertical, -1, out int minHeight, out _, out _, out _);
+					mainPageSize += minHeight + 6;
 				}
-				fits = mainPageSize <= pageFrame.Allocation.Height;
+				fits = mainPageSize <= pageFrame.Height;
 				if (!fits) {
 					if (lastAuto != null && boxPanels.Count > 1) {
 						boxPanels.Remove (lastAuto);
@@ -742,53 +766,34 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				}
 			} while (!fits);
 			
-			Gtk.VBox box = new VBox (false, 12);
-			box.Show ();
+			var box = DesignerLayout.VBox (12);
 			for (int n=0; n<boxPanels.Count; n++) {
-				if (n != 0) {
-					HSeparator sep = new HSeparator ();
-					sep.Show ();
-					box.PackStart (sep, false, false, 0);
-				}
+				if (n != 0)
+					DesignerLayout.Pack (box, new Separator (Orientation.Horizontal));
 				PanelInstance pi = boxPanels [n];
-				box.PackStart (pi.Widget, pi.Node.Fill, pi.Node.Fill, 0);
-				pi.Widget.Show ();
+				if (pi.Node.Fill)
+					pi.Widget.Vexpand = true;
+				box.Append (pi.Widget);
 			}
 			
-			box.BorderWidth = 12;
+			DesignerLayout.Margin (box, 12);
 
 			if (tabPanels.Count > 0) {
-				/*				SquaredNotebook nb = new SquaredNotebook ();
-				nb.Show ();
-				nb.AddTab (box, GettextCatalog.GetString ("General"));
-				foreach (PanelInstance pi in tabPanels) {
-					Gtk.Alignment a = new Alignment (0, 0, 1, 1);
-					a.BorderWidth = 9;
-					a.Show ();
-					a.Add (pi.Widget);
-					nb.AddTab (a, GettextCatalog.GetString (pi.Node.Label));
-					pi.Widget.Show ();
-				}*/
 				Gtk.Notebook nb = new Notebook ();
-				nb.Show ();
-				if (box.Children.Length > 0) {
+				if (boxPanels.Count > 0) {
 					Gtk.Label blab = new Gtk.Label (GettextCatalog.GetString ("General"));
-					blab.Show ();
-					box.BorderWidth = 9;
+					DesignerLayout.Margin (box, 9);
 					nb.InsertPage (box, blab, -1);
 				}
 				foreach (PanelInstance pi in tabPanels) {
 					Gtk.Label lab = new Gtk.Label (pi.Node.Label);
-					lab.Show ();
-					Gtk.Alignment a = new Alignment (0, 0, 1, 1);
-					a.BorderWidth = 9;
-					a.Show ();
-					a.Add (pi.Widget);
+					var a = new BinWidget ();
+					a.Padding = new Gtk.Border { Left = 9, Right = 9, Top = 9, Bottom = 9 };
+					a.Child = pi.Widget;
 					nb.InsertPage (a, lab, -1);
-					pi.Widget.Show ();
 				}
 				page.Widget = nb;
-				nb.BorderWidth = 12;
+				DesignerLayout.Margin (nb, 12);
 			} else {
 				page.Widget = box;
 			}
@@ -832,7 +837,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			TreeIter it;
 			if (tree.Selection.GetSelected (out it)) {
-				OptionsDialogSection section = (OptionsDialogSection)store.GetValue (it, 0);
+				OptionsDialogSection section = GetSectionValue (store, it);
 				PropertyService.Set (extensionPath + "-lastPanel", section.Id);
 			}
 		}

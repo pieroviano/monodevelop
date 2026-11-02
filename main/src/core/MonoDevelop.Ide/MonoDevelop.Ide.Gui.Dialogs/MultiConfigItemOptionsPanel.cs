@@ -44,7 +44,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		Gtk.ComboBox configCombo;
 		Gtk.ListStore configListStore;
 		const int configListStoreConfigNameColumn = 1;
-		Gtk.ComboBox platformCombo;
+		Gtk.ComboBoxText platformCombo;
 		List<ItemConfiguration> currentConfigs = new List<ItemConfiguration> ();
 		List<string> platforms = new List<string> ();
 		Gtk.Widget panelWidget;
@@ -102,11 +102,12 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		Control IOptionsPanel.CreatePanelWidget ()
 		{
-			Gtk.VBox cbox = new Gtk.VBox (false, 6);
-			Gtk.HBox combosBox = new Gtk.HBox (false, 6) { Name = "panelWidgetCombosBox" };
-			cbox.PackStart (combosBox, false, false, 0);
+			var cbox = DesignerLayout.VBox (6);
+			var combosBox = DesignerLayout.HBox (6);
+			combosBox.Name = "panelWidgetCombosBox";
+			DesignerLayout.Pack (cbox, combosBox);
 			var configurationLabel = new Gtk.Label (GettextCatalog.GetString ("Configuration:"));
-			combosBox.PackStart (configurationLabel, false, false, 0);
+			DesignerLayout.Pack (combosBox, configurationLabel);
 			configListStore = new Gtk.ListStore (typeof(string), typeof(string));
 			configCombo = new Gtk.ComboBox (configListStore) { Name = "panelWidgetConfigurationCombo" };
 			SemanticModelAttribute modelAttr = new SemanticModelAttribute ("configListStore__DisplayName", "configListStore__ConfigName");
@@ -114,14 +115,13 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			var cell = new Gtk.CellRendererText ();
 			configCombo.PackStart (cell, true);
 			configCombo.AddAttribute (cell, "text", 0);
-			combosBox.PackStart (configCombo, false, false, 0);
+			DesignerLayout.Pack (combosBox, configCombo);
 			var platformLabel = new Gtk.Label (GettextCatalog.GetString ("Platform:"));
-			combosBox.PackStart (platformLabel, false, false, 0);
-			platformCombo = Gtk.ComboBox.NewText ();
+			DesignerLayout.Pack (combosBox, platformLabel);
+			platformCombo = new Gtk.ComboBoxText ();
 			platformCombo.Name = "panelWidgetPlatformCombo";
-			combosBox.PackStart (platformCombo, false, false, 0);
-			cbox.PackStart (new Gtk.HSeparator (), false, false, 0);
-			cbox.ShowAll ();
+			DesignerLayout.Pack (combosBox, platformCombo);
+			DesignerLayout.Pack (cbox, new Gtk.Separator (Gtk.Orientation.Horizontal));
 
 			configCombo.SetCommonAccessibilityAttributes (
 				configCombo.Name,
@@ -152,7 +152,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			if (child.Name.IndexOf ("Panel") > 0)
 				child.Name = child.Name.Replace ("Panel", "_");
 			
-			cbox.PackStart (child, true, true, 0);
+			DesignerLayout.Pack (cbox, child, true);
 			
 			if (allowMixedConfigurations != oldMixed) {
 				// If mixed mode has changed, update the configuration list
@@ -218,7 +218,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			loading = true;
 			
-			((Gtk.ListStore)platformCombo.Model).Clear ();
+			platformCombo.RemoveAll ();
 			platforms.Clear ();
 
 			string configName = null;
@@ -238,7 +238,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			Gtk.TreeIter iter;
 			if (configCombo.GetActiveIter (out iter)) {
-				return (string)configCombo.Model.GetValue (iter, configListStoreConfigNameColumn);
+				return (string)configListStore.GetValue (iter, configListStoreConfigNameColumn);
 			}
 			return null;
 		}
@@ -337,14 +337,14 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			loading = true;
 			
 			Gtk.TreeIter it;
-			if (configCombo.Model.GetIterFirst (out it)) {
+			if (configListStore.GetIterFirst (out it)) {
 				do {
-					if (config == (string) configCombo.Model.GetValue (it, configListStoreConfigNameColumn)) {
+					if (config == (string) configListStore.GetValue (it, configListStoreConfigNameColumn)) {
 						configCombo.SetActiveIter (it);
 						break;
 					}
 				}
-				while (configCombo.Model.IterNext (ref it));
+				while (configListStore.IterNext (ref it));
 			}
 			
 			if (configCombo.Active == -1)
@@ -357,15 +357,16 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			loading = true;
 			
+			var platformModel = (Gtk.ListStore) platformCombo.Model;
 			Gtk.TreeIter it;
-			if (platformCombo.Model.GetIterFirst (out it)) {
+			if (platformModel.GetIterFirst (out it)) {
 				do {
-					if (platform == (string) platformCombo.Model.GetValue (it, 0)) {
+					if (platform == (string) platformModel.GetValue (it, 0)) {
 						platformCombo.SetActiveIter (it);
 						break;
 					}
 				}
-				while (platformCombo.Model.IterNext (ref it));
+				while (platformModel.IterNext (ref it));
 			}
 			
 			if (platformCombo.Active == -1)

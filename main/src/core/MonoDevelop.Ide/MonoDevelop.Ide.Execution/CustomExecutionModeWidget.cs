@@ -35,7 +35,7 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.Ide.Execution
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class CustomExecutionModeWidget : Gtk.Bin, IExecutionConfigurationEditor
+	partial class CustomExecutionModeWidget : MonoDevelop.Components.BinWidget, IExecutionConfigurationEditor
 	{
 		public CustomExecutionModeWidget ()
 		{
@@ -43,8 +43,8 @@ namespace MonoDevelop.Ide.Execution
 
 			folderEntry.EntryAccessible.SetCommonAttributes ("CustomExecutionMode.WorkingDirectory", null, 
 			                                                 GettextCatalog.GetString ("Select the working directory for execution"));
-			folderEntry.EntryAccessible.SetTitleUIElement (label2.Accessible);
-			label2.Accessible.SetTitleFor (folderEntry.EntryAccessible);
+			folderEntry.EntryAccessible.SetTitleUIElement (label2);
+			label2.SetTitleFor (folderEntry.EntryAccessible);
 
 			entryArgs.SetCommonAccessibilityAttributes ("CustomExecutionMode.Arguments", label4,
 			                                            GettextCatalog.GetString ("Enter any custom arguments to be passed to the executable"));

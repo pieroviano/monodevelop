@@ -37,12 +37,14 @@ using MonoDevelop.Ide.Gui;
 namespace MonoDevelop.Ide.Projects
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	partial class GtkProjectConfigurationWidget : Gtk.Bin
+	partial class GtkProjectConfigurationWidget : MonoDevelop.Components.BinWidget
 	{
 		FinalProjectConfigurationPage projectConfiguration;
-		uint defaultTableRows;
-		Gdk.Color separatorColor = Styles.NewProjectDialog.ProjectConfigurationSeparatorColor.ToGdkColor ();
-		Gdk.Color leftHandBackgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor.ToGdkColor ();
+		// rows of the grid created by Build (); extra controls are appended below them
+		const int defaultTableRows = 8;
+		int nextTableRow = defaultTableRows;
+		Xwt.Drawing.Color separatorColor = Styles.NewProjectDialog.ProjectConfigurationSeparatorColor;
+		Xwt.Drawing.Color leftHandBackgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor;
 		DrawingArea extraControlsSeparator;
 		List<ExtraControlTableRow> extraControlRows = new List<ExtraControlTableRow> ();
 
@@ -50,16 +52,16 @@ namespace MonoDevelop.Ide.Projects
 		{
 			this.Build ();
 
-			solutionNameSeparator.ModifyBg (StateType.Normal, separatorColor);
-			locationSeparator.ModifyBg (StateType.Normal, separatorColor);
+			WidgetCss.SetBackground (solutionNameSeparator, separatorColor);
+			WidgetCss.SetBackground (locationSeparator, separatorColor);
 
-			eventBox.ModifyBg (StateType.Normal, Styles.NewProjectDialog.ProjectConfigurationRightHandBackgroundColor.ToGdkColor ());
+			WidgetCss.SetBackground (eventBox, Styles.NewProjectDialog.ProjectConfigurationRightHandBackgroundColor);
 
-			leftBorderEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			projectConfigurationRightBorderEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			projectConfigurationTopEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			projectConfigurationTableEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			projectConfigurationBottomEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
+			WidgetCss.SetBackground (leftBorderEventBox, leftHandBackgroundColor);
+			WidgetCss.SetBackground (projectConfigurationRightBorderEventBox, leftHandBackgroundColor);
+			WidgetCss.SetBackground (projectConfigurationTopEventBox, leftHandBackgroundColor);
+			WidgetCss.SetBackground (projectConfigurationTableEventBox, leftHandBackgroundColor);
+			WidgetCss.SetBackground (projectConfigurationBottomEventBox, leftHandBackgroundColor);
 
 			projectNameTextBox.ActivatesDefault = true;
 			solutionNameTextBox.ActivatesDefault = true;
@@ -68,8 +70,6 @@ namespace MonoDevelop.Ide.Projects
 			projectNameTextBox.TruncateMultiline = true;
 			solutionNameTextBox.TruncateMultiline = true;
 			locationTextBox.TruncateMultiline = true;
-
-			defaultTableRows = projectConfigurationTable.NRows;
 
 			// Disable width request for the event box otherwise the New Project dialog
 			// does not resize to fit. Set a width request for the project name text box
@@ -81,36 +81,36 @@ namespace MonoDevelop.Ide.Projects
 
 			// Accessibility
 			projectNameLabel.Accessible.Name = "ProjectConfigurationWidget.ProjectNameLabel";
-			projectNameLabel.Accessible.SetTitleFor (projectNameTextBox.Accessible);
+			projectNameLabel.SetTitleFor (projectNameTextBox);
 
 			projectNameTextBox.Accessible.Name = "ProjectConfigurationWidget.ProjectNameTextBox";
 			projectNameTextBox.Accessible.Description = GettextCatalog.GetString ("Enter the name for the new project");
-			projectNameTextBox.Accessible.SetTitleUIElement (projectNameLabel.Accessible);
+			projectNameTextBox.SetTitleUIElement (projectNameLabel);
 
 			solutionNameLabel.Accessible.Name = "ProjectConfigurationWidget.SolutionNameLabel";
-			solutionNameLabel.Accessible.SetTitleFor (solutionNameTextBox.Accessible);
+			solutionNameLabel.SetTitleFor (solutionNameTextBox);
 
 			solutionNameTextBox.Accessible.Name = "ProjectConfigurationWidget.SolutionNameTextBox";
 			solutionNameTextBox.Accessible.Description = GettextCatalog.GetString ("Enter the name for the new solution");
-			solutionNameTextBox.Accessible.SetTitleUIElement (solutionNameLabel.Accessible);
+			solutionNameTextBox.SetTitleUIElement (solutionNameLabel);
 
 			locationLabel.Accessible.Name = "ProjectConfigurationWidget.LocationLabel";
-			locationLabel.Accessible.SetTitleFor (locationTextBox.Accessible, browseButton.Accessible);
+			locationLabel.SetTitleFor (locationTextBox, browseButton);
 
 			locationTextBox.Accessible.Name = "ProjectConfigurationWidget.LocationTextBox";
 			locationTextBox.Accessible.Description = GettextCatalog.GetString ("Enter the filepath for the new project");
-			locationTextBox.Accessible.SetTitleUIElement (locationLabel.Accessible);
+			locationTextBox.SetTitleUIElement (locationLabel);
 
 			browseButton.Accessible.Name = "ProjectConfigurationWidget.BrowseButton";
 			browseButton.Accessible.Description = GettextCatalog.GetString ("Open a file selector to select the project path");
-			browseButton.Accessible.SetTitleUIElement (locationLabel.Accessible);
+			browseButton.SetTitleUIElement (locationLabel);
 
 			createProjectWithinSolutionDirectoryCheckBox.Accessible.Name = "ProjectConfigurationWidget.CreateProjectDirectoryCheckBox";
 			createProjectWithinSolutionDirectoryCheckBox.Accessible.Description = GettextCatalog.GetString ("Select whether a folder for the new project should be created inside the solution folder");
 
 			versionControlLabel.Accessible.Name = "ProjectConfigurationWidget.VersionControl";
-			versionControlLabel.Accessible.AddLinkedUIElement (useGitCheckBox.Accessible);
-			versionControlLabel.Accessible.AddLinkedUIElement (createGitIgnoreFileCheckBox.Accessible);
+			versionControlLabel.AddLinkedUIElement (useGitCheckBox);
+			versionControlLabel.AddLinkedUIElement (createGitIgnoreFileCheckBox);
 
 			useGitCheckBox.Accessible.Name = "ProjectConfigurationWidget.UseGitCheckBox";
 			useGitCheckBox.Accessible.Description = GettextCatalog.GetString ("Select whether to use Git source control");
@@ -119,11 +119,11 @@ namespace MonoDevelop.Ide.Projects
 			createGitIgnoreFileCheckBox.Accessible.Description = GettextCatalog.GetString ("Select whether to create a .gitignore file to ignore common files");
 
 			projectFolderPreviewWidget.Accessible.Name = "ProjectConfigurationWidget.ProjectFolderPreview";
-			projectFolderPreviewWidget.Accessible.SetLabel (GettextCatalog.GetString ("Folder Layout Preview"));
+			projectFolderPreviewWidget.SetLabel (GettextCatalog.GetString ("Folder Layout Preview"));
 			projectFolderPreviewWidget.Accessible.Description = GettextCatalog.GetString ("A preview of the folder layout for the new project");
 		}
 
-		protected override void OnFocusGrabbed ()
+		public void FocusFirstEntry ()
 		{
 			if (projectConfiguration != null) {
 				if (projectConfiguration.IsProjectNameEnabled) {
@@ -142,9 +142,9 @@ namespace MonoDevelop.Ide.Projects
 			projectNameTextBox.TextInserted += ProjectNameTextInserted;
 			projectNameTextBox.Changed += (sender, e) => OnProjectNameTextBoxChanged ();
 			solutionNameTextBox.Changed += (sender, e) => OnSolutionNameTextBoxChanged ();
-			createGitIgnoreFileCheckBox.Clicked += (sender, e) => OnCreateGitIgnoreFileCheckBoxClicked ();
-			useGitCheckBox.Clicked += (sender, e) => OnUseGitCheckBoxClicked ();
-			createProjectWithinSolutionDirectoryCheckBox.Clicked += (sender, e) => OnCreateProjectWithinSolutionDirectoryCheckBoxClicked ();
+			createGitIgnoreFileCheckBox.Toggled += (sender, e) => OnCreateGitIgnoreFileCheckBoxClicked ();
+			useGitCheckBox.Toggled += (sender, e) => OnUseGitCheckBoxClicked ();
+			createProjectWithinSolutionDirectoryCheckBox.Toggled += (sender, e) => OnCreateProjectWithinSolutionDirectoryCheckBoxClicked ();
 			browseButton.Clicked += (sender, e) => BrowseButtonClicked ();
 		}
 
@@ -229,7 +229,7 @@ namespace MonoDevelop.Ide.Projects
 			if (startingFolder != null)
 				dialog.CurrentFolder = startingFolder;
 
-			dialog.TransientFor = Toplevel as Gtk.Window;
+			dialog.TransientFor = Root as Gtk.Window;
 
 			if (dialog.Run ())
 				return dialog.SelectedFile;
@@ -297,20 +297,18 @@ namespace MonoDevelop.Ide.Projects
 		{
 			if (extraRow.Label != null) {
 				projectConfigurationTable.Remove (extraRow.Label);
-				extraRow.Label.Dispose ();
-			}
+							}
 
-			if (extraRow.MainWidget.Parent != null)
+			if (extraRow.MainWidget.Parent == projectConfigurationTable)
 				projectConfigurationTable.Remove (extraRow.MainWidget);
 
 			if (extraRow.InformationTooltipWidget != null) {
 				projectConfigurationTable.Remove (extraRow.InformationTooltipWidget);
-				extraRow.InformationTooltipWidget.Dispose ();
 				extraRow.InformationTooltip.Dispose ();
 			}
 
 			extraControlRows.Remove (extraRow);
-			projectConfigurationTable.NRows--;
+			nextTableRow--;
 		}
 
 		void RemoveExtraControlsSeparator ()
@@ -318,39 +316,34 @@ namespace MonoDevelop.Ide.Projects
 			if (extraControlsSeparator != null) {
 				projectConfigurationTable.Remove (extraControlsSeparator);
 
-				extraControlsSeparator.Dispose ();
 				extraControlsSeparator = null;
 
-				projectConfigurationTable.NRows--;
+				nextTableRow--;
 			}
 		}
 
 		void AddExtraControlsSeparator ()
 		{
-			projectConfigurationTable.NRows++;
-
 			extraControlsSeparator = new DrawingArea ();
 			extraControlsSeparator.HeightRequest = 1;
-			extraControlsSeparator.ModifyBg (StateType.Normal, separatorColor);
-			projectConfigurationTable.Attach (
-				extraControlsSeparator,
-				0,
-				3,
-				defaultTableRows,
-				defaultTableRows + 1,
-				AttachOptions.Fill,
-				(AttachOptions)0,
-				0,
-				10);
+			extraControlsSeparator.Hexpand = true;
+			extraControlsSeparator.Valign = Align.Start;
+			extraControlsSeparator.MarginTop = 10;
+			extraControlsSeparator.MarginBottom = 10;
+			WidgetCss.SetBackground (extraControlsSeparator, separatorColor);
+			projectConfigurationTable.Attach (extraControlsSeparator, 0, defaultTableRows, 3, 1);
+			nextTableRow++;
 		}
 
 		void AddExtraControl (ProjectConfigurationControl control)
 		{
 			var extraRow = new ExtraControlTableRow {
-				Row = projectConfigurationTable.NRows,
+				Row = nextTableRow,
 				Label = new Label (control.Label ?? string.Empty) {
-					Xpad = 5,
+					MarginStart = 5,
+					MarginEnd = 5,
 					Xalign = 1,
+					Halign = Align.End,
 					Justify = Justification.Left
 				},
 				MainWidget = (Widget)control
@@ -366,29 +359,27 @@ namespace MonoDevelop.Ide.Projects
 			if (string.IsNullOrEmpty (control.InformationTooltip))
 				return;
 
-			var hbox = new HBox ();
-			var paddingEventBox = new EventBox ();
-			paddingEventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			hbox.PackStart (paddingEventBox, true, true, 0);
+			var hbox = new Box (Orientation.Horizontal, 0);
+			var paddingEventBox = new Box (Orientation.Horizontal, 0) { Hexpand = true };
+			WidgetCss.SetBackground (paddingEventBox, leftHandBackgroundColor);
+			hbox.Append (paddingEventBox);
 
-			var tooltipEventBox = new EventBox {
+			var tooltipEventBox = new Box (Orientation.Horizontal, 0) {
 				HeightRequest = 16,
 				WidthRequest = 16,
-				VisibleWindow = false
 			};
 
-			hbox.PackStart (tooltipEventBox, false, false, 0);
+			hbox.Append (tooltipEventBox);
 
 			extraRow.InformationTooltipWidget = hbox;
 			extraRow.InformationTooltip = CreateTooltip (tooltipEventBox, control.InformationTooltip);
 		}
 
-		EventBoxTooltip CreateTooltip (EventBox eventBox, string tooltipText)
+		EventBoxTooltip CreateTooltip (Box eventBox, string tooltipText)
 		{
 			Xwt.Drawing.Image image = ImageService.GetIcon ("md-help");
-			eventBox.ModifyBg (StateType.Normal, leftHandBackgroundColor);
-			eventBox.Add (new ImageView (image));
-			eventBox.ShowAll ();
+			WidgetCss.SetBackground (eventBox, leftHandBackgroundColor);
+			eventBox.Append (new ImageView (image));
 
 			return new EventBoxTooltip (eventBox) {
 				ToolTip = tooltipText,
@@ -398,55 +389,24 @@ namespace MonoDevelop.Ide.Projects
 
 		void AddExtraControl (ExtraControlTableRow extraRow)
 		{
-			projectConfigurationTable.NRows++;
+			nextTableRow++;
 
-			projectConfigurationTable.Attach (
-				extraRow.Label,
-				0,
-				1,
-				extraRow.Row,
-				extraRow.Row + 1,
-				AttachOptions.Fill,
-				AttachOptions.Fill,
-				0,
-				0);
+			projectConfigurationTable.Attach (extraRow.Label, 0, extraRow.Row, 1, 1);
 
-			uint rightAttach = 2;
-			if (extraRow.InformationTooltipWidget == null) {
-				// Allow control to extend all the way across if it has no information tooltip.
-				rightAttach = 3;
-			}
+			// Allow control to extend all the way across if it has no information tooltip.
+			int columnSpan = extraRow.InformationTooltipWidget == null ? 2 : 1;
+			extraRow.MainWidget.Halign = Align.Fill;
+			projectConfigurationTable.Attach (extraRow.MainWidget, 1, extraRow.Row, columnSpan, 1);
 
-			projectConfigurationTable.Attach (
-				extraRow.MainWidget,
-				1,
-				rightAttach,
-				extraRow.Row,
-				extraRow.Row + 1,
-				AttachOptions.Fill,
-				AttachOptions.Shrink,
-				0,
-				0);
-
-			if (extraRow.InformationTooltipWidget != null) {
-				projectConfigurationTable.Attach (
-					extraRow.InformationTooltipWidget,
-					2,
-					3,
-					extraRow.Row,
-					extraRow.Row + 1,
-					AttachOptions.Fill,
-					AttachOptions.Fill,
-					0,
-					0);
-			}
+			if (extraRow.InformationTooltipWidget != null)
+				projectConfigurationTable.Attach (extraRow.InformationTooltipWidget, 2, extraRow.Row, 1, 1);
 
 			extraControlRows.Add (extraRow);
 		}
 
 		class ExtraControlTableRow
 		{
-			public uint Row { get; set; }
+			public int Row { get; set; }
 			public Label Label { get; set; }
 			public Widget MainWidget { get; set; }
 			public Widget InformationTooltipWidget { get; set; }

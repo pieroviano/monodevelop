@@ -165,7 +165,7 @@ namespace MonoDevelop.Ide.TypeSystem
 							await w.UpdateFileContent (file, text);
 					}
 
-					Gtk.Application.Invoke ((o, args) => {
+					Runtime.RunInMainThread (() => {
 						if (documentManager != null) {
 							foreach (var w in documentManager.Documents)
 								w.DocumentContext?.ReparseDocument ();

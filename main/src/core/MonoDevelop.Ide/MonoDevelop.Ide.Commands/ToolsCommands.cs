@@ -31,6 +31,7 @@ using MonoDevelop.Core;
 using MonoDevelop.Core.Execution;
 using MonoDevelop.Ide.Gui.Dialogs;
 using System;
+using System.Linq;
 using MonoDevelop.Ide.Updater;
 using System.Threading.Tasks;
 
@@ -136,7 +137,7 @@ namespace MonoDevelop.Ide.Commands
 						return;
 					}
 
-					AutoTestService.StopRecordingSession (selector.Filename);
+					AutoTestService.StopRecordingSession (selector.Filenames.FirstOrDefault ());
 				} finally {
 					selector.Destroy ();
 				}
@@ -163,7 +164,7 @@ namespace MonoDevelop.Ide.Commands
 					return;
 				}
 
-				filename = selector.Filename;
+				filename = selector.Filenames.FirstOrDefault ();
 			} finally {
 				selector.Destroy ();
 			}

@@ -39,7 +39,7 @@ using MonoDevelop.Components;
 
 namespace MonoDevelop.Ide.Projects {
 	
-	internal class ProjectReferencePanel : VBox, IReferencePanel
+	internal class ProjectReferencePanel : Box, IReferencePanel
 	{
 		SelectReferenceDialog selectDialog;
 
@@ -58,7 +58,7 @@ namespace MonoDevelop.Ide.Projects {
 		const int ColColor = 6;
 		
 		
-		public ProjectReferencePanel (SelectReferenceDialog selectDialog) : base (false, 6)
+		public ProjectReferencePanel (SelectReferenceDialog selectDialog) : base (Orientation.Vertical, 6)
 		{
 			this.selectDialog = selectDialog;
 			
@@ -90,15 +90,13 @@ namespace MonoDevelop.Ide.Projects {
 			treeView.AppendColumn (secondColumn);
 			treeView.AppendColumn (GettextCatalog.GetString ("Directory"), new CellRendererText (), "markup", ColPath);
 			
-			ScrolledWindow sc = new ScrolledWindow ();
-			sc.ShadowType = Gtk.ShadowType.In;
-			sc.Add (treeView);
-			PackStart (sc, true, true, 0);
+			ScrolledWindow sc = new ScrolledWindow { HasFrame = true, Vexpand = true };
+			sc.Child = treeView;
+			Append (sc);
 			
 			store.SetSortColumnId (0, SortType.Ascending);
-			ShowAll ();
 			
-			BorderWidth = 6;
+			MarginStart = MarginEnd = MarginTop = MarginBottom = 6;
 		}
 
 		public void SetProject (DotNetProject configureProject)
@@ -164,7 +162,7 @@ namespace MonoDevelop.Ide.Projects {
 			} while (store.IterNext (ref looping_iter));
 		}
 		
-		int CompareNodes (Gtk.TreeModel model, Gtk.TreeIter a, Gtk.TreeIter b)
+		int CompareNodes (Gtk.ITreeModel model, Gtk.TreeIter a, Gtk.TreeIter b)
 		{
 			string s1 = (string) store.GetValue (a, 0);
 			string s2 = (string) store.GetValue (b, 0);
@@ -218,7 +216,7 @@ namespace MonoDevelop.Ide.Projects {
 					}
 				}
 				
-				var icon = ImageService.GetIcon (projectEntry.StockIcon, IconSize.Menu);
+				var icon = ImageService.GetIcon (projectEntry.StockIcon, StockIconSize.Menu);
 				if (!allowSelecting) {
 					// Don't show unselectable projects if there is a filter
 					if (stringMatcher != null)

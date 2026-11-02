@@ -29,18 +29,21 @@
 //
 
 using System;
-using Gdk;
 using Gtk;
 
 namespace MonoDevelop.Components.Docking
 {
-	internal class PlaceholderWindow: Gtk.Window
+	/// <summary>
+	/// Outline shown over the dock container while a pad is dragged: it marks where the pad would be docked.
+	/// GTK 4 can't position top level windows, so the placeholder is a widget laid out by the <see cref="DockContainer"/>.
+	/// </summary>
+	internal class PlaceholderWindow: Gtk.Widget
 	{
-		Gdk.GC redgc;
 		uint anim;
-		int rx, ry, rw, rh;
+		Gdk.Rectangle target;
+		Gdk.Rectangle current;
 		bool allowDocking;
-		
+
 		public bool AllowDocking {
 			get {
 				return allowDocking;
@@ -49,117 +52,93 @@ namespace MonoDevelop.Components.Docking
 				allowDocking = value;
 			}
 		}
-		
-		public PlaceholderWindow (DockFrame frame): base (Gtk.WindowType.Popup)
-		{
-			SkipTaskbarHint = true;
-			Decorated = false;
-			TransientFor = (Gtk.Window) frame.Toplevel;
-			TypeHint = WindowTypeHint.Utility;
-			
-			// Create the mask for the arrow
-			
-			Realize ();
-			redgc = new Gdk.GC (GdkWindow);
-	   		redgc.RgbFgColor = frame.Style.Background (StateType.Selected);
+
+		/// <summary>Current outline, in the coordinates of the dock container.</summary>
+		public Gdk.Rectangle Rect {
+			get { return current; }
 		}
 
-		protected override void OnDestroyed ()
+		public PlaceholderWindow (DockFrame frame)
 		{
-			if (redgc != null) {
-				redgc.Dispose ();
-				redgc = null;
+			// The outline must never take the input away from the pads
+			CanTarget = false;
+			Visible = false;
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && anim != 0) {
+				GLib.Source.Remove (anim);
+				anim = 0;
 			}
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 
-		protected override void OnRealized ()
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			base.OnRealized ();
-			GdkWindow.Opacity = 0.6;
-		}
-		
-		void CreateShape (int width, int height)
-		{
-			Gdk.Color black, white;
-			black = new Gdk.Color (0, 0, 0);
-			black.Pixel = 1;
-			white = new Gdk.Color (255, 255, 255);
-			white.Pixel = 0;
-
-			using (Gdk.Pixmap pm = new Pixmap (this.GdkWindow, width, height, 1)) {
-				using (Gdk.GC gc = new Gdk.GC (pm)) {
-					gc.Background = white;
-					gc.Foreground = white;
-					pm.DrawRectangle (gc, true, 0, 0, width, height);
-
-					gc.Foreground = black;
-					pm.DrawRectangle (gc, false, 0, 0, width - 1, height - 1);
-					pm.DrawRectangle (gc, false, 1, 1, width - 3, height - 3);
-				}
-				this.ShapeCombineMask (pm, 0, 0);
-			}
-		}
-		
-		protected override void OnSizeAllocated (Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			CreateShape (allocation.Width, allocation.Height);
+			minimum = natural = 0;
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
+		/// <summary>Allocates the outline inside its parent (called by the dock container).</summary>
+		internal void AllocateOverlay (int parentWidth, int parentHeight)
 		{
-			//base.OnExposeEvent (args);
-			int w, h;
-			this.GetSize (out w, out h);
-			this.GdkWindow.DrawRectangle (redgc, false, 0, 0, w-1, h-1);
-			this.GdkWindow.DrawRectangle (redgc, false, 1, 1, w-3, h-3);
-	  		return true;
+			if (!Visible)
+				return;
+			var r = current;
+			r.Intersect (new Gdk.Rectangle (0, 0, parentWidth, parentHeight), out r);
+			if (r.Width > 0 && r.Height > 0)
+				SizeAllocate (r, -1);
 		}
-		
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			int w = Width, h = Height;
+			if (w <= 0 || h <= 0)
+				return;
+
+			snapshot.DrawCairo (this, cr => {
+				var color = new Cairo.Color (0.17, 0.55, 0.79);
+				cr.SetSourceColor (new Cairo.Color (color.R, color.G, color.B, 0.15));
+				cr.Rectangle (0, 0, w, h);
+				cr.Fill ();
+
+				// 2 pixels wide frame
+				cr.SetSourceColor (new Cairo.Color (color.R, color.G, color.B, 0.6));
+				cr.LineWidth = 2;
+				cr.Rectangle (1, 1, w - 2, h - 2);
+				cr.Stroke ();
+			});
+		}
+
 		public void Relocate (int x, int y, int w, int h, bool animate)
 		{
-			Gdk.Rectangle geometry = GtkWorkarounds.GetUsableMonitorGeometry (Screen, Screen.GetMonitorAtPoint (x, y));
-			if (x < geometry.X)
-				x = geometry.X;
-			if (x + w > geometry.Right)
-				x = geometry.Right - w;
-			if (y < geometry.Y)
-				y = geometry.Y;
-			if (y > geometry.Bottom - h)
-				y = geometry.Bottom - h;
+			var rect = new Gdk.Rectangle (x, y, w, h);
+			if (rect.Equals (target))
+				return;
+			target = rect;
 
-			if (x != rx || y != ry || w != rw || h != rh) {
-				Resize (w, h);
-				Move (x, y);
-
-				rx = x; ry = y; rw = w; rh = h;
-				
-				if (anim != 0) {
-					GLib.Source.Remove (anim);
-					anim = 0;
-				}
-				if (animate && w < 150 && h < 150) {
-					int sa = 7;
-					Move (rx-sa, ry-sa);
-					Resize (rw+sa*2, rh+sa*2);
-					anim = GLib.Timeout.Add (10, RunAnimation);
-				}
+			if (anim != 0) {
+				GLib.Source.Remove (anim);
+				anim = 0;
 			}
+
+			current = target;
+			if (animate && w < 150 && h < 150) {
+				const int sa = 7;
+				current = new Gdk.Rectangle (x - sa, y - sa, w + sa * 2, h + sa * 2);
+				anim = GLib.Timeout.Add (10, RunAnimation);
+			}
+			Parent?.QueueAllocate ();
+			QueueDraw ();
 		}
-		
+
 		bool RunAnimation ()
 		{
-			int cx, cy, ch, cw;
-			GetSize (out cw, out ch);
-			GetPosition	(out cx, out cy);
-			
-			if (cx != rx) {
-				cx++; cy++;
-				ch-=2; cw-=2;
-				Move (cx, cy);
-				Resize (cw, ch);
+			if (current.X != target.X) {
+				current = new Gdk.Rectangle (current.X + 1, current.Y + 1, current.Width - 2, current.Height - 2);
+				Parent?.QueueAllocate ();
+				QueueDraw ();
 				return true;
 			}
 			anim = 0;
@@ -176,51 +155,50 @@ namespace MonoDevelop.Components.Docking
 		}
 	}
 
-	class PadTitleWindow: Gtk.Window
+	/// <summary>Title of the dragged pad, shown next to the pointer while a pad is dragged.</summary>
+	class PadTitleWindow: BinWidget
 	{
-		public PadTitleWindow (DockFrame frame, DockItem draggedItem): base (Gtk.WindowType.Popup)
+		Gdk.Rectangle rect;
+
+		public PadTitleWindow (DockFrame frame, DockItem draggedItem)
 		{
-			SkipTaskbarHint = true;
-			Decorated = false;
-			TransientFor = (Gtk.Window) frame.Toplevel;
-			TypeHint = WindowTypeHint.Utility;
+			CanTarget = false;
+			// Shown on the first Relocate, when its position is known
+			Visible = false;
 
-			VBox mainBox = new VBox ();
-
-			HBox box = new HBox (false, 3);
-			if (draggedItem.Icon != null) {
-				var img = new Xwt.ImageView (draggedItem.Icon);
-				box.PackStart (img.ToGtkWidget (), false, false, 0);
-			}
-			Gtk.Label la = new Label ();
-			la.Markup = draggedItem.Label;
-			box.PackStart (la, false, false, 0);
-
-			mainBox.PackStart (box, false, false, 0);
-
-/*			if (draggedItem.Widget.IsRealized) {
-				var win = draggedItem.Widget.GdkWindow;
-				var alloc = draggedItem.Widget.Allocation;
-				Gdk.Pixbuf img = Gdk.Pixbuf.FromDrawable (win, win.Colormap, alloc.X, alloc.Y, 0, 0, alloc.Width, alloc.Height);
-
-				double mw = 140, mh = 140;
-				if (img.Width > img.Height)
-					mw *= 2;
-				else
-					mh *= 2;
-
-				double r = Math.Min (mw / img.Width, mh / img.Height);
-				img = img.ScaleSimple ((int)(img.Width * r), (int)(img.Height * r), Gdk.InterpType.Hyper);
-				mainBox.PackStart (new Gtk.Image (img), false, false, 0);
-			}*/
+			var box = new Box (Orientation.Horizontal, 3);
+			if (draggedItem.Icon != null)
+				box.Append (new ImageView (draggedItem.Icon));
+			var la = new Label ();
+			la.UseMarkup = true;
+			la.LabelMarkup = draggedItem.Label;
+			box.Append (la);
 
 			CustomFrame f = new CustomFrame ();
 			f.SetPadding (12, 12, 12, 12);
 			f.SetMargins (1, 1, 1, 1);
-			f.Add (mainBox);
+			f.BackgroundColor = Ide.Gui.Styles.DockBarBackground.ToGdkColor ();
+			f.Child = box;
 
-			Add (f);
-			ShowAll ();
+			Child = f;
+		}
+
+		internal void Relocate (int x, int y, int w, int h)
+		{
+			rect = new Gdk.Rectangle (x, y, w, h);
+			Visible = true;
+			Parent?.QueueAllocate ();
+		}
+
+		internal void AllocateOverlay (int parentWidth, int parentHeight)
+		{
+			if (!Visible)
+				return;
+			var r = rect;
+			r.X = Math.Max (0, Math.Min (r.X, parentWidth - r.Width));
+			r.Y = Math.Max (0, Math.Min (r.Y, parentHeight - r.Height));
+			if (r.Width > 0 && r.Height > 0)
+				SizeAllocate (r, -1);
 		}
 	}
 }

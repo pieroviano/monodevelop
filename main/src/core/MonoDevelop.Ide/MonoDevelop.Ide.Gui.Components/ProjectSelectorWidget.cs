@@ -33,7 +33,7 @@ using MonoDevelop.Components;
 namespace MonoDevelop.Ide.Gui.Components
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class ProjectSelectorWidget : Gtk.Bin
+	public partial class ProjectSelectorWidget : MonoDevelop.Components.BinWidget
 	{
 		TreeStore store;
 		bool showCheckboxes;

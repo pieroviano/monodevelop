@@ -39,7 +39,7 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Ide.Gui.OptionPanels
 {
-	public partial class KeyBindingsPanel : Gtk.Bin, IOptionsPanel
+	public partial class KeyBindingsPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 		static readonly int commandCol = 0;
 		static readonly int labelCol = 1;
@@ -75,7 +75,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			this.Build ();
 			
 			keyStore = new TreeStore (typeof (Command), typeof (string), typeof (string), typeof (string), typeof (int), typeof(string), typeof(bool), typeof (bool));
-			keyTreeView.Model = filterModel = new TreeModelFilter (keyStore, null);
+			keyTreeView.Model = filterModel = (TreeModelFilter) keyStore.FilterNew (null);
 			filterModel.VisibleColumn = visibleCol;
 			
 			TreeViewColumn col = new TreeViewColumn ();
@@ -104,8 +104,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			
 			keyTreeView.Selection.Changed += OnKeysTreeViewSelectionChange;
 			
-			accelEntry.KeyPressEvent += OnAccelEntryKeyPress;
-			accelEntry.KeyReleaseEvent += OnAccelEntryKeyRelease;
+			accelEntry.AddKeyPressHandler (OnAccelEntryKeyPress, OnAccelEntryKeyRelease, PropagationPhase.Capture);
 			accelEntry.Changed += delegate {
 				UpdateWarningLabel ();
 			};
@@ -120,8 +119,8 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 				schemeCombo.AppendText (s.Name);
 			
 			if (schemes.Count > 0) {
-				schemeCombo.RowSeparatorFunc = (TreeModel model, TreeIter iter) => {
-					if (model.GetValue (iter, 0) as string == "---")
+				schemeCombo.RowSeparatorFunc = (ITreeModel model, TreeIter iter) => {
+					if (model.GetModelValue (iter, 0) as string == "---")
 						return true;
 					return false;
 				};
@@ -163,8 +162,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 
 		void SetupAccessibility ()
 		{
-			schemeCombo.Accessible.Name = "KeyBindingsPanel.schemeCombo";
-			schemeCombo.Accessible.Description = GettextCatalog.GetString ("Select a predefined keybindings scheme");
+			schemeCombo.SetCommonAccessibilityAttributes ("KeyBindingsPanel.schemeCombo", (string)null, GettextCatalog.GetString ("Select a predefined keybindings scheme"));
 			schemeCombo.SetAccessibilityLabelRelationship (labelScheme);
 
 			searchEntry.Entry.SetCommonAccessibilityAttributes ("KeyBindingsPanel.searchEntry", GettextCatalog.GetString ("Search"),
@@ -360,16 +358,16 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		void OnKeysTreeViewSelectionChange (object sender, EventArgs e)
 		{
 			TreeSelection sel = sender as TreeSelection;
-			TreeModel model;
+			ITreeModel model;
 			TreeIter iter;
 			Command selCommand = null;
-			if (sel.GetSelected (out model, out iter) && model.GetValue (iter, commandCol) != null) {
-				selCommand = model.GetValue (iter, commandCol) as Command;
+			if (sel.GetSelected (out model, out iter) && model.GetModelValue (iter, commandCol) != null) {
+				selCommand = model.GetModelValue (iter, commandCol) as Command;
 				if (CurrentSelectedBinding?.Command == selCommand) // command is already selected
 					return;
 
 				accelComplete = false;
-				var binding = model.GetValue (iter, bindingCol) as string;
+				var binding = model.GetModelValue (iter, bindingCol) as string;
 				iter = filterModel.ConvertIterToChildIter (iter);
 				CurrentSelectedBinding = new KeyBindingSelectedEventArgs (binding.Split (new char [] { ' ' }, StringSplitOptions.RemoveEmptyEntries), 0, selCommand, iter);
 				accelIncomplete = false;
@@ -389,44 +387,40 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			chord = null;
 		}
 
-		static bool GetIsFocusSwitchKey (Gdk.EventKey e)
+		static bool GetIsFocusSwitchKey (uint keyval, Gdk.ModifierType state)
 		{
 			// TAB to focus next or SHIFT+TAB to focus previous
-			return (e.Key == Gdk.Key.Tab || e.Key == Gdk.Key.ISO_Left_Tab)
-				&& (e.State == Gdk.ModifierType.None || e.State == Gdk.ModifierType.ShiftMask);
+			var key = (Gdk.Key) keyval;
+			var modifiers = state & Gtk.Accelerator.DefaultModMask;
+			return (key == Gdk.Key.Tab || key == Gdk.Key.ISO_Left_Tab)
+				&& (modifiers == Gdk.ModifierType.None || modifiers == Gdk.ModifierType.ShiftMask);
 		}
 		
-		[GLib.ConnectBefore]
-		void OnAccelEntryKeyPress (object sender, KeyPressEventArgs e)
+		bool OnAccelEntryKeyPress (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			Gdk.Key key = e.Event.Key;
+			Gdk.Key key = (Gdk.Key) keyval;
 			string accel;
-			
-			e.RetVal = true;
 			
 			if (accelComplete) {
 				// allow Gtk to handle the TAB combo (a11y: keyboard only users need to be able to move the focus)
-				if (GetIsFocusSwitchKey (e.Event)) {
-					e.RetVal = false;
-					return;
-				}
+				if (GetIsFocusSwitchKey (keyval, state))
+					return false;
 				ResetAccelEntry ();
 				if (key == Gdk.Key.BackSpace)
-					return;
+					return true;
 			}
 			// TAB / SHIFT-TAB are reserved and can not be used as chords
 			if (chord == null) {
-				if (GetIsFocusSwitchKey (e.Event)) {
+				if (GetIsFocusSwitchKey (keyval, state)) {
 					ResetAccelEntry ();
 					// allow Gtk to handle the TAB combo (a11y: keyboard only users need to be able to move the focus)
-					e.RetVal = false;
-					return;
+					return false;
 				}
 			}
 			
 			accelComplete = false;
 			bool combinationComplete;
-			accel = KeyBindingManager.AccelLabelFromKey (e.Event, out combinationComplete);
+			accel = KeyBindingManager.AccelLabelFromKey (keyval, keycode, state, out combinationComplete);
 			if (combinationComplete) {
 				CurrentKey = KeyBindingManager.Binding (chord, accel);
 				accelIncomplete = false;
@@ -439,6 +433,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 				accelIncomplete = true;
 				CurrentKey = accel;
 			}
+			return true;
 		}
 
 		string currentKey;
@@ -468,7 +463,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			}
 		}
 		
-		void OnAccelEntryKeyRelease (object sender, KeyReleaseEventArgs e)
+		void OnAccelEntryKeyRelease (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			if (accelIncomplete)
 				CurrentKey = chord != null ? chord : string.Empty;
@@ -561,11 +556,11 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			}
 
 			if (conflicts.Count == 0) {
-				globalWarningBox.Hide ();
+				globalWarningBox.Visible = false;
 				return;
 			}
 
-			globalWarningBox.Show ();
+			globalWarningBox.Visible = true;
 
 			conflicButton.ContextMenuRequested = delegate {
 				ContextMenu menu = new ContextMenu ();
@@ -650,7 +645,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		List<Command> FindBindings (string accel)
 		{
 			List<Command> bindings = new List<Command> ();
-			TreeModel model = (TreeModel) keyStore;
+			var model = keyStore;
 			TreeIter iter;
 			if (!model.GetIterFirst (out iter))
 				return bindings;
@@ -691,7 +686,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			return true;
 		}
 		
-		public bool IsVisible ()
+		public new bool IsVisible ()
 		{
 			return true;
 		}
@@ -720,13 +715,14 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			}
 		}
 
-		protected override void OnDestroyed()
+		public override void Destroy ()
 		{
 			if (bindingRenderer != null) {
 				bindingRenderer.KeyBindingSelected -= BindingRenderer_KeyBindingSelected;
+				bindingRenderer.Detach ();
 				bindingRenderer = null;
 			}
-			base.OnDestroyed();
+			base.Destroy ();
 		}
 
 		struct KeyBindingHitTestResult
@@ -741,7 +737,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		class CellRendererKeyButtons : CellRendererText
 		{
 			static Pango.FontDescription KeySymbolFont = Styles.DefaultFont.Copy ();
-			
+
 			const int KeyVPadding = 1;
 			const int KeyHPadding = 6;
 			const int KeyBgRadius = 3;
@@ -750,6 +746,9 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			TreeView keyBindingsTree;
 
 			TooltipPopoverWindow tooltipWindow;
+
+			// Last pointer position over the tree (widget coordinates): scroll controllers do not report one
+			double lastMouseX, lastMouseY;
 
 			[GLib.Property ("command")]
 			public Command Command { get; set; }
@@ -769,11 +768,18 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			{
 				keyBindingsPanel = panel;
 				keyBindingsTree = panel.keyTreeView;
-				keyBindingsTree.ButtonPressEvent += HandleKeyTreeButtonPressEvent;
-				keyBindingsTree.MotionNotifyEvent += HandleKeyTreeMotionNotifyEvent;
-				keyBindingsTree.ScrollEvent += HandleKeyTreeScrollEvent;
-				keyBindingsTree.LeaveNotifyEvent += HandleKeyTreeLeaveNotifyEvent;
+				// Capture phase: the hit test runs before the tree view handles the click (the original ConnectBefore)
+				keyBindingsTree.AddClickHandler (HandleKeyTreeButtonPress, phase: PropagationPhase.Capture);
+				keyBindingsTree.AddMotionHandler (HandleKeyTreeMotionNotify, null, HideConflictTooltip);
+				keyBindingsTree.AddScrollHandler (HandleKeyTreeScroll);
 				keyBindingsTree.Unrealized += HandleKeyTreeUnrealized;
+			}
+
+			/// <summary>Releases the owning panel; called when the panel is destroyed.</summary>
+			internal void Detach ()
+			{
+				keyBindingsPanel = null;
+				HideConflictTooltip ();
 			}
 
 			void HideConflictTooltip ()
@@ -784,30 +790,27 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 				}
 			}
 
-			void HandleKeyTreeLeaveNotifyEvent (object o, LeaveNotifyEventArgs args)
-			{
-				HideConflictTooltip ();
-			}
-
 			void HandleKeyTreeUnrealized (object sender, EventArgs e)
 			{
 				HideConflictTooltip ();
 			}
 
-			void HandleKeyTreeScrollEvent (object o, ScrollEventArgs args)
+			bool HandleKeyTreeScroll (double dx, double dy, Gdk.ModifierType state)
 			{
-				HandleKeyTreeMotion (args.Event.X, args.Event.Y);
+				HandleKeyTreeMotion (lastMouseX, lastMouseY);
+				return false;
 			}
 
-			[GLib.ConnectBefore ()]
-			void HandleKeyTreeMotionNotifyEvent (object o, MotionNotifyEventArgs args)
+			void HandleKeyTreeMotionNotify (double x, double y)
 			{
-				HandleKeyTreeMotion (args.Event.X, args.Event.Y);
+				lastMouseX = x;
+				lastMouseY = y;
+				HandleKeyTreeMotion (x, y);
 			}
 
 			void HandleKeyTreeMotion (double mouseX, double mouseY)
 			{
-				if (keyBindingsPanel.duplicates?.Count <= 0)
+				if (keyBindingsPanel == null || keyBindingsPanel.duplicates?.Count <= 0)
 					return;
 
 				var hit = HitTest (mouseX, mouseY);
@@ -826,7 +829,6 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 					if (tooltipWindow == null) {
 						tooltipWindow = TooltipPopoverWindow.Create ();
 						tooltipWindow.ShowArrow = true;
-						//tooltipWindow.LeaveNotifyEvent += delegate { HideConflictTooltip (); };
 					}
 
 					var text = string.Empty;
@@ -843,7 +845,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 							acmdConflicts.Length) + "\n\n";
 						text += GettextCatalog.GetString ("Conflicts:");
 						foreach (var conflict in acmdConflicts)
-							text += "\n\u2022 " + conflict.Category + " \u2013 " + conflict.DisplayName;
+							text += "\n• " + conflict.Category + " – " + conflict.DisplayName;
 						cmdDuplicates = cmdDuplicates.Except (acmdConflicts);
 					}
 					if (cmdDuplicates.Count () > 0) {
@@ -852,7 +854,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 						text += GettextCatalog.GetString ("Duplicates:");
 
 						foreach (var cmd in cmdDuplicates)
-							text += "\n\u2022 " + cmd.Category + " \u2013 " + cmd.DisplayName;
+							text += "\n• " + cmd.Category + " – " + cmd.DisplayName;
 					}
 
 					tooltipWindow.Markup = text;
@@ -863,32 +865,31 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 					HideConflictTooltip ();
 			}
 
-			[GLib.ConnectBefore ()]
-			void HandleKeyTreeButtonPressEvent (object o, ButtonPressEventArgs args)
+			void HandleKeyTreeButtonPress (ClickInfo click)
 			{
-				if (KeyBindingSelected == null)
+				if (KeyBindingSelected == null || keyBindingsPanel == null)
 					return;
-				var hit = HitTest (args.Event.X, args.Event.Y);
+				var hit = HitTest (click.X, click.Y);
 				if (hit.Command == null)
 					return;
 				var a = new KeyBindingSelectedEventArgs (hit.AllKeys, hit.SelectedKey, hit.Command, hit.Iter);
 				KeyBindingSelected (this, a);
 			}
 
+			/// <summary>Hit tests the key buttons; <paramref name="mouseX"/>/<paramref name="mouseY"/> are tree widget coordinates.</summary>
 			KeyBindingHitTestResult HitTest (double mouseX, double mouseY)
 			{
 				KeyBindingHitTestResult result = new KeyBindingHitTestResult ();
 				TreeIter iter;
 				TreePath path;
 				int cellx, celly, mx, my;
-				mx = (int)mouseX;
-				my = (int)mouseY;
+				keyBindingsTree.ConvertWidgetToBinWindowCoords ((int)mouseX, (int)mouseY, out mx, out my);
 
 				if (!GetCellPosition (mx, my, out cellx, out celly, out iter, out path))
 					return result;
 
-				Text = keyBindingsTree.Model.GetValue (iter, bindingCol) as string ?? string.Empty;
-				Command = keyBindingsTree.Model.GetValue (iter, commandCol) as Command;
+				Text = keyBindingsTree.Model.GetModelValue (iter, bindingCol) as string ?? string.Empty;
+				Command = keyBindingsTree.Model.GetModelValue (iter, commandCol) as Command;
 
 				var filter = keyBindingsTree.Model as TreeModelFilter;
 				if (filter != null)
@@ -903,7 +904,9 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 					// GetCellArea reports the outer cell bounds, therefore we need to add 2px
 					var xpad = (int)Xpad + 2;
 					var cellBounds = keyBindingsTree.GetCellArea (path, keyBindingsPanel.bindingTVCol);
-					keyBindingsTree.ConvertBinWindowToWidgetCoords (cellBounds.X, cellBounds.Y, out cellBounds.X, out cellBounds.Y);
+					keyBindingsTree.ConvertBinWindowToWidgetCoords (cellBounds.X, cellBounds.Y, out int boundsX, out int boundsY);
+					cellBounds.X = boundsX;
+					cellBounds.Y = boundsY;
 					int i = 0;
 					foreach (var key in result.AllKeys) {
 						layout.SetText (KeyBindingManager.BindingToDisplayLabel (key, false));
@@ -921,8 +924,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 							cellBounds.X += cellx;
 
 							result.SelectedKey = i;
-							result.ButtonBounds = new Gdk.Rectangle (cellBounds.X + xpad, cellBounds.Y + ypad, buttonWidth, buttonHeight);
-							result.ButtonBounds.Inflate (0, 2);
+							result.ButtonBounds = new Gdk.Rectangle (cellBounds.X + xpad, cellBounds.Y + ypad - 2, buttonWidth, buttonHeight + 4);
 							return result;
 						}
 
@@ -952,12 +954,12 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 				return false;
 			}
 
-			protected override void Render (Gdk.Drawable window, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, CellRendererState flags)
+			protected override void OnSnapshot (Snapshot snapshot, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
 			{
-				if (string.IsNullOrEmpty (Text))
+				if (string.IsNullOrEmpty (Text) || keyBindingsPanel == null)
 					return;
 
-				using (var cr = Gdk.CairoHelper.Create (window)) {
+				snapshot.DrawCairo (cell_area, cr => {
 					using (var layout = new Pango.Layout (widget.PangoContext)) {
 						var xpad = (int)Xpad;
 						int w, h;
@@ -998,13 +1000,12 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 							xpad += buttonWidth + Spacing;
 						}
 					}
-				}
+				});
 			}
 
-			public override void GetSize (Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+			/// <summary>Size needed by the key buttons of the current <see cref="CellRendererText.Text"/>.</summary>
+			void GetButtonsSize (Widget widget, out int width, out int height)
 			{
-				base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-				x_offset = y_offset = 0;
 				if (string.IsNullOrEmpty (Text)) {
 					width = 0;
 					height = 0;
@@ -1021,18 +1022,33 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 						layout.GetPixelSize (out w, out h);
 						if (height == 0)
 							height = h + (KeyVPadding * 2) + 1;
-						
+
 						buttonWidth = w + (2 * KeyHPadding);
 						width += buttonWidth + Spacing;
 					}
 				}
 			}
 
-			protected override void OnDestroyed()
+			protected override void OnGetPreferredWidth (Widget widget, out int minimum_size, out int natural_size)
 			{
-				keyBindingsPanel = null;
-				HideConflictTooltip ();
-				base.OnDestroyed();
+				GetButtonsSize (widget, out int width, out _);
+				minimum_size = natural_size = width;
+			}
+
+			protected override void OnGetPreferredHeight (Widget widget, out int minimum_size, out int natural_size)
+			{
+				GetButtonsSize (widget, out _, out int height);
+				minimum_size = natural_size = height;
+			}
+
+			protected override void OnGetPreferredHeightForWidth (Widget widget, int width, out int minimum_height, out int natural_height)
+			{
+				OnGetPreferredHeight (widget, out minimum_height, out natural_height);
+			}
+
+			protected override void OnGetPreferredWidthForHeight (Widget widget, int height, out int minimum_width, out int natural_width)
+			{
+				OnGetPreferredWidth (widget, out minimum_width, out natural_width);
 			}
 		}
 	}

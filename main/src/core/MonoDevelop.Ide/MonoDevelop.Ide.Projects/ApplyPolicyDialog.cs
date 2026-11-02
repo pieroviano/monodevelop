@@ -47,8 +47,7 @@ namespace MonoDevelop.Ide.Projects
 			
 			this.Build ();
 			tree = new PoliciesListSummaryTree ();
-			policiesScroll.Add (tree);
-			tree.Show ();
+			policiesScroll.Child = tree;
 			
 			foreach (PolicySet pset in PolicyService.GetPolicySets ())
 				if (pset.Visible)
@@ -67,10 +66,11 @@ namespace MonoDevelop.Ide.Projects
 			combPolicies.Changed += CombPolicies_Changed;
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
-			combPolicies.Changed -= CombPolicies_Changed;
-			base.OnDestroyed ();
+			if (Handle != IntPtr.Zero)
+				combPolicies.Changed -= CombPolicies_Changed;
+			base.Destroy ();
 		}
 
 		void CombPolicies_Changed (object sender, EventArgs e)
@@ -212,30 +212,28 @@ namespace MonoDevelop.Ide.Projects
 			this.AppendColumn ("", new Gtk.CellRendererText (), "text", 0);
 		}
 		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (HasPolicies) {
-				return base.OnExposeEvent (evnt);
+			if (HasPolicies || (string.IsNullOrEmpty (message) && ShowEmptyItem)) {
+				base.OnSnapshot (snapshot);
+				return;
 			}
-			
-			var win = evnt.Window;
-			win.Clear ();
-			if (string.IsNullOrEmpty (message)) {
-				if (ShowEmptyItem)
-					return base.OnExposeEvent (evnt);
-				return true;
-			}
-			
+
+			if (string.IsNullOrEmpty (message))
+				return;
+
 			using (var layout = PangoUtil.CreateLayout (this)) {
 				layout.SetMarkup ("<i>" + GLib.Markup.EscapeText (message) + "</i>");
 				int w, h;
 				layout.GetPixelSize (out w, out h);
-				var a = Allocation;
-				var x = (a.Width - w) / 2;
-				var y = (a.Height - h ) / 2;
-				win.DrawLayout (Style.TextGC (Gtk.StateType.Normal), x, y, layout);
+				var x = (Width - w) / 2;
+				var y = (Height - h) / 2;
+				snapshot.DrawCairo (this, cr => {
+					cr.MoveTo (x, y);
+					cr.SetSourceColor (StyleColor.ToCairoColor ());
+					cr.ShowLayout (layout);
+				});
 			}
-			return true;
 		}
 		
 		public bool HasPolicies { get; private set; }

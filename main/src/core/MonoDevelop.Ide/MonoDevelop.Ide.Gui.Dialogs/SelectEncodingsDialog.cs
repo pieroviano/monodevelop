@@ -100,10 +100,9 @@ namespace MonoDevelop.Ide
 
 		void EnsureItemIsSelected ()
 		{
-			TreeModel model;
 			TreeIter iter;
 			// if the last item is removed no item is selected.
-			if (!listSelected.Selection.GetSelected (out model, out iter)) {
+			if (!listSelected.Selection.GetSelected (out iter)) {
 				// Select last item
 				if (storeSelected.GetIterFirst (out iter)) {
 					TreeIter last = iter;
@@ -116,10 +115,9 @@ namespace MonoDevelop.Ide
 		
 		void MoveItem (TreeView sourceList, ListStore sourceStore, TreeView targetList, ListStore targetStore)
 		{
-			TreeModel model;
 			TreeIter iter;
 			
-			if (sourceList.Selection.GetSelected (out model, out iter)) {
+			if (sourceList.Selection.GetSelected (out iter)) {
 				TreeIter newiter = targetStore.AppendValues (sourceStore.GetValue (iter, 0), sourceStore.GetValue (iter, 1), sourceStore.GetValue (iter, 2));
 				targetList.Selection.SelectIter (newiter);
 				
@@ -132,10 +130,9 @@ namespace MonoDevelop.Ide
 		
 		protected void OnUpClicked (object ob, EventArgs args)
 		{
-			TreeModel model;
 			TreeIter iter;
 			
-			if (listSelected.Selection.GetSelected (out model, out iter)) {
+			if (listSelected.Selection.GetSelected (out iter)) {
 				TreePath iterPath = storeSelected.GetPath (iter);
 				TreeIter oldIter;
 				if (storeSelected.GetIterFirst (out oldIter)) {
@@ -159,10 +156,9 @@ namespace MonoDevelop.Ide
 		
 		protected void OnDownClicked (object ob, EventArgs args)
 		{
-			TreeModel model;
 			TreeIter iter;
 			
-			if (listSelected.Selection.GetSelected (out model, out iter)) {
+			if (listSelected.Selection.GetSelected (out iter)) {
 				TreeIter oldIter = iter;
 				if (storeSelected.IterNext (ref iter))
 					storeSelected.Swap (oldIter, iter);

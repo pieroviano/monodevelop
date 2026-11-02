@@ -42,24 +42,24 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			return ((TimeSpan)Value).ToString ();
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			return new TimeSpanEditor ();
 		}
 	}
 	
-	public class TimeSpanEditor: Gtk.HBox, IPropertyEditor
+	public class TimeSpanEditor: Gtk.Box, IPropertyEditor
 	{
 		Gtk.Entry entry;
 		TimeSpan time;
 		
-		public TimeSpanEditor()
+		public TimeSpanEditor () : base (Gtk.Orientation.Horizontal, 0)
 		{
 			entry = new Gtk.Entry ();
 			entry.Changed += OnChanged;
 			entry.HasFrame = false;
-			PackStart (entry, true, true, 0);
-			ShowAll ();
+			entry.Hexpand = true;
+			Append (entry);
 		}
 		
 		public void Initialize (EditSession session)

@@ -42,10 +42,9 @@ namespace MonoDevelop.Components.DockNotebook
 	{
 		static List<DockWindow> allWindows = new List<DockWindow> ();
 
-		public DockWindow () : base (Gtk.WindowType.Toplevel)
+		public DockWindow ()
 		{
 			IdeApp.CommandService.RegisterTopWindow (this);
-			AddAccelGroup (IdeApp.CommandService.AccelGroup);
 
 			allWindows.Add (this);
 
@@ -53,6 +52,16 @@ namespace MonoDevelop.Components.DockNotebook
 			notebook.NavigationButtonsVisible = false;
 			Child = new DockNotebookContainer (notebook);
 			notebook.InitSize ();
+
+			// Keep the workbench informed of the focused widget of this window
+			AddNotification ("is-active", (o, args) => {
+				if (IsActive)
+					((DefaultWorkbench)IdeApp.Workbench.RootWindow).SetActiveWidget (FocusWidget);
+			});
+
+			this.AddKeyPressHandler ((keyval, keycode, state) =>
+				((DefaultWorkbench)IdeApp.Workbench.RootWindow).FilterWindowKeypress (keyval, state),
+				phase: PropagationPhase.Capture);
 		}
 
 		public static IEnumerable<DockWindow> GetAllWindows ()
@@ -74,7 +83,7 @@ namespace MonoDevelop.Components.DockNotebook
 			return control == this;
 		}
 
-		protected override bool OnDeleteEvent (Event evnt)
+		protected override bool OnCloseRequest ()
 		{
 			var documents = IdeApp.Workbench.Documents.Where (IsChildOfMe).ToList ();
 
@@ -102,7 +111,7 @@ namespace MonoDevelop.Components.DockNotebook
 				CloseDocumentsAsync (documents).Ignore ();
 				return true;
 			}
-			return base.OnDeleteEvent (evnt);
+			return base.OnCloseRequest ();
 		}
 
 		async Task CloseDocumentsAsync (List<Document> documents)
@@ -124,40 +133,23 @@ namespace MonoDevelop.Components.DockNotebook
 				return 1;
 		}
 
-		protected override bool OnConfigureEvent (EventConfigure evnt)
+		protected override void Dispose (bool disposing)
 		{
-			((DefaultWorkbench)IdeApp.Workbench.RootWindow).SetActiveWidget (Focus);
-			return base.OnConfigureEvent (evnt);
-		}
-
-		protected override bool OnFocusInEvent (EventFocus evnt)
-		{
-			((DefaultWorkbench)IdeApp.Workbench.RootWindow).SetActiveWidget (Focus);
-			return base.OnFocusInEvent (evnt);
-		}
-
-		protected override bool OnKeyPressEvent (EventKey evnt)
-		{
-			return ((DefaultWorkbench)IdeApp.Workbench.RootWindow).FilterWindowKeypress (evnt) || base.OnKeyPressEvent (evnt);
-		}
-
-		protected override void OnDestroyed ()
-		{
-			allWindows.Remove (this);
-			RemoveAccelGroup (IdeApp.CommandService.AccelGroup);
-			base.OnDestroyed ();
+			if (disposing)
+				allWindows.Remove (this);
+			base.Dispose (disposing);
 		}
 
 		protected override void OnRealized ()
 		{
 			base.OnRealized ();
 			// A small delay to make sure the window is fully rendered before showing it
-			GdkWindow.Opacity = 0;
+			Opacity = 0;
 			GLib.Timeout.Add (120, delegate {
-				GdkWindow.Opacity = 1;
+				Opacity = 1;
 				return false;
 			});
 		}
 	}
-	
+
 }

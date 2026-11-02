@@ -42,24 +42,24 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			return ((DateTime)Value).ToLongDateString ();
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			return new DateTimeEditor ();
 		}
 	}
 	
-	public class DateTimeEditor: Gtk.HBox, IPropertyEditor
+	public class DateTimeEditor: Gtk.Box, IPropertyEditor
 	{
 		Gtk.Entry entry;
 		DateTime time;
 		
-		public DateTimeEditor()
+		public DateTimeEditor () : base (Gtk.Orientation.Horizontal, 0)
 		{
 			entry = new Gtk.Entry ();
 			entry.Changed += OnChanged;
 			entry.HasFrame = false;
-			PackStart (entry, true, true, 0);
-			ShowAll ();
+			entry.Hexpand = true;
+			Append (entry);
 		}
 		
 		public void Initialize (EditSession session)

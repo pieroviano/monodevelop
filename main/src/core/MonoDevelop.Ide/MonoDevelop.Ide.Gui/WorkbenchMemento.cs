@@ -50,9 +50,9 @@ namespace MonoDevelop.Ide.Gui
 			return properties;
 		}
 		
-		public Gdk.WindowState WindowState {
+		public Gdk.ToplevelState WindowState {
 			get {
-				return properties.Get ("windowState", Gdk.WindowState.Maximized);
+				return properties.Get ("windowState", Gdk.ToplevelState.Maximized);
 			}
 			set {
 				 properties.Set ("windowState", value);
@@ -61,7 +61,7 @@ namespace MonoDevelop.Ide.Gui
 		
 		public Rectangle Bounds {
 			get {
-				var geo = Gdk.Screen.Default.GetMonitorGeometry (0);
+				var geo = ((Gdk.Monitor) Gdk.Display.Default.Monitors.GetObject (0)).Geometry;
 				return properties.Get ("bounds", new Rectangle(geo.X + 50, geo.Y + 50, geo.Width - 100, geo.Height - 150));
 			}
 			set {

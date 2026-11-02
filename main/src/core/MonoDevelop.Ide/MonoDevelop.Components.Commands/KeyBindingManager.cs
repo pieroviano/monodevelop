@@ -55,11 +55,11 @@ namespace MonoDevelop.Components.Commands
 		static KeyBindingManager ()
 		{
 			if (isMac) {
-				SelectionModifierAlt = Gdk.ModifierType.Mod5Mask;
-				SelectionModifierControl = Gdk.ModifierType.Mod1Mask | Gdk.ModifierType.MetaMask;
+				SelectionModifierAlt = Gdk.ModifierType.AltMask;
+				SelectionModifierControl = Gdk.ModifierType.MetaMask;
 				SelectionModifierSuper = Gdk.ModifierType.ControlMask;
 			} else {
-				SelectionModifierAlt = Gdk.ModifierType.Mod1Mask;
+				SelectionModifierAlt = Gdk.ModifierType.AltMask;
 				SelectionModifierControl = Gdk.ModifierType.ControlMask;
 				SelectionModifierSuper = Gdk.ModifierType.SuperMask;
 			}
@@ -120,7 +120,7 @@ namespace MonoDevelop.Components.Commands
 			
 			if ((mod & Gdk.ModifierType.ControlMask) != 0)
 				label += "Control+";
-			if ((mod & Gdk.ModifierType.Mod1Mask) != 0)
+			if ((mod & Gdk.ModifierType.AltMask) != 0)
 				label += "Alt+";
 			if ((mod & Gdk.ModifierType.ShiftMask) != 0)
 				label += "Shift+";
@@ -180,26 +180,26 @@ namespace MonoDevelop.Components.Commands
 		}
 		
 		// This version is used by the CommandManager to track the keystrokes the user has hit for binding lookups.
-		public static KeyboardShortcut[] AccelsFromKey (Gdk.EventKey raw, out bool complete)
+		public static KeyboardShortcut[] AccelsFromKey (uint keyval, uint keycode, Gdk.ModifierType state, out bool complete)
 		{
 			KeyboardShortcut[] shortcuts;
 			Gdk.ModifierType modifier;
 			Gdk.Key key;
 			
-			GtkWorkarounds.MapKeys (raw, out key, out modifier, out shortcuts);
+			GtkWorkarounds.MapKeys (Gdk.Display.Default, keyval, keycode, state, 0, out key, out modifier, out shortcuts);
 			complete = !KeyIsModifier (key);
 			
 			return shortcuts;
 		}
 		
 		// This version is used by the KeyBindingsPanel to display the keystrokes that the user has hit.
-		public static string AccelLabelFromKey (Gdk.EventKey raw, out bool complete)
+		public static string AccelLabelFromKey (uint keyval, uint keycode, Gdk.ModifierType state, out bool complete)
 		{
 			KeyboardShortcut[] shortcuts;
 			Gdk.ModifierType modifier;
 			Gdk.Key key;
 			
-			GtkWorkarounds.MapKeys (raw, out key, out modifier, out shortcuts);
+			GtkWorkarounds.MapKeys (Gdk.Display.Default, keyval, keycode, state, 0, out key, out modifier, out shortcuts);
 			bool keyIsModifier = KeyIsModifier (key);
 			complete = !keyIsModifier;
 			
@@ -211,11 +211,11 @@ namespace MonoDevelop.Components.Commands
 			return accel + KeyToString (shortcuts[0].Key);
 		}
 		
-		public static string AccelLabelFromKey (Gdk.EventKey raw)
+		public static string AccelLabelFromKey (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			bool complete;
 			
-			return AccelLabelFromKey (raw, out complete);
+			return AccelLabelFromKey (keyval, keycode, state, out complete);
 		}
 		
 		static string AccelLabelFromKey (Gdk.Key key, Gdk.ModifierType modifier, out bool complete)
@@ -367,10 +367,39 @@ namespace MonoDevelop.Components.Commands
 			return chord + "|" + accel;
 		}
 		
+		/// <summary>
+		/// Converts a binding to a GTK accelerator string (e.g. <c>&lt;Control&gt;&lt;Shift&gt;s</c>) used by menu items to
+		/// display their shortcut. Returns null for chords and unparsable bindings, which GTK accelerators can't represent.
+		/// </summary>
+		public static string BindingToGtkAccelerator (string binding)
+		{
+			uint chordKey, key;
+			Gdk.ModifierType chordModifier, modifier;
+			if (string.IsNullOrEmpty (binding) || !BindingToKeys (binding, out chordKey, out chordModifier, out key, out modifier) || chordKey != 0 || key == 0)
+				return null;
+
+			string keyName = Gdk.Keyval.Name (key);
+			if (string.IsNullOrEmpty (keyName))
+				return null;
+
+			var sb = new System.Text.StringBuilder ();
+			if ((modifier & Gdk.ModifierType.ControlMask) != 0)
+				sb.Append ("<Control>");
+			if ((modifier & Gdk.ModifierType.AltMask) != 0)
+				sb.Append ("<Alt>");
+			if ((modifier & Gdk.ModifierType.ShiftMask) != 0)
+				sb.Append ("<Shift>");
+			if ((modifier & Gdk.ModifierType.MetaMask) != 0)
+				sb.Append ("<Meta>");
+			if ((modifier & Gdk.ModifierType.SuperMask) != 0)
+				sb.Append ("<Super>");
+			return sb.Append (keyName).ToString ();
+		}
+
 		#endregion
-		
+
 		#region Display label formatting
-		
+
 		public static string BindingToDisplayLabel (string binding, bool concise)
 		{
 			return BindingToDisplayLabel (binding, concise, false);
@@ -440,7 +469,7 @@ namespace MonoDevelop.Components.Commands
 			
 			if ((mod & Gdk.ModifierType.ControlMask) != 0)
 				label += concise? "Ctrl+" : "Control+";
-			if ((mod & Gdk.ModifierType.Mod1Mask) != 0)
+			if ((mod & Gdk.ModifierType.AltMask) != 0)
 				label += "Alt+";
 			if ((mod & Gdk.ModifierType.ShiftMask) != 0)
 				label += "Shift+";
@@ -456,7 +485,7 @@ namespace MonoDevelop.Components.Commands
 		{
 			switch (name) {
 			case "Alt":
-				return Gdk.ModifierType.Mod1Mask;
+				return Gdk.ModifierType.AltMask;
 			case "Shift":
 				return Gdk.ModifierType.ShiftMask;
 			case "Control":
@@ -768,9 +797,9 @@ namespace MonoDevelop.Components.Commands
 				ret += "⌃";
 				mod ^= Gdk.ModifierType.ControlMask;
 			}
-			if ((mod & Gdk.ModifierType.Mod1Mask) != 0) {
+			if ((mod & Gdk.ModifierType.AltMask) != 0) {
 				ret += "⌥";
-				mod ^= Gdk.ModifierType.Mod1Mask;
+				mod ^= Gdk.ModifierType.AltMask;
 			}
 			if ((mod & Gdk.ModifierType.ShiftMask) != 0) {
 				ret += "⇧";

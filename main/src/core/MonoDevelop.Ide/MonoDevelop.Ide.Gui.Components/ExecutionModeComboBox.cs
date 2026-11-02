@@ -35,7 +35,7 @@ using MonoDevelop.Core;
 namespace MonoDevelop.Ide.Gui.Components
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class ExecutionModeComboBox : Gtk.Bin
+	public partial class ExecutionModeComboBox : MonoDevelop.Components.BinWidget
 	{
 		List<IExecutionMode> modes = new List<IExecutionMode> ();
 		
@@ -45,7 +45,7 @@ namespace MonoDevelop.Ide.Gui.Components
 		{
 			this.Build ();
 			
-			comboMode.RowSeparatorFunc = delegate (TreeModel model, TreeIter iter) {
+			comboMode.RowSeparatorFunc = delegate (ITreeModel model, TreeIter iter) {
 				string item = (string) comboMode.Model.GetValue (iter, 0);
 				return item == "--";
 			};

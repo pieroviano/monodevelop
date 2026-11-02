@@ -63,7 +63,7 @@ namespace MonoDevelop.Ide.Execution
 				comboTargetMode.SelectedMode = modeToExecute;
 				mode = modeToExecute;
 				editMode = false;
-				buttonOk.Label = Gtk.Stock.Execute;
+				buttonOk.Label = GettextCatalog.GetString ("_Execute");
 			}
 			else if (data != null) {
 				// Editing an existing custom mode
@@ -96,10 +96,8 @@ namespace MonoDevelop.Ide.Execution
 				oldData [editor.Key] = data;
 			}
 			
-			foreach (Gtk.Widget w in notebook.Children) {
-				notebook.Remove (w);
-				w.Destroy ();
-			}
+			for (int i = notebook.NPages - 1; i >= 0; i--)
+				notebook.RemovePage (i);
 			
 			if (mode == null)
 				return;
@@ -113,7 +111,7 @@ namespace MonoDevelop.Ide.Execution
 				if (!oldData.TryGetValue (customizer, out cdata))
 					cdata = data.GetCommandData (customizer.Id);
 				Gtk.Widget w = e.Load (ctx, cdata);
-				w.Show ();
+
 				notebook.AppendPage (w, new Gtk.Label (customizer.Name));
 			}
 			
@@ -125,7 +123,7 @@ namespace MonoDevelop.Ide.Execution
 				if (!oldData.TryGetValue (mode, out cdata))
 					cdata = data.Data;
 				Gtk.Widget w = e.Load (ctx, data.Data);
-				w.Show ();
+
 				notebook.AppendPage (w, new Gtk.Label (mode.Name));
 			}
 			notebook.ShowTabs = notebook.ShowBorder = currentEditors.Count > 1;

@@ -42,7 +42,7 @@ using Pango;
 
 namespace MonoDevelop.Ide.Gui.Components
 {
-	public class LogView : Gtk.VBox
+	public class LogView : Gtk.Box
 	{
 		TextBuffer buffer;
 		TextView textEditorControl;
@@ -94,6 +94,9 @@ namespace MonoDevelop.Ide.Gui.Components
 				menuSet.AddItem (EditCommands.Cut);
 				menuSet.AddItem (EditCommands.Paste);
 				menuSet.AddItem (EditCommands.SelectAll);
+
+				// Capture phase: sees the click before the TextView changes the cursor position (was OnButtonPressEvent).
+				this.AddClickHandler (OnButtonPressed, null, 0, PropagationPhase.Capture);
 			}
 
 			[CommandHandler (EditCommands.SelectAll)]
@@ -114,13 +117,11 @@ namespace MonoDevelop.Ide.Gui.Components
 
 				if (Buffer.HasSelection && Buffer.GetSelectionBounds (out start, out end)) {
 					var text = Buffer.GetText (start, end, false);
-					var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-					clipboard.Text = text;
+					ClipboardHelper.SetText (text);
 
 					if (Platform.IsLinux) {
 						// gtk has different clipboards for CLIPBOARD and PRIMARY only on Linux.
-						clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-						clipboard.Text = text;
+						ClipboardHelper.SetText (text, primary: true);
 					}
 				}
 			}
@@ -131,8 +132,7 @@ namespace MonoDevelop.Ide.Gui.Components
 				if (!Buffer.HasSelection)
 					return;
 				if (Editable) {
-					var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-					Buffer.CutClipboard (clipboard, false);
+					Buffer.CutClipboard (ClipboardHelper.Clipboard, false);
 				} else {
 					CopyText ();
 				}
@@ -142,8 +142,8 @@ namespace MonoDevelop.Ide.Gui.Components
 			void PasteText ()
 			{
 				if (Editable) {
-					var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-					Buffer.PasteClipboard (clipboard);
+					var insert = Buffer.GetIterAtOffset (Buffer.CursorPosition);
+					Buffer.PasteClipboard (ClipboardHelper.Clipboard, ref insert, true);
 				}
 			}
 
@@ -205,26 +205,24 @@ namespace MonoDevelop.Ide.Gui.Components
 				return false;
 			}
 
-			protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+			void OnButtonPressed (ClickInfo evnt)
 			{
-				if (evnt.Type == Gdk.EventType.ButtonPress && evnt.Button == 3) {
+				if (evnt.NPress == 1 && evnt.Button == 3) {
 					IdeApp.CommandService.ShowContextMenu (this, evnt, menuSet, this);
-
-					return false;
-				} else if (evnt.Type == Gdk.EventType.TwoButtonPress) {
+				} else if (evnt.NPress == 2) {
 					var cursorPos = Buffer.GetIterAtOffset (Buffer.CursorPosition);
 					TextIter iterStart;
 					TextIter iterEnd;
 					string lineText;
 
 					try {
-						iterStart = Buffer.GetIterAtLine (cursorPos.Line);
+						Buffer.GetIterAtLine (out iterStart, cursorPos.Line);
 						iterEnd = Buffer.GetIterAtOffset (iterStart.Offset + iterStart.CharsInLine);
 
 						lineText = Buffer.GetText (iterStart, iterEnd, true);
 					} catch (Exception e) {
 						LoggingService.LogError ("Error in getting text of the current line.", e);
-						return base.OnButtonPressEvent (evnt);
+						return;
 					}
 					string file;
 					int lineNumber;
@@ -242,22 +240,21 @@ namespace MonoDevelop.Ide.Gui.Components
 						}
 					}
 				}
-				return base.OnButtonPressEvent (evnt);
 			}
 		}
-		HBox searchBox = new HBox ();
+		Box searchBox = new Box (Orientation.Horizontal, 0);
 		MonoDevelop.Components.SearchEntry searchEntry = new MonoDevelop.Components.SearchEntry ();
 		MonoDevelop.Components.CompactScrolledWindow scrollView = new MonoDevelop.Components.CompactScrolledWindow ();
 
-		public LogView ()
+		public LogView () : base (Orientation.Vertical, 0)
 		{
 			buffer = new TextBuffer (new TextTagTable ());
 			textEditorControl = new LogTextView (buffer);
 			textEditorControl.Editable = false;
 			
-			scrollView.ShadowType = ShadowType.None;
-			scrollView.Add (textEditorControl);
-			PackEnd (scrollView, true, true, 0);
+			scrollView.Child = textEditorControl;
+			scrollView.Vexpand = true;
+			Append (scrollView);
 
 			bold = new TextTag ("bold");
 			bold.Weight = Weight.Bold;
@@ -300,55 +297,59 @@ namespace MonoDevelop.Ide.Gui.Components
 
 		void InitSearchWidget ()
 		{
-			searchBox.BorderWidth = 4;
-			searchBox.PackStart (new Label (GettextCatalog.GetString ("Search:")), false, false, 4);
-			searchBox.PackStart (searchEntry, true, true, 0);
-			closeButton = new Button ();
-			closeButton.CanFocus = true;
-			closeButton.Relief = ReliefStyle.None;
-			closeButton.Image = new ImageView ("gtk-close", IconSize.Menu);
-			closeButton.Clicked += delegate {
-				HideSearchBox ();
-			};
-			searchBox.PackEnd (closeButton, false, false, 0);
-
-			buttonSearchForward = new Button ();
-			buttonSearchForward.CanFocus = true;
-			buttonSearchForward.Relief = ReliefStyle.None;
-			buttonSearchForward.TooltipText = GettextCatalog.GetString ("Find next {0}", GetShortcut (SearchCommands.FindNext));
-			buttonSearchForward.Image = new ImageView ("gtk-go-down", IconSize.Menu);
-			buttonSearchForward.Clicked += delegate {
-				FindNext ();
-			};
-			searchBox.PackEnd (buttonSearchForward, false, false, 0);
+			searchBox.MarginTop = searchBox.MarginBottom = searchBox.MarginStart = searchBox.MarginEnd = 4;
+			var searchLabel = new Label (GettextCatalog.GetString ("Search:"));
+			searchLabel.MarginEnd = 4;
+			searchBox.Append (searchLabel);
+			searchEntry.Hexpand = true;
+			searchBox.Append (searchEntry);
 
 			buttonSearchBackward = new Button ();
 			buttonSearchBackward.CanFocus = true;
-			buttonSearchBackward.Relief = ReliefStyle.None;
+			buttonSearchBackward.HasFrame = false;
 			buttonSearchBackward.TooltipText = GettextCatalog.GetString ("Find previous {0}", GetShortcut (SearchCommands.FindPrevious));
-			buttonSearchBackward.Image = new ImageView ("gtk-go-up", IconSize.Menu);
+			buttonSearchBackward.Child = new ImageView ("gtk-go-up", MonoDevelop.Components.StockIconSize.Menu);
 			buttonSearchBackward.Clicked += delegate {
 				FindPrev ();
 			};
-			searchBox.PackEnd (buttonSearchBackward, false, false, 0);
+			searchBox.Append (buttonSearchBackward);
+
+			buttonSearchForward = new Button ();
+			buttonSearchForward.CanFocus = true;
+			buttonSearchForward.HasFrame = false;
+			buttonSearchForward.TooltipText = GettextCatalog.GetString ("Find next {0}", GetShortcut (SearchCommands.FindNext));
+			buttonSearchForward.Child = new ImageView ("gtk-go-down", MonoDevelop.Components.StockIconSize.Menu);
+			buttonSearchForward.Clicked += delegate {
+				FindNext ();
+			};
+			searchBox.Append (buttonSearchForward);
+
+			closeButton = new Button ();
+			closeButton.CanFocus = true;
+			closeButton.HasFrame = false;
+			closeButton.Child = new ImageView ("gtk-close", MonoDevelop.Components.StockIconSize.Menu);
+			closeButton.Clicked += delegate {
+				HideSearchBox ();
+			};
+			searchBox.Append (closeButton);
 
 			searchEntry.Ready = true;
 			searchEntry.Visible = true;
-			searchEntry.Entry.KeyPressEvent += delegate (object o, KeyPressEventArgs args) {
-				switch (args.Event.Key) {
-				case Gdk.Key.Escape:
+			searchEntry.Entry.AddKeyPressHandler ((keyval, keycode, state) => {
+				if ((Gdk.Key)keyval == Gdk.Key.Escape) {
 					HideSearchBox ();
-					break;
+					return true;
 				}
-			};
+				return false;
+			});
 
-			textEditorControl.KeyPressEvent += delegate (object o, KeyPressEventArgs args) {
-				switch (args.Event.Key) {
-				case Gdk.Key.Escape:
+			textEditorControl.AddKeyPressHandler ((keyval, keycode, state) => {
+				if ((Gdk.Key)keyval == Gdk.Key.Escape) {
 					HideSearchBox ();
-					break;
+					return true;
 				}
-			};
+				return false;
+			});
 			searchEntry.Entry.Changed += delegate {
 				currentSearchPattern = searchEntry.Entry.Text;
 			};
@@ -365,14 +366,15 @@ namespace MonoDevelop.Ide.Gui.Components
 		void ShowSearchBox ()
 		{
 			UpdateSearchEntrySearchPattern ();
-			PackStart (searchBox, false, true, 0);
-			searchBox.ShowAll ();
+			if (searchBox.Parent == null)
+				Prepend (searchBox);
 			searchEntry.Entry.GrabFocus ();
 		}
 
 		void HideSearchBox ()
 		{
-			Remove (searchBox);
+			if (searchBox.Parent == this)
+				Remove (searchBox);
 			textEditorControl.GrabFocus ();
 		}
 
@@ -513,9 +515,41 @@ namespace MonoDevelop.Ide.Gui.Components
 			UpdateCustomFont ();
 		}
 		
+		static int fontClassCounter;
+		string fontClass;
+		Gtk.CssProvider fontProvider;
+
 		void UpdateCustomFont ()
 		{
-			textEditorControl.ModifyFont (IdeApp.Preferences.CustomOutputPadFont ?? IdeServices.FontService.MonospaceFont);
+			// GTK 4: ModifyFont is gone; the font is applied through a CSS class unique to this view.
+			var font = IdeApp.Preferences.CustomOutputPadFont ?? IdeServices.FontService.MonospaceFont;
+			if (fontClass == null) {
+				fontClass = "md-log-view-" + (++fontClassCounter);
+				textEditorControl.AddCssClass (fontClass);
+				fontProvider = new Gtk.CssProvider ();
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.AddProviderForDisplay (display, fontProvider, StyleProviderPriority.Application);
+			}
+			fontProvider.LoadFromString (font != null ? "textview." + fontClass + " { " + FontToCss (font) + " }" : "");
+		}
+
+		static string FontToCss (Pango.FontDescription font)
+		{
+			var css = new System.Text.StringBuilder ();
+			if (!string.IsNullOrEmpty (font.Family))
+				css.Append ("font-family: \"").Append (font.Family.Replace ("\"", "")).Append ("\"; ");
+			if (font.Size > 0) {
+				var size = font.Size / Pango.Scale.PangoScale;
+				css.Append ("font-size: ").Append (size.ToString (System.Globalization.CultureInfo.InvariantCulture))
+					.Append (font.SizeIsAbsolute ? "px; " : "pt; ");
+			}
+			css.Append ("font-weight: ").Append ((int)font.Weight).Append ("; ");
+			if (font.Style == Pango.Style.Italic)
+				css.Append ("font-style: italic; ");
+			else if (font.Style == Pango.Style.Oblique)
+				css.Append ("font-style: oblique; ");
+			return css.ToString ();
 		}
 		
 		//mechanism to to batch copy text when large amounts are being dumped
@@ -747,7 +781,7 @@ namespace MonoDevelop.Ide.Gui.Components
 		}
 
 		bool destroyed = false;
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			lock (updates) {
 				destroyed = true;
@@ -756,7 +790,14 @@ namespace MonoDevelop.Ide.Gui.Components
 			}
 			IdeApp.Preferences.CustomOutputPadFont.Changed -= HandleCustomFontChanged;
 
-			base.OnDestroyed ();
+			if (fontProvider != null) {
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.RemoveProviderForDisplay (display, fontProvider);
+				fontProvider = null;
+			}
+
+			base.Destroy ();
 		}
 		
 		abstract class QueuedUpdate

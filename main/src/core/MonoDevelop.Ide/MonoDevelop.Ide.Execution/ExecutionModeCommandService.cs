@@ -139,8 +139,8 @@ namespace MonoDevelop.Ide.Execution
 			}
 			
 			// If control key is pressed, show the parameters dialog
-			Gdk.ModifierType mtype;
-			if (Gtk.Global.GetCurrentEventState (out mtype) && (mtype & Gdk.ModifierType.ControlMask) != 0) {
+			Gdk.ModifierType mtype = MonoDevelop.Components.GtkWorkarounds.GetCurrentKeyModifiers ();
+			if ((mtype & Gdk.ModifierType.ControlMask) != 0) {
 				RunWithPromptHandler cmode = new RunWithPromptHandler ();
 				cmode.Context = item.Context;
 				cmode.Mode = item.Mode;

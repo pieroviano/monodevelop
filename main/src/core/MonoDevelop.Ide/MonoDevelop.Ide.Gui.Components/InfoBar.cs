@@ -52,7 +52,7 @@ namespace MonoDevelop.Ide.Gui.Components
 				MinHeight = 30
 			};
 
-			mainBox.PackStart (new ImageView (ImageService.GetIcon (Stock.Information, Gtk.IconSize.Menu)), marginLeft: 11);
+			mainBox.PackStart (new ImageView (ImageService.GetIcon (Stock.Information, MonoDevelop.Components.StockIconSize.Menu)), marginLeft: 11);
 			mainBox.PackStart (descriptionLabel = new Label (description));
 
 			int firstItem = 0;

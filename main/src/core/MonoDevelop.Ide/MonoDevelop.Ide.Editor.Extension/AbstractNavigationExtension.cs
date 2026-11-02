@@ -30,6 +30,7 @@ using System.Threading.Tasks;
 using ICSharpCode.NRefactory.Editor;
 using System.Threading;
 using MonoDevelop.Core;
+using MonoDevelop.Components;
 using Xwt;
 using System.Linq;
 
@@ -63,7 +64,6 @@ namespace MonoDevelop.Ide.Editor.Extension
 
 		public static event EventHandler LinksShownChanged;
 
-		//static uint snooperId;
 
 
 		public class NavigationSegment : ISegment
@@ -90,37 +90,26 @@ namespace MonoDevelop.Ide.Editor.Extension
 
 		static AbstractNavigationExtension ()
 		{
-			if (IdeApp.Workbench?.RootWindow == null)
+			var rootWindow = IdeApp.Workbench?.RootWindow;
+			if (rootWindow == null)
 				return;
-			// snooperId =
-				Gtk.Key.SnooperInstall (TooltipKeySnooper);
-			//if (snooperId != 0)
-			//	Gtk.Key.SnooperRemove (snooperId);
-			IdeApp.Workbench.RootWindow.FocusOutEvent += RootWindow_FocusOutEvent;
+			// GTK 4 has no key snoopers: observe the keys in the capture phase of the root window, never handling them
+			rootWindow.AddKeyPressHandler ((keyval, keycode, state) => {
+				LinksShown = IsTriggerKey ((Gdk.Key)keyval);
+				return false;
+			}, (keyval, keycode, state) => {
+				if (IsTriggerKey ((Gdk.Key)keyval))
+					LinksShown = false;
+			}, Gtk.PropagationPhase.Capture);
+			rootWindow.AddFocusHandler (null, () => LinksShown = false);
 		}
 
-		static void RootWindow_FocusOutEvent (object o, Gtk.FocusOutEventArgs args)
-		{
-			LinksShown = false;
-		}
-
-		static int TooltipKeySnooper (Gtk.Widget widget, Gdk.EventKey evnt)
-		{
-			if (evnt != null && evnt.Type == Gdk.EventType.KeyPress) {
-				LinksShown = IsTriggerKey (evnt);
-			}
-			if (evnt != null && evnt.Type == Gdk.EventType.KeyRelease && IsTriggerKey (evnt)) {
-				LinksShown = false;
-			}
-			return 0; //FALSE
-		}
-
-		static bool IsTriggerKey (Gdk.EventKey evnt)
+		static bool IsTriggerKey (Gdk.Key key)
 		{
 #if MAC
-			return evnt.Key == Gdk.Key.Meta_L || evnt.Key == Gdk.Key.Meta_R;
+			return key == Gdk.Key.Meta_L || key == Gdk.Key.Meta_R;
 #else
-			return evnt.Key == Gdk.Key.Control_L || evnt.Key == Gdk.Key.Control_R;
+			return key == Gdk.Key.Control_L || key == Gdk.Key.Control_R;
 #endif
 		}
 		#endregion

@@ -25,7 +25,8 @@
 // THE SOFTWARE.
 
 using System;
-using Gtk;
+using MonoDevelop.Components;
+using MonoDevelop.Components.AtkCocoaHelper;
 using System.Xml.Linq;
 using MonoDevelop.Core;
 
@@ -33,13 +34,15 @@ namespace MonoDevelop.Ide.WelcomePage
 {
 	public class WelcomePageLinksList : WelcomePageSection
 	{
-		public WelcomePageLinksList (string title = null, Gtk.IconSize iconSize = IconSize.Menu, bool homogeneous = false, params WelcomePageLinkButton[] links): base (title)
+		public WelcomePageLinksList (string title = null, StockIconSize iconSize = StockIconSize.Menu, bool homogeneous = false, params WelcomePageLinkButton[] links): base (title)
 		{
-			Gtk.VBox box = new VBox ();
+			var box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
 			box.Homogeneous = homogeneous;
 			
-			foreach (var button in links)
-				box.PackStart (button, true, false, 0);
+			foreach (var button in links) {
+				button.Vexpand = true;
+				box.Append (button);
+			}
 
 			SetContent (box);
 		}

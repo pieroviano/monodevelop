@@ -31,120 +31,63 @@
 
 
 using System;
-using Gtk;
-using MonoDevelop.Ide;
 
 namespace MonoDevelop.Components.Docking
 {
-	class DockFrameTopLevel: EventBox
+	/// <summary>
+	/// A pad laid out on top of the dock frame at a fixed position (auto-hide pads). GTK 4 can't position windows,
+	/// so top levels are always children of the <see cref="DockFrame"/>.
+	/// </summary>
+	class DockFrameTopLevel: BinWidget
 	{
 		int x, y;
 		int width, height;
-		bool repositionRequested;
-		DockFrame frame;
 
 		public DockFrameTopLevel (DockFrame frame)
 		{
-			this.frame = frame;
 		}
 		
+		/// <summary>X position inside the frame.</summary>
 		public int X {
 			get { return x; }
 			set {
 				x = value;
-				UpdateWindowPos ();
+				Parent?.QueueAllocate ();
 			}
 		}
 		
+		/// <summary>Y position inside the frame.</summary>
 		public int Y {
 			get { return y; }
 			set {
 				y = value;
-				UpdateWindowPos ();
+				Parent?.QueueAllocate ();
 			}
 		}
 
+		/// <summary>Requested size.</summary>
 		public Gdk.Size Size {
 			get {
-				if (ContainerWindow != null) {
-					int w, h;
-					ContainerWindow.GetSize (out w, out h);
-					return new Gdk.Size (w, h);
-				} else {
-					return new Gdk.Size (WidthRequest, HeightRequest);
-				}
+				return new Gdk.Size (width, height);
 			}
 			set {
 				width = value.Width;
 				height = value.Height;
-				if (ContainerWindow != null)
-					UpdateWindowPos ();
-				else {
-					WidthRequest = value.Width;
-					HeightRequest = value.Height;
-				}
+				SetSizeRequest (width, height);
+				Parent?.QueueResize ();
 			}
 		}
 
-		public int Width {
-			get {
-				if (ContainerWindow != null) {
-					int w, h;
-					ContainerWindow.GetSize (out w, out h);
-					return w;
-				} else
-					return WidthRequest;
-			}
-			set {
-				width = value;
-				if (ContainerWindow != null)
-					UpdateWindowPos ();
-				else
-					WidthRequest = value;
-			}
+		/// <summary>Requested width.</summary>
+		public int RequestedWidth {
+			get { return width; }
+			set { Size = new Gdk.Size (value, height); }
 		}
 
-		public int Height {
-			get {
-				if (ContainerWindow != null) {
-					int w, h;
-					ContainerWindow.GetSize (out w, out h);
-					return h;
-				} else
-					return HeightRequest;
-			}
-			set {
-				height = value;
-				if (ContainerWindow != null)
-					UpdateWindowPos ();
-				else
-					HeightRequest = value;
-			}
-		}
-
-
-		void UpdateWindowPos ()
-		{
-			if (ContainerWindow != null) {
-				if (!repositionRequested && width != 0 && height != 0) {
-					repositionRequested = true;
-					Application.Invoke ((o, args) => {
-						var pos = frame.GetScreenCoordinates (new Gdk.Point (x, y));
-						IdeServices.DesktopService.PlaceWindow (ContainerWindow, pos.X, pos.Y, width, height);
-						repositionRequested = false;
-					});
-				}
-			} else if (Parent != null)
-				Parent.QueueResize ();
-		}
-
-		internal Gtk.Window ContainerWindow { get; set; }
-
-		internal string Title {
-			set {
-				if (ContainerWindow != null)
-					ContainerWindow.Title = value;
-			}
+		/// <summary>Requested height.</summary>
+		public int RequestedHeight {
+			get { return height; }
+			set { Size = new Gdk.Size (width, value); }
 		}
 	}
 }

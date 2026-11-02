@@ -59,7 +59,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 
-	partial class RuntimeOptionsPanelWidget : Gtk.Bin 
+	partial class RuntimeOptionsPanelWidget : MonoDevelop.Components.BinWidget 
 	{
 		readonly List<TargetFramework> frameworks;
 		readonly DotNetProject project;

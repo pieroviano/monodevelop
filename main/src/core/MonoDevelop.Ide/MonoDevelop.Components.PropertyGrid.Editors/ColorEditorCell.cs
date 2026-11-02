@@ -57,27 +57,31 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 				return String.Format("#{0:x2}{1:x2}{2:x2}", color.R, color.G, color.B);
 		}
 		
-		public override void Render (Gdk.Drawable window, Cairo.Context ctx, Gdk.Rectangle bounds, Gtk.StateType state)
+		public override void Render (Cairo.Context ctx, Gdk.Rectangle bounds, Gtk.StateFlags state)
 		{
-			using (Gdk.GC gc = new Gdk.GC (window)) {
-				gc.RgbFgColor = GetColor ();
-				int yd = (bounds.Height - ColorBoxSize) / 2;
-				window.DrawRectangle (gc, true, bounds.X, bounds.Y + yd, ColorBoxSize - 1, ColorBoxSize - 1);
-				window.DrawRectangle (Container.GetNativeWidget<Gtk.Widget> ().Style.BlackGC, false, bounds.X, bounds.Y + yd, ColorBoxSize - 1, ColorBoxSize - 1);
-				bounds.X += ColorBoxSize + ColorBoxSpacing;
-				bounds.Width -= ColorBoxSize + ColorBoxSpacing;
-				base.Render (window, ctx, bounds, state);
-			}
+			int yd = (bounds.Height - ColorBoxSize) / 2;
+			ctx.Save ();
+			ctx.SetSourceColor (GetColor ().ToCairoColor ());
+			ctx.Rectangle (bounds.X, bounds.Y + yd, ColorBoxSize - 1, ColorBoxSize - 1);
+			ctx.Fill ();
+			ctx.SetSourceColor (new Cairo.Color (0, 0, 0));
+			ctx.LineWidth = 1;
+			ctx.Rectangle (bounds.X + 0.5, bounds.Y + yd + 0.5, ColorBoxSize - 1, ColorBoxSize - 1);
+			ctx.Stroke ();
+			ctx.Restore ();
+			bounds.X += ColorBoxSize + ColorBoxSpacing;
+			bounds.Width -= ColorBoxSize + ColorBoxSpacing;
+			base.Render (ctx, bounds, state);
 		}
 		
-		private Gdk.Color GetColor ()
+		private Gdk.RGBA GetColor ()
 		{
 			System.Drawing.Color color = (System.Drawing.Color) Value;
 			//TODO: Property.Converter.ConvertTo() fails: why?
-			return new Gdk.Color (color.R, color.G, color.B);
+			return new Gdk.RGBA { Red = color.R / 255f, Green = color.G / 255f, Blue = color.B / 255f, Alpha = 1 };
 		}
 
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			return new ColorEditor ();
 		}
@@ -93,22 +97,18 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		
 		public object Value { 
 			get {
-				int red = (int) (255 * (float) Color.Red / ushort.MaxValue);
-				int green = (int) (255 * (float) Color.Green / ushort.MaxValue);
-				int blue = (int) (255 * (float) Color.Blue / ushort.MaxValue);
-				return System.Drawing.Color.FromArgb (red, green, blue);
+				var c = Rgba;
+				return System.Drawing.Color.FromArgb ((int) Math.Round (255 * c.Red), (int) Math.Round (255 * c.Green), (int) Math.Round (255 * c.Blue));
 			}
 			set {
 				System.Drawing.Color color = (System.Drawing.Color) value;
-				Color = new Gdk.Color (color.R, color.G, color.B);
+				SetRgba (new Gdk.RGBA { Red = color.R / 255f, Green = color.G / 255f, Blue = color.B / 255f, Alpha = 1 });
 			}
 		}
 		
-		protected override void OnColorSet ()
+		public ColorEditor ()
 		{
-			base.OnColorSet ();
-			if (ValueChanged != null)
-				ValueChanged (this, EventArgs.Empty);
+			ColorSet += (sender, e) => ValueChanged?.Invoke (this, EventArgs.Empty);
 		}
 
 		public event EventHandler ValueChanged;

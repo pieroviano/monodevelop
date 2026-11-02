@@ -147,7 +147,7 @@ namespace MonoDevelop.Ide.Editor.Extension
 				}
 				var list = await GetReferencesAsync (result, token);
 				if (!token.IsCancellationRequested) {
-					Gtk.Application.Invoke ((o, args) => {
+					Runtime.RunInMainThread (() => {
 						if (!token.IsCancellationRequested)
 							ShowReferences (list);
 					});

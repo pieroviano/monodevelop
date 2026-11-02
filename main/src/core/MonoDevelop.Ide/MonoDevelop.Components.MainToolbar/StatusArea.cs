@@ -43,7 +43,7 @@ using System.Linq;
 
 namespace MonoDevelop.Components.MainToolbar
 {
-	class StatusArea : EventBox, ITestableStatusBar, Xwt.Motion.IAnimatable
+	class StatusArea : BinWidget, ITestableStatusBar, Xwt.Motion.IAnimatable
 	{
 		struct Message
 		{
@@ -84,14 +84,17 @@ namespace MonoDevelop.Components.MainToolbar
 		StatusAreaTheme theme;
 		RenderArg renderArg;
 
-		HBox contentBox = new HBox (false, 8);
+		Box contentBox = new Box (Orientation.Horizontal, 8);
 
 		StatusAreaSeparator statusIconSeparator;
 		Gtk.Widget buildResultWidget;
 
-		readonly HBox messageBox = new HBox ();
-		internal readonly HBox statusIconBox = new HBox ();
-		Alignment mainAlign;
+		readonly Box messageBox = new Box (Orientation.Horizontal, 0);
+		internal readonly Box statusIconBox = new Box (Orientation.Horizontal, 3);
+
+		// Area of the widget where the status bar is drawn (limited by MaxWidth)
+		Gdk.Rectangle drawArea;
+		Action buildResultsCleanup;
 
 		uint animPauseHandle;
 
@@ -119,7 +122,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		void messageBoxToolTip (object o, QueryTooltipArgs e)
 		{
-			if (theme.IsEllipsized && (e.X < messageBox.Allocation.Width)) {
+			if (theme.IsEllipsized && (e.X < messageBox.Width)) {
 				var label = new Label ();
 				if (renderArg.CurrentTextIsMarkup) {
 					label.Markup = renderArg.CurrentText;
@@ -128,7 +131,7 @@ namespace MonoDevelop.Components.MainToolbar
 				}
 
 				label.Wrap = true;
-				label.WidthRequest = messageBox.Allocation.Width;
+				label.WidthRequest = messageBox.Width;
 
 				e.Tooltip.Custom = label;
 				e.RetVal = true;
@@ -143,12 +146,7 @@ namespace MonoDevelop.Components.MainToolbar
 			renderArg = new RenderArg ();
 
 			ctxHandler = new StatusBarContextHandler (this);
-			VisibleWindow = false;
-			NoShowAll = true;
-			WidgetFlags |= Gtk.WidgetFlags.AppPaintable;
-
-			statusIconBox.BorderWidth = 0;
-			statusIconBox.Spacing = 3;
+			Padding = new Border { Left = 12, Right = 8 };
 
 			Action<bool> animateProgressBar =
 				showing => this.Animate ("ProgressBarFade",
@@ -177,30 +175,26 @@ namespace MonoDevelop.Components.MainToolbar
 				QueueDraw ();
 			};
 
-			contentBox.PackStart (messageBox, true, true, 0);
-			contentBox.PackEnd (statusIconBox, false, false, 0);
-			contentBox.PackEnd (statusIconSeparator = new StatusAreaSeparator (), false, false, 0);
-			contentBox.PackEnd (buildResultWidget = CreateBuildResultsWidget (Orientation.Horizontal), false, false, 0);
+			messageBox.Hexpand = true;
+			contentBox.Append (messageBox);
+			contentBox.Append (buildResultWidget = CreateBuildResultsWidget (Orientation.Horizontal));
+			contentBox.Append (statusIconSeparator = new StatusAreaSeparator ());
+			contentBox.Append (statusIconBox);
 
 			HasTooltip = true;
 			QueryTooltip += messageBoxToolTip;
 
-			mainAlign = new Alignment (0, 0.5f, 1, 0);
-			mainAlign.LeftPadding = 12;
-			mainAlign.RightPadding = 8;
-			mainAlign.Add (contentBox);
-			Add (mainAlign);
+			contentBox.Valign = Align.Center;
+			Child = contentBox;
 
-			mainAlign.ShowAll ();
-			statusIconBox.Hide ();
-			statusIconSeparator.Hide ();
-			buildResultWidget.Hide ();
-			Show ();
+			statusIconBox.Visible = false;
+			statusIconSeparator.Visible = false;
+			buildResultWidget.Visible = false;
 
-			this.ButtonPressEvent += delegate {
+			this.AddClickHandler (click => {
 				if (sourcePad != null)
 					sourcePad.BringToFront (true);
-			};
+			});
 
 			statusIconBox.Shown += delegate {
 				UpdateSeparators ();
@@ -232,11 +226,17 @@ namespace MonoDevelop.Components.MainToolbar
 			};
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			if (theme != null)
-				theme.Dispose ();
-			base.OnDestroyed ();
+			if (disposing) {
+				buildResultsCleanup?.Invoke ();
+				buildResultsCleanup = null;
+				if (theme != null) {
+					theme.Dispose ();
+					theme = null;
+				}
+			}
+			base.Dispose (disposing);
 		}
 
 		void IAnimatable.BatchBegin () { }
@@ -264,12 +264,31 @@ namespace MonoDevelop.Components.MainToolbar
 			              finished: (val, aborted) => { if (!aborted) this.AbortAnimation ("Build"); });
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			if (MaxWidth > 0 && allocation.Width > MaxWidth) {
-				allocation = new Gdk.Rectangle (allocation.X + (allocation.Width - MaxWidth) / 2, allocation.Y, MaxWidth, allocation.Height);
+			base.OnMeasure (orientation, for_size, out minimum, out natural, out minimum_baseline, out natural_baseline);
+			if (orientation == Orientation.Vertical) {
+				minimum = Math.Max (minimum, 32);
+				natural = Math.Max (natural, 32);
 			}
-			base.OnSizeAllocated (allocation);
+		}
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
+			int x = 0;
+			if (MaxWidth > 0 && width > MaxWidth) {
+				x = (width - MaxWidth) / 2;
+				width = MaxWidth;
+			}
+			drawArea = new Gdk.Rectangle (x, 0, width, height);
+
+			var child = Child;
+			if (child == null)
+				return;
+			int childWidth = Math.Max (0, width - Padding.Left - Padding.Right);
+			MeasureChild (child, Orientation.Vertical, childWidth, out _, out int childHeight);
+			childHeight = Math.Min (height, childHeight);
+			AllocateChild (child, new Gdk.Rectangle (x + Padding.Left, (height - childHeight) / 2, childWidth, childHeight));
 		}
 
 		void TriggerErrorAnimation ()
@@ -291,14 +310,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		public Widget CreateBuildResultsWidget (Orientation orientation)
 		{
-			EventBox ebox = new EventBox ();
-
-			Gtk.Box box;
-			if (orientation == Orientation.Horizontal)
-				box = new HBox ();
-			else
-				box = new VBox ();
-			box.Spacing = 3;
+			Gtk.Box box = new Box (orientation, 3);
 
 			var errorIcon = ImageService.GetIcon (StockIcons.Error).WithSize (Xwt.IconSize.Small);
 			var warningIcon = ImageService.GetIcon (StockIcons.Warning).WithSize (Xwt.IconSize.Small);
@@ -306,15 +318,15 @@ namespace MonoDevelop.Components.MainToolbar
 			var errorImage = new Xwt.ImageView (errorIcon);
 			var warningImage = new Xwt.ImageView (warningIcon);
 
-			box.PackStart (errorImage.ToGtkWidget (), false, false, 0);
+			box.Append (errorImage.ToGtkWidget ());
 			Label errors = new Gtk.Label ();
-			box.PackStart (errors, false, false, 0);
+			box.Append (errors);
 
-			box.PackStart (warningImage.ToGtkWidget (), false, false, 0);
+			box.Append (warningImage.ToGtkWidget ());
 			Label warnings = new Gtk.Label ();
-			box.PackStart (warnings, false, false, 0);
-			box.NoShowAll = true;
-			box.Show ();
+			box.Append (warnings);
+			ApplyCountLabelStyle (errors);
+			ApplyCountLabelStyle (warnings);
 
 			TaskEventHandler updateHandler = delegate {
 				int ec=0, wc=0;
@@ -327,19 +339,15 @@ namespace MonoDevelop.Components.MainToolbar
 				}
 
 
-				using (var font = IdeServices.FontService.SansFont.CopyModified (MonoDevelop.Ide.Gui.Styles.FontScale11)) {
-					errors.Visible = ec > 0;
-					errors.ModifyFont (font);
-					errors.Text = ec.ToString ();
-					errorImage.Visible = ec > 0;
+				errors.Visible = ec > 0;
+				errors.Text = ec.ToString ();
+				errorImage.Visible = ec > 0;
 
-					warnings.Visible = wc > 0;
-					warnings.ModifyFont (font);
-					warnings.Text = wc.ToString ();
-					warningImage.Visible = wc > 0;
-				}
+				warnings.Visible = wc > 0;
+				warnings.Text = wc.ToString ();
+				warningImage.Visible = wc > 0;
 
-				ebox.Visible = ec > 0 || wc > 0;
+				box.Visible = ec > 0 || wc > 0;
 
 				UpdateSeparators ();
 			};
@@ -352,26 +360,48 @@ namespace MonoDevelop.Components.MainToolbar
 			currentApplicationName = BrandingService.ApplicationLongName;
 			BrandingService.ApplicationNameChanged += ApplicationNameChanged;
 			
-			box.Destroyed += delegate {
+			buildResultsCleanup = delegate {
 				IdeServices.TaskService.Errors.TasksAdded -= updateHandler;
 				IdeServices.TaskService.Errors.TasksRemoved -= updateHandler;
 				BrandingService.ApplicationNameChanged -= ApplicationNameChanged;
 			};
 
-			ebox.VisibleWindow = false;
-			ebox.Add (box);
-			ebox.ShowAll ();
-			ebox.ButtonReleaseEvent += delegate {
+			box.AddClickHandler (null, click => {
 				var pad = IdeApp.Workbench.GetPad<MonoDevelop.Ide.Gui.Pads.ErrorListPad> ();
 				pad.BringToFront ();
-			};
+			});
 
 			errors.Visible = false;
 			errorImage.Visible = false;
 			warnings.Visible = false;
 			warningImage.Visible = false;
 
-			return ebox;
+			return box;
+		}
+
+		static Gtk.CssProvider countLabelProvider;
+		static string countLabelCss;
+
+		// GTK 4: ModifyFont/ModifyFg are gone; the font and color of the counters are applied through a CSS class.
+		static void ApplyCountLabelStyle (Label label)
+		{
+			string css;
+			using (var font = IdeServices.FontService.SansFont.CopyModified (MonoDevelop.Ide.Gui.Styles.FontScale11)) {
+				var c = Styles.StatusBarTextColor;
+				css = string.Format (System.Globalization.CultureInfo.InvariantCulture, "label.md-status-count {{ font-family: \"{0}\"; font-size: {1}pt; color: rgb({2},{3},{4}); }}",
+					font.Family.Replace ("\"", ""), font.Size / Pango.Scale.PangoScale, (int)(c.Red * 255), (int)(c.Green * 255), (int)(c.Blue * 255));
+			}
+			if (countLabelProvider == null) {
+				countLabelProvider = new Gtk.CssProvider ();
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.AddProviderForDisplay (display, countLabelProvider, StyleProviderPriority.Application);
+			}
+			if (css != countLabelCss) {
+				countLabelCss = css;
+				countLabelProvider.LoadFromString (css);
+			}
+			label.AddCssClass ("md-status-count");
 		}
 
 		void ApplicationNameChanged (object sender, EventArgs e)
@@ -384,30 +414,21 @@ namespace MonoDevelop.Components.MainToolbar
 			currentApplicationName = BrandingService.ApplicationLongName;
 		}
 
-		protected override void OnRealized ()
+		protected override void OnSnapshot (Snapshot snapshot)
 		{
-			base.OnRealized ();
-			ModifyText (StateType.Normal, Styles.StatusBarTextColor.ToGdkColor ());
-			ModifyFg (StateType.Normal, Styles.StatusBarTextColor.ToGdkColor ());
-		}
+			int width = Width, height = Height;
+			if (width > 0 && height > 0 && drawArea.Width > 0) {
+				using (var context = snapshot.CreateCairoContext (new Gdk.Rectangle (0, 0, width, height))) {
+					renderArg.Allocation            = drawArea;
+					messageBox.TranslateCoordinates (this, 0, 0, out double messageX, out double messageY);
+					renderArg.ChildAllocation       = new Gdk.Rectangle ((int)messageX, (int)messageY, messageBox.Width, messageBox.Height);
+					renderArg.MousePosition         = tracker.MousePosition;
+					renderArg.Pango                 = PangoContext;
 
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			requisition.Height = 32;
-			base.OnSizeRequested (ref requisition);
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
-				renderArg.Allocation            = Allocation;
-				renderArg.ChildAllocation       = messageBox.Allocation;
-				renderArg.MousePosition         = tracker.MousePosition;
-				renderArg.Pango                 = PangoContext;
-
-				theme.Render (context, renderArg, this);
+					theme.Render (context, renderArg, this);
+				}
 			}
-			return base.OnExposeEvent (evnt);
+			base.OnSnapshot (snapshot);
 		}
 
 
@@ -419,8 +440,8 @@ namespace MonoDevelop.Components.MainToolbar
 		{
 			Runtime.AssertMainThread ();
 			StatusIcon icon = new StatusIcon (this, pixbuf);
-			statusIconBox.PackEnd (icon.box);
-			statusIconBox.ShowAll ();
+			statusIconBox.Prepend (icon.box);
+			statusIconBox.Visible = true;
 			icons.Add (icon);
 			return icon;
 		}
@@ -429,9 +450,8 @@ namespace MonoDevelop.Components.MainToolbar
 		{
 			icons.Remove (icon);
 			statusIconBox.Remove (icon.EventBox);
-			if (statusIconBox.Children.Length == 0)
-				statusIconBox.Hide ();
-			icon.EventBox.Destroy ();
+			if (statusIconBox.FirstChild == null)
+				statusIconBox.Visible = false;
 		}
 
 		public StatusBarContext CreateContext ()
@@ -458,7 +478,7 @@ namespace MonoDevelop.Components.MainToolbar
 		public class StatusIcon : StatusBarIcon
 		{
 			StatusArea statusBar;
-			internal EventBox box;
+			internal Box box;
 			string tip;
 			DateTime alertEnd;
 			Xwt.Drawing.Image icon;
@@ -476,49 +496,38 @@ namespace MonoDevelop.Components.MainToolbar
 			public StatusIcon (StatusArea statusBar, Xwt.Drawing.Image icon)
 			{
 				if (!icon.HasFixedSize)
-					icon = icon.WithSize (IconSize.Menu);
+					icon = icon.WithSize (Xwt.IconSize.Small);
 
 				this.statusBar = statusBar;
 				this.icon = icon;
-				box = new EventBox ();
-				box.VisibleWindow = false;
+				box = new Box (Orientation.Horizontal, 0);
 				image = new Xwt.ImageView (icon);
-				box.Child = image.ToGtkWidget ();
-				box.Events |= Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask;
-				box.EnterNotifyEvent += HandleEnterNotifyEvent;
-				box.LeaveNotifyEvent += HandleLeaveNotifyEvent;
-				box.ButtonPressEvent += (o, e) => {
+				box.Append (image.ToGtkWidget ());
+				box.AddMotionHandler (null, (x, y) => {
+					mouseOver = true;
+					ShowTooltip ();
+				}, () => {
+					mouseOver = false;
+					HideTooltip ();
+				});
+				box.AddClickHandler (click => {
 					// TODO: Refactor this in Xwt as an extension method.
 					var m = Xwt.ModifierKeys.None;
-					if ((e.Event.State & Gdk.ModifierType.ShiftMask) != 0)
+					if ((click.State & Gdk.ModifierType.ShiftMask) != 0)
 						m |= Xwt.ModifierKeys.Shift;
-					if ((e.Event.State & Gdk.ModifierType.ControlMask) != 0)
+					if ((click.State & Gdk.ModifierType.ControlMask) != 0)
 						m |= Xwt.ModifierKeys.Control;
-					if ((e.Event.State & Gdk.ModifierType.Mod1Mask) != 0)
+					if ((click.State & Gdk.ModifierType.AltMask) != 0)
 						m |= Xwt.ModifierKeys.Alt;
 					// TODO: Backport this one.
-					if ((e.Event.State & Gdk.ModifierType.Mod2Mask) != 0)
+					if ((click.State & Gdk.ModifierType.MetaMask) != 0)
 						m |= Xwt.ModifierKeys.Command;
 
-					Clicked?.Invoke (o, new StatusBarIconClickedEventArgs {
-						Button = (Xwt.PointerButton)e.Event.Button,
+					Clicked?.Invoke (this, new StatusBarIconClickedEventArgs {
+						Button = (Xwt.PointerButton)click.Button,
 						Modifiers = m,
 					});
-				};
-			}
-
-			[GLib.ConnectBefore]
-			void HandleLeaveNotifyEvent (object o, LeaveNotifyEventArgs args)
-			{
-				mouseOver = false;
-				HideTooltip ();
-			}
-
-			[GLib.ConnectBefore]
-			void HandleEnterNotifyEvent (object o, EnterNotifyEventArgs args)
-			{
-				mouseOver = true;
-				ShowTooltip ();
+				});
 			}
 
 			void ShowTooltip ()
@@ -599,7 +608,7 @@ namespace MonoDevelop.Components.MainToolbar
 				set;
 			}
 
-			public EventBox EventBox {
+			public Gtk.Widget EventBox {
 				get { return box; }
 			}
 
@@ -608,7 +617,7 @@ namespace MonoDevelop.Components.MainToolbar
 				set {
 					icon = value;
 					if (!icon.HasFixedSize)
-						icon = icon.WithSize (IconSize.Menu);
+						icon = icon.WithSize (Xwt.IconSize.Small);
 					image.Image = icon;
 				}
 			}
@@ -769,8 +778,8 @@ namespace MonoDevelop.Components.MainToolbar
 				image = "md-status-steady";
 
 			// load image now
-			if (ImageService.IsAnimation (image, Gtk.IconSize.Menu)) {
-				iconAnimation = ImageService.GetAnimatedIcon (image, Gtk.IconSize.Menu);
+			if (ImageService.IsAnimation (image, StockIconSize.Menu)) {
+				iconAnimation = ImageService.GetAnimatedIcon (image, StockIconSize.Menu);
 				renderArg.CurrentPixbuf = iconAnimation.FirstFrame.WithSize (16,16);
 				currentIconAnimation = iconAnimation.StartAnimation (delegate (Xwt.Drawing.Image p) {
 					renderArg.CurrentPixbuf = p.WithSize (16,16);
@@ -897,31 +906,26 @@ namespace MonoDevelop.Components.MainToolbar
 		string [] ITestableStatusBar.CurrentIcons => icons.Select (x => x.ToolTip).ToArray ();
 	}
 
-	class StatusAreaSeparator: HBox
+	class StatusAreaSeparator: CairoWidget
 	{
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			using (var ctx = Gdk.CairoHelper.Create (this.GdkWindow)) {
-				var alloc = Allocation;
-				//alloc.Inflate (0, -2);
-				ctx.Rectangle (alloc.X, alloc.Y, 1, alloc.Height);
-
-				// FIXME: VV: Remove gradient features
-				using (Cairo.LinearGradient gr = new LinearGradient (alloc.X, alloc.Y, alloc.X, alloc.Y + alloc.Height)) {
-					gr.AddColorStop (0, new Cairo.Color (0, 0, 0, 0));
-					gr.AddColorStop (0.5, new Cairo.Color (0, 0, 0, 0.2));
-					gr.AddColorStop (1, new Cairo.Color (0, 0, 0, 0));
-					ctx.SetSource (gr);
-					ctx.Fill ();
-				}
-			}
-			return true;
+			minimum = natural = orientation == Orientation.Horizontal ? 1 : 0;
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnDraw (Cairo.Context ctx, int width, int height)
 		{
-			base.OnSizeRequested (ref requisition);
-			requisition.Width = 1;
+			ctx.Rectangle (0, 0, 1, height);
+
+			// FIXME: VV: Remove gradient features
+			using (Cairo.LinearGradient gr = new LinearGradient (0, 0, 0, height)) {
+				gr.AddColorStop (0, new Cairo.Color (0, 0, 0, 0));
+				gr.AddColorStop (0.5, new Cairo.Color (0, 0, 0, 0.2));
+				gr.AddColorStop (1, new Cairo.Color (0, 0, 0, 0));
+				ctx.SetSource (gr);
+				ctx.Fill ();
+			}
 		}
 	}
 }

@@ -1284,7 +1284,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 			string iconName = ((CompletionData)dataList [n]).Icon;
 			if (string.IsNullOrEmpty (iconName))
 				return null;
-			return ImageService.GetIcon (iconName, Gtk.IconSize.Menu);
+			return ImageService.GetIcon (iconName, MonoDevelop.Components.StockIconSize.Menu);
 		}
 
 		#endregion

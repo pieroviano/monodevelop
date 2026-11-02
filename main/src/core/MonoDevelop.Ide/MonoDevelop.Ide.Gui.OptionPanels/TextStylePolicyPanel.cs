@@ -43,7 +43,6 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		public override Control CreatePanelWidget ()
 		{
 			widget = new TextStylePolicyPanelWidget (this);
-			widget.Show ();
 			return widget;
 		}
 		
@@ -58,7 +57,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	partial class TextStylePolicyPanelWidget : Gtk.Bin
+	partial class TextStylePolicyPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		TextStylePolicyPanel panel;
 		

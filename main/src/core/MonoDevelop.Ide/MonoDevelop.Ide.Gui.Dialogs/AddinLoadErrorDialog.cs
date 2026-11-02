@@ -67,17 +67,17 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			}
 
 			if (fatal) {
-				noButton.Hide ();
-				yesButton.Hide ();
-				closeButton.Show ();
+				noButton.Visible = false;
+				yesButton.Visible = false;
+				closeButton.Visible = true;
 				messageLabel.Text = GettextCatalog.GetString (
 					"{0} cannot start because a fatal error has been detected.",
 					BrandingService.ApplicationName
 				);
 			} else if (warning) {
-				noButton.Hide ();
-				yesButton.Hide ();
-				closeButton.Show ();
+				noButton.Visible = false;
+				yesButton.Visible = false;
+				closeButton.Visible = true;
 				messageLabel.Text = GettextCatalog.GetString (
 					"{0} can run without these extensions but the functionality they provide will be missing.",
 					BrandingService.ApplicationName
@@ -91,7 +91,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			}
 		}
 		
-		public new bool Run ()
+		public bool Run ()
 		{
 			return MessageService.ShowCustomDialog (this) == (int)ResponseType.Yes;
 		}

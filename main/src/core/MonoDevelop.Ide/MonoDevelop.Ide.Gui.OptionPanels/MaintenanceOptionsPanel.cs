@@ -50,7 +50,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	internal partial class MaintenanceOptionsPanelWidget : Gtk.Bin
+	internal partial class MaintenanceOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 
 		public MaintenanceOptionsPanelWidget ()

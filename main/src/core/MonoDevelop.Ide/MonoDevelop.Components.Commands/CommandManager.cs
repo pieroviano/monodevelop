@@ -60,7 +60,6 @@ namespace MonoDevelop.Components.Commands
 
 		Gtk.Window rootWidget;
 		KeyBindingManager bindings;
-		Gtk.AccelGroup accelGroup;
 		uint statusUpdateWait = 500;
 		DateTime lastUserInteraction;
 		KeyboardShortcut[] chords;
@@ -83,7 +82,6 @@ namespace MonoDevelop.Components.Commands
 		bool toolbarUpdaterRunning;
 		bool enableToolbarUpdate;
 		int guiLock;
-		int lastX, lastY;
 		
 		// Fields used to keep track of the application focus
 		bool appHasFocus;
@@ -162,7 +160,7 @@ namespace MonoDevelop.Components.Commands
 		/// <summary>
 		/// Creates a menu bar from the menu definition at the provided extension path
 		/// </summary>
-		internal Gtk.MenuBar CreateMenuBar (string addinPath)
+		internal CommandMenuBar CreateMenuBar (string addinPath)
 		{
 			CommandEntrySet cset = CreateCommandEntrySet (addinPath);
 			return CreateMenuBar (addinPath, cset);
@@ -171,7 +169,7 @@ namespace MonoDevelop.Components.Commands
 		/// <summary>
 		/// Creates a menu from the provided extension path
 		/// </summary>
-		public Gtk.Menu CreateMenu (string addinPath)
+		public CommandMenu CreateMenu (string addinPath)
 		{
 			CommandEntrySet cset = CreateCommandEntrySet (addinPath);
 			return CreateMenu (cset);
@@ -189,7 +187,7 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='addinPath'>
 		/// Extension path to the definition of the menu
 		/// </param>
-		public void ShowContextMenu (Control parent, Gdk.EventButton evt, string addinPath)
+		public void ShowContextMenu (Control parent, ClickInfo evt, string addinPath)
 		{
 			ShowContextMenu (parent, evt, CreateCommandEntrySet (addinPath));
 		}
@@ -209,7 +207,7 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='addinPath'>
 		/// Extension path to the definition of the menu
 		/// </param>
-		public void ShowContextMenu (Control parent, Gdk.EventButton evt,
+		public void ShowContextMenu (Control parent, ClickInfo evt,
 			ExtensionContext ctx, string addinPath)
 		{
 			ShowContextMenu (parent, evt, CreateCommandEntrySet (ctx, addinPath));
@@ -361,7 +359,7 @@ namespace MonoDevelop.Components.Commands
 
 			var gdkev = Mac.GtkMacInterop.ConvertKeyEvent (ev);
 			if (gdkev != null) {
-				if (ProcessKeyEvent (gdkev))
+				if (ProcessKeyEvent (gdkev.KeyValue, gdkev.HardwareKeycode, gdkev.State))
 					return null;
 			}
 			return ev;
@@ -373,7 +371,7 @@ namespace MonoDevelop.Components.Commands
 			var gdkev = Mac.GtkMacInterop.ConvertKeyEvent (ev);
 			if (gdkev != null) {
 				bool complete;
-				KeyboardShortcut [] accels = KeyBindingManager.AccelsFromKey (gdkev, out complete);
+				KeyboardShortcut [] accels = KeyBindingManager.AccelsFromKey (gdkev.KeyValue, gdkev.HardwareKeycode, gdkev.State, out complete);
 				if (complete) {
 					foreach (var accel in accels) {
 						var binding = KeyBindingManager.AccelLabelFromKey (accel.Key, accel.Modifier);
@@ -482,14 +480,12 @@ namespace MonoDevelop.Components.Commands
 
 #endif
 
-		[GLib.ConnectBefore]
-		void OnKeyPressed (object o, Gtk.KeyPressEventArgs e)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			e.RetVal = ProcessKeyEvent (e.Event);
+			return ProcessKeyEvent (keyval, keycode, state);
 		}
 
-		[GLib.ConnectBefore]
-		void OnKeyReleased (object o, Gtk.KeyReleaseEventArgs e)
+		bool OnKeyReleased (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			bool retVal = false;
 #if MAC
@@ -509,7 +505,7 @@ namespace MonoDevelop.Components.Commands
 #endif
 			bool complete;
 			// KeyboardShortcut[] accels = 
-			KeyBindingManager.AccelsFromKey (e.Event, out complete);
+			KeyBindingManager.AccelsFromKey (keyval, keycode, state, out complete);
 
 #if MAC
 			if (currentEvent != null &&
@@ -525,13 +521,13 @@ namespace MonoDevelop.Components.Commands
 
 			if (!complete) {
 				// incomplete accel
-				NotifyIncompleteKeyReleased (e.Event);
+				NotifyIncompleteKeyReleased (keyval, state);
 			}
 
-			e.RetVal = retVal;
+			return retVal;
 		}
 
-		internal bool ProcessKeyEvent (Gdk.EventKey ev)
+		internal bool ProcessKeyEvent (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 #if MAC
 			var currentEvent = AppKit.NSApplication.SharedApplication?.CurrentEvent;
@@ -550,7 +546,7 @@ namespace MonoDevelop.Components.Commands
 #endif
 			// Handle the GDK key via MD commanding
 			try {
-				if (ProcessKeyEventCore (ev)) {
+				if (ProcessKeyEventCore (keyval, keycode, state)) {
 					return true;
 				}
 			} catch (Exception ex) {
@@ -576,7 +572,7 @@ namespace MonoDevelop.Components.Commands
 			return false;
 		}
 
-		bool ProcessKeyEventCore (Gdk.EventKey ev)
+		bool ProcessKeyEventCore (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			if (!IsEnabled)
 				return true;
@@ -584,11 +580,11 @@ namespace MonoDevelop.Components.Commands
 			RegisterUserInteraction ();
 			
 			bool complete;
-			KeyboardShortcut[] accels = KeyBindingManager.AccelsFromKey (ev, out complete);
+			KeyboardShortcut[] accels = KeyBindingManager.AccelsFromKey (keyval, keycode, state, out complete);
 
 			if (!complete) {
 				// incomplete accel
-				NotifyIncompleteKeyPressed (ev);
+				NotifyIncompleteKeyPressed (keyval, state);
 				return true;
 			}
 			
@@ -603,13 +599,13 @@ namespace MonoDevelop.Components.Commands
 				chords = null;
 				chord = null;
 			} else if (isChord) {
-				chord = KeyBindingManager.AccelLabelFromKey (ev);
+				chord = KeyBindingManager.AccelLabelFromKey (keyval, keycode, state);
 				chords = accels;
 				return true;
 			} else if (chords != null) {
 				// Note: The user has entered a valid chord but the accel was invalid.
 				if (KeyBindingFailed != null) {
-					string accel = KeyBindingManager.AccelLabelFromKey (ev);
+					string accel = KeyBindingManager.AccelLabelFromKey (keyval, keycode, state);
 					
 					KeyBindingFailed (this, new KeyBindingFailedEventArgs (GettextCatalog.GetString ("The key combination ({0}, {1}) is not a command.", chord, accel)));
 				}
@@ -621,7 +617,7 @@ namespace MonoDevelop.Components.Commands
 				chords = null;
 				chord = null;
 				
-				NotifyKeyPressed (ev);
+				NotifyKeyPressed (keyval, state);
 				return false;
 			}
 
@@ -658,7 +654,7 @@ namespace MonoDevelop.Components.Commands
 
 				if (cinfo.Enabled && cinfo.Visible) {
 					if (!dispatched)
-						dispatched = DispatchCommand (commands [i].Id, null, null, CommandSource.Keybinding, ev.Time, cinfo);
+						dispatched = DispatchCommand (commands [i].Id, null, null, CommandSource.Keybinding, null, cinfo);
 					// A nested pumping wait could possibly queue the next task to run
 					// on the UI scheduler, thus have CommandManager.Dispose run after
 					// UpdateTask.Wait() is called.
@@ -697,7 +693,7 @@ namespace MonoDevelop.Components.Commands
 				result = true;
 			} else {
 				result = false;
-				NotifyKeyPressed (ev);
+				NotifyKeyPressed (keyval, state);
 			}
 			
 			chords = null;
@@ -793,22 +789,22 @@ namespace MonoDevelop.Components.Commands
 			}
 		}
 		
-		void NotifyKeyPressed (Gdk.EventKey ev)
+		void NotifyKeyPressed (uint keyval, Gdk.ModifierType state)
 		{
 			if (KeyPressed != null)
-				KeyPressed (this, new KeyPressArgs () { Key = ev.Key, KeyValue = ev.KeyValue, Modifiers = ev.State });
+				KeyPressed (this, new KeyPressArgs () { Key = (Gdk.Key) keyval, KeyValue = keyval, Modifiers = state });
 		}
 
-		void NotifyIncompleteKeyPressed (Gdk.EventKey ev)
+		void NotifyIncompleteKeyPressed (uint keyval, Gdk.ModifierType state)
 		{
 			if (IncompleteKeyPressed != null)
-				IncompleteKeyPressed (this, new KeyPressArgs () { Key = ev.Key, KeyValue = ev.KeyValue, Modifiers = ev.State });
+				IncompleteKeyPressed (this, new KeyPressArgs () { Key = (Gdk.Key) keyval, KeyValue = keyval, Modifiers = state });
 		}
 
-		void NotifyIncompleteKeyReleased (Gdk.EventKey ev)
+		void NotifyIncompleteKeyReleased (uint keyval, Gdk.ModifierType state)
 		{
 			if (IncompleteKeyReleased != null)
-				IncompleteKeyReleased (this, new KeyPressArgs () { Key = ev.Key, KeyValue = ev.KeyValue, Modifiers = ev.State });
+				IncompleteKeyReleased (this, new KeyPressArgs () { Key = (Gdk.Key) keyval, KeyValue = keyval, Modifiers = state });
 		}
 		
 		/// <summary>
@@ -816,11 +812,7 @@ namespace MonoDevelop.Components.Commands
 		/// </summary>
 		public void SetRootWindow (Window root)
 		{
-			if (rootWidget != null)
-				rootWidget.KeyPressEvent -= OnKeyPressed;
-			
 			rootWidget = root;
-			rootWidget.AddAccelGroup (AccelGroup);
 			RegisterTopWindow (rootWidget);
 		}
 
@@ -852,29 +844,33 @@ namespace MonoDevelop.Components.Commands
 			} else {
 				topLevelWindows.AddFirst (win);
 				if (win.nativeWidget is Gtk.Window gtkWin) {
-					gtkWin.KeyPressEvent += OnKeyPressed;
-					gtkWin.KeyReleaseEvent += OnKeyReleased;
-					gtkWin.ButtonPressEvent += HandleButtonPressEvent;
-					gtkWin.Destroyed += TopLevelDestroyed;
+					// Capture phase: commands see the keys before the focused widget (GTK 2 ConnectBefore semantics)
+					var controllers = new List<Gtk.EventController> {
+						gtkWin.AddKeyPressHandler (OnKeyPressed, (keyval, keycode, state) => OnKeyReleased (keyval, keycode, state), Gtk.PropagationPhase.Capture),
+						gtkWin.AddClickHandler (c => RegisterUserInteraction (), null, 0, Gtk.PropagationPhase.Capture),
+						gtkWin.AddMotionHandler ((x, y) => RegisterUserInteraction ()),
+						gtkWin.AddFocusHandler (() => RegisterUserInteraction (), null),
+					};
+					windowControllers [gtkWin] = controllers;
+					// GTK 4 has no ::destroy signal: the window is unrealized when it is destroyed (registration is redone when it is realized again)
+					gtkWin.Unrealized += TopLevelDestroyed;
 				}
 			}
 		}
 
-		[GLib.ConnectBefore]
-		void HandleButtonPressEvent (object o, Gtk.ButtonPressEventArgs args)
-		{
-			RegisterUserInteraction ();
-		}
+		readonly Dictionary<Gtk.Window, List<Gtk.EventController>> windowControllers = new Dictionary<Gtk.Window, List<Gtk.EventController>> ();
 
 		void TopLevelDestroyed (object o, EventArgs args)
 		{
 			RegisterUserInteraction ();
 
 			Gtk.Window w = (Gtk.Window)o;
-			w.Destroyed -= TopLevelDestroyed;
-			w.KeyPressEvent -= OnKeyPressed;
-			w.KeyReleaseEvent -= OnKeyReleased;
-			w.ButtonPressEvent -= HandleButtonPressEvent;
+			w.Unrealized -= TopLevelDestroyed;
+			if (windowControllers.TryGetValue (w, out var controllers)) {
+				foreach (var controller in controllers)
+					w.RemoveController (controller);
+				windowControllers.Remove (w);
+			}
 			topLevelWindows.Remove (w);
 #if MAC
 			if (topLevelWindows.Count == 0) {
@@ -1116,49 +1112,11 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='entrySet'>
 		/// Entry set with the definition of the commands to be included in the menu bar
 		/// </param>
-		internal Gtk.MenuBar CreateMenuBar (string name, CommandEntrySet entrySet)
+		internal CommandMenuBar CreateMenuBar (string name, CommandEntrySet entrySet)
 		{
-			Gtk.MenuBar topMenu = new CommandMenuBar (this);
-			foreach (CommandEntry entry in entrySet) {
-				Gtk.MenuItem mi = entry.CreateMenuItem (this);
-				CustomItem ci = mi.Child as CustomItem;
-				if (ci != null)
-					ci.SetMenuStyle (topMenu);
-				topMenu.Append (mi);
-			}
-			return topMenu;
+			return new CommandMenuBar (this, entrySet);
 		}
 		
-/*		public Gtk.Toolbar CreateToolbar (CommandEntrySet entrySet)
-		{
-			return CreateToolbar ("", entrySet);
-		}
-		
-*/	
-		/// <summary>
-		/// Appends commands to a menu
-		/// </summary>
-		/// <returns>
-		/// The menu.
-		/// </returns>
-		/// <param name='entrySet'>
-		/// Entry set with the command definitions
-		/// </param>
-		/// <param name='menu'>
-		/// The menu where to add the commands
-		/// </param>
-		internal Gtk.Menu CreateMenu (CommandEntrySet entrySet, CommandMenu menu)
-		{
-			foreach (CommandEntry entry in entrySet) {
-				Gtk.MenuItem mi = entry.CreateMenuItem (this);
-				CustomItem ci = mi.Child as CustomItem;
-				if (ci != null)
-					ci.SetMenuStyle (menu);
-				menu.Append (mi);
-			}
-			return menu;
-		}
-
 #if MAC
 		/// <summary>
 		/// Creates a menu.
@@ -1221,9 +1179,9 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='entrySet'>
 		/// Entry with the command definitions
 		/// </param>
-		public Gtk.Menu CreateMenu (CommandEntrySet entrySet)
+		public CommandMenu CreateMenu (CommandEntrySet entrySet)
 		{
-			return CreateMenu (entrySet, new CommandMenu (this));
+			return new CommandMenu (this, entrySet);
 		}
 
 		/// <summary>
@@ -1238,9 +1196,9 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='closeHandler'>
 		/// EventHandler to be run when the menu closes
 		/// </param> 
-		public Gtk.Menu CreateMenu (CommandEntrySet entrySet, EventHandler closeHandler)
+		public CommandMenu CreateMenu (CommandEntrySet entrySet, EventHandler closeHandler)
 		{
-			return CreateMenu (entrySet, new CommandMenu (this), closeHandler);
+			return CreateMenu (entrySet, null, closeHandler);
 		}
 
 		/// <summary>
@@ -1255,7 +1213,7 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='initialTarget'>
 		/// Initial command route target. The command handler will start looking for command handlers in this object.
 		/// </param>
-		public Gtk.Menu CreateMenu (CommandEntrySet entrySet, object initialTarget)
+		public CommandMenu CreateMenu (CommandEntrySet entrySet, object initialTarget)
 		{
 			return CreateMenu (entrySet, initialTarget, null);
 		}
@@ -1275,12 +1233,12 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='closeHandler'>
 		/// EventHandler to be run when the menu closes
 		/// </param> 
-		public Gtk.Menu CreateMenu (CommandEntrySet entrySet, object initialTarget, EventHandler closeHandler)
+		public CommandMenu CreateMenu (CommandEntrySet entrySet, object initialTarget, EventHandler closeHandler)
 		{
-			var menu = (CommandMenu) CreateMenu (entrySet, new CommandMenu (this));
+			var menu = new CommandMenu (this, entrySet);
 			menu.InitialCommandTarget = initialTarget;
 			if (closeHandler != null) {
-				menu.Hidden += closeHandler;
+				menu.Closed += closeHandler;
 			}
 			return menu;
 		}
@@ -1300,7 +1258,7 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='initialCommandTarget'>
 		/// Initial command route target. The command handler will start looking for command handlers in this object.
 		/// </param>
-		public bool ShowContextMenu (Control parent, Gdk.EventButton evt, CommandEntrySet entrySet,
+		public bool ShowContextMenu (Control parent, ClickInfo evt, CommandEntrySet entrySet,
 			object initialCommandTarget = null)
 		{
 			return ShowContextMenu (parent, evt, entrySet, initialCommandTarget, null);
@@ -1324,7 +1282,7 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='closeHandler'>
 		/// An event handler which will be called when the menu closes
 		/// </param>
-		public bool ShowContextMenu (Control parent, Gdk.EventButton evt, CommandEntrySet entrySet,
+		public bool ShowContextMenu (Control parent, ClickInfo evt, CommandEntrySet entrySet,
 			object initialCommandTarget, EventHandler closeHandler)
 		{
 #if MAC
@@ -1383,24 +1341,18 @@ namespace MonoDevelop.Components.Commands
 		/// <param name='initialCommandTarget'>
 		/// Initial command route target. The command handler will start looking for command handlers in this object.
 		/// </param>
-		public void ShowContextMenu (Control parent, Gdk.EventButton evt, Gtk.Menu menu,
+		public void ShowContextMenu (Control parent, ClickInfo evt, CommandMenu menu,
 			object initialCommandTarget = null)
 		{
-			if (menu is CommandMenu) {
-				((CommandMenu)menu).InitialCommandTarget = initialCommandTarget ?? parent;
-			}
-			
-			MonoDevelop.Components.GtkWorkarounds.ShowContextMenu (menu, parent, evt);
+			menu.InitialCommandTarget = initialCommandTarget ?? parent;
+			menu.Popup (parent, evt);
 		}
 
-		public void ShowContextMenu (Control parent, int x, int y, Gtk.Menu menu,
+		public void ShowContextMenu (Control parent, int x, int y, CommandMenu menu,
 			object initialCommandTarget = null)
 		{
-			if (menu is CommandMenu) {
-				((CommandMenu)menu).InitialCommandTarget = initialCommandTarget ?? parent;
-			}
-
-			MonoDevelop.Components.GtkWorkarounds.ShowContextMenu (menu, parent, x, y);
+			menu.InitialCommandTarget = initialCommandTarget ?? parent;
+			menu.Popup (parent, x, y);
 		}
 
 		/// <summary>
@@ -2049,15 +2001,6 @@ namespace MonoDevelop.Components.Commands
 			return false;
 		}
 		
-		internal Gtk.AccelGroup AccelGroup {
-			get {
-				if (accelGroup == null) {
-					accelGroup = new Gtk.AccelGroup ();
-				} 
-				return accelGroup;
-			}
-		}
-		
 		internal void NotifySelected (CommandInfo cmdInfo)
 		{
 			if (CommandSelected != null) {
@@ -2320,11 +2263,11 @@ namespace MonoDevelop.Components.Commands
 			Gtk.Window newFocused = null;
 			foreach (Gtk.Window w in wins) {
 				if (w.Visible) {
-					if (w.HasToplevelFocus) {
+					if (w.IsActive) {
 						hasFocus = true;
 						newFocused = w;
 					}
-					if (w.IsActive && w.Type == Gtk.WindowType.Toplevel && !(w is Gtk.Dialog)) {
+					if (w.IsActive && !(w is Gtk.Dialog)) {
 						if (win == null)
 							win = w;
 					}
@@ -2424,13 +2367,13 @@ namespace MonoDevelop.Components.Commands
 
 		Gtk.Widget GetFocusedChild (Control widget)
 		{
-			Gtk.Container container;
+			Gtk.Widget container;
 #if MAC
 			if (widget?.nativeWidget is AppKit.NSWindow window)
 				widget = Mac.GtkMacInterop.GetGtkWindow (window)?.Child;
 #endif
 			do {
-				container = widget?.nativeWidget is Gtk.Container ? widget.GetNativeWidget<Gtk.Container> () : null;
+				container = widget?.nativeWidget as Gtk.Widget;
 				if (container != null) {
 					Gtk.Widget child = container.FocusChild;
 					if (child != null)
@@ -2484,16 +2427,7 @@ namespace MonoDevelop.Components.Commands
 				return false;
 			}
 
-			if (appHasFocus) {
-				int x, y;
-				Gdk.Display.Default.GetPointer (out x, out y);
-				if (x != lastX || y != lastY) {
-					// Mouse position has changed. The user is interacting.
-					lastX = x;
-					lastY = y;
-					RegisterUserInteraction ();
-				}
-			}
+			// Pointer movement is reported by the motion controller of the top level windows (see RegisterTopWindow)
 			
 			uint newWait;
 			double secs = (DateTime.Now - lastUserInteraction).TotalSeconds;
@@ -2549,18 +2483,11 @@ namespace MonoDevelop.Components.Commands
 		void StartWaitingForUserInteraction ()
 		{
 			// Starts a pasive wait for user interaction.
-			// To do it, it subscribes the MotionNotify event
-			// of the main window. This event is unsubscribed when motion is detected
-			// Keyboard events are already subscribed in RegisterTopWindow
+			// The motion, click, focus and key controllers of the top level windows (see RegisterTopWindow)
+			// call RegisterUserInteraction, which ends the wait.
 			
 			waitingForUserInteraction = true;
 			toolbarUpdaterRunning = false;
-			foreach (var win in topLevelWindows) {
-				if (!(win.nativeWidget is Gtk.Window gtkWindow))
-					continue;
-				gtkWindow.MotionNotifyEvent += HandleWinMotionNotifyEvent;
-				gtkWindow.FocusInEvent += HandleFocusInEventHandler;
-			}
 		}
 		
 		void EndWaitingForUserInteraction ()
@@ -2568,12 +2495,6 @@ namespace MonoDevelop.Components.Commands
 			if (!waitingForUserInteraction)
 				return;
 			waitingForUserInteraction = false;
-			foreach (var win in topLevelWindows) {
-				if (!(win.nativeWidget is Gtk.Window gtkWindow))
-					continue;
-				gtkWindow.MotionNotifyEvent -= HandleWinMotionNotifyEvent;
-				gtkWindow.FocusInEvent -= HandleFocusInEventHandler;
-			}
 
 			StartStatusUpdater ();
 		}
@@ -2584,16 +2505,6 @@ namespace MonoDevelop.Components.Commands
 				lastUserInteraction = DateTime.Now;
 				EndWaitingForUserInteraction ();
 			}
-		}
-
-		void HandleFocusInEventHandler (object o, Gtk.FocusInEventArgs args)
-		{
-			RegisterUserInteraction ();
-		}
-
-		void HandleWinMotionNotifyEvent (object o, Gtk.MotionNotifyEventArgs args)
-		{
-			RegisterUserInteraction ();
 		}
 
 		internal DateTime LastUserInteraction {
@@ -3036,54 +2947,6 @@ namespace MonoDevelop.Components.Commands
 				return null;
 			}
 			set {
-			}
-		}
-	}
-
-	internal class ToolbarTracker
-	{
-		Gtk.IconSize lastSize;
-		 
-		public void Track (Gtk.Toolbar toolbar)
-		{
-			lastSize = toolbar.IconSize;
-			toolbar.AddNotification ("icon-size", IconSizeChanged);
-			toolbar.OrientationChanged += HandleToolbarOrientationChanged;
-			toolbar.StyleChanged += HandleToolbarStyleChanged;
-			
-			toolbar.Destroyed += delegate {
-				toolbar.StyleChanged -= HandleToolbarStyleChanged;
-				toolbar.OrientationChanged -= HandleToolbarOrientationChanged;
-				toolbar.RemoveNotification ("icon-size", IconSizeChanged);
-			};
-		}
-
-		void HandleToolbarStyleChanged (object o, Gtk.StyleChangedArgs args)
-		{
-			Gtk.Toolbar t = (Gtk.Toolbar) o;
-			if (lastSize != t.IconSize)
-				UpdateCustomItems (t);
-		}
-
-		void HandleToolbarOrientationChanged (object o, Gtk.OrientationChangedArgs args)
-		{
-			Gtk.Toolbar t = (Gtk.Toolbar) o;
-			if (lastSize != t.IconSize)
-				UpdateCustomItems (t);
-		}
-
-		void IconSizeChanged (object o, GLib.NotifyArgs args)
-		{
-			this.lastSize = ((Gtk.Toolbar) o).IconSize;
-			UpdateCustomItems ((Gtk.Toolbar) o);
-		}
-		
-		void UpdateCustomItems (Gtk.Toolbar t)
-		{
-			foreach (Gtk.ToolItem ti in t.Children) {
-				CustomItem ci = ti.Child as CustomItem;
-				if (ci != null)
-					ci.SetToolbarStyle (t);
 			}
 		}
 	}

@@ -162,7 +162,7 @@ namespace MonoDevelop.Ide.Gui.Components
 				Gtk.TreeIter oldIter = currentIter;
 //				DateTime time = DateTime.Now;
 				int items = 0;
-				pad.Tree.FreezeChildNotify ();
+				// TODO GTK4: TreeView.FreezeChildNotify is not bound
 				foreach (object dataObject in dataObjects) {
 					items++;
 					if (chain == null || dataObject.GetType () != oldType) {
@@ -191,7 +191,7 @@ namespace MonoDevelop.Ide.Gui.Components
 					BuildNode (it, chain, ats, dataObject);
 					pad.NotifyInserted (it, dataObject);
 				}
-				pad.Tree.ThawChildNotify ();
+				// TODO GTK4: TreeView.ThawChildNotify is not bound
 //				Console.WriteLine (items + " : " +(DateTime.Now - time).TotalMilliseconds);
 				MoveToIter (oldIter);
 			}

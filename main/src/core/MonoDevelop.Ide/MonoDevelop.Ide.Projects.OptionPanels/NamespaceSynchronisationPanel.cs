@@ -112,7 +112,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 	}
 	
-	partial class NamespaceSynchronisationPanelWidget : Gtk.Bin
+	partial class NamespaceSynchronisationPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		NamespaceSynchronisationPanel panel;
 		TreeStore previewStore;
@@ -146,14 +146,13 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			
 			previewTree.CanFocus = false;
 			previewFrame.CanFocus = false;
-			namespaceAssociationBox.FocusChain = new Widget[] { checkDefaultAsRoot, hbox1 };
-			hbox1.FocusChain =  new Widget[] { radioFlat, radioHierarch };
-			previewTree.ButtonPressEvent += SuppressClick;
+			// the preview is not interactive: swallow the clicks before the tree view handles them
+			previewTree.AddClickHandler (c => c.Claim (), phase: PropagationPhase.Capture);
 			
 			TreeViewColumn dirCol = new TreeViewColumn ();
 			dirCol.Title = GettextCatalog.GetString ("Directory");
 			var iconRenderer = new CellRendererImage ();
-			iconRenderer.StockSize = Gtk.IconSize.Menu;
+			iconRenderer.StockSize = StockIconSize.Menu;
 			CellRendererText textRenderer = new CellRendererText ();
 			dirCol.PackStart (iconRenderer, false);
 			dirCol.PackStart (textRenderer, false);
@@ -163,8 +162,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			
 			previewTree.AppendColumn (GettextCatalog.GetString ("Namespace"), textRenderer, "text", 2);
 			
-			previewFrame.Add (previewTree);
-			previewFrame.ShowAll ();
+			previewFrame.Child = previewTree;
 			
 			UpdatePreview (null, EventArgs.Empty);
 
@@ -228,12 +226,6 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			}
 			
 			return new DotNetNamingPolicy (assoc, ActiveResourceNamePolicy);
-		}
-		
-		[GLib.ConnectBefore]
-		void SuppressClick (object o, ButtonPressEventArgs args)
-		{
-			args.RetVal = true;
 		}
 		
 		ResourceNamePolicy ActiveResourceNamePolicy {

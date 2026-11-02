@@ -46,7 +46,8 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		
 		public IntRangeEditor () : base (0, 0, 1.0)
 		{
-			this.HasFrame = false;
+			// GTK 4 SpinButton is no longer an Entry and has no HasFrame property
+			AddCssClass ("flat");
 		}
 		
 		public void Initialize (EditSession session)

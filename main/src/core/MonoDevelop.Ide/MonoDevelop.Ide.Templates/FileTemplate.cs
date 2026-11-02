@@ -148,7 +148,7 @@ namespace MonoDevelop.Ide.Templates
 			}
 
 			if (xmlNodeConfig ["Icon"] != null) {
-				fileTemplate.Icon = ImageService.GetStockId (addin, xmlNodeConfig ["Icon"].InnerText, IconSize.Dnd);
+				fileTemplate.Icon = ImageService.GetStockId (addin, xmlNodeConfig ["Icon"].InnerText, MonoDevelop.Components.StockIconSize.Dnd);
 			}
 
 			if (xmlNodeConfig ["Wizard"] != null) {

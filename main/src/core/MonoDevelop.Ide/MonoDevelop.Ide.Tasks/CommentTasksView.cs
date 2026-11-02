@@ -62,14 +62,13 @@ namespace MonoDevelop.Ide.Tasks
 
 		static readonly string restoreID = "Monodevelop.CommentTasksColumns";
 
-		PadTreeView view;
+		TaskListTreeView view;
 		ListStore store;
 		TreeModelSort sortModel;
 
-		Gdk.Color highPrioColor, normalPrioColor, lowPrioColor;
+		string highPrioColor, normalPrioColor, lowPrioColor; // Pango colour specs (cell renderer "foreground")
 
 		Dictionary<ContextMenuItem, int> columnsActions;
-		Clipboard clipboard;
 
 		TaskStore comments = new TaskStore ();
 
@@ -104,30 +103,29 @@ namespace MonoDevelop.Ide.Tasks
 				typeof (string),     // file
 				typeof (string),     // path
 				typeof (TaskListEntry),       // task
-				typeof (Gdk.Color),  // foreground color
+				typeof (string),  // foreground color (Pango colour spec)
 				typeof (int));       // font weight
 
 			sortModel = new TreeModelSort (store);
 
-			view = new MonoDevelop.Ide.Gui.Components.PadTreeView (sortModel);
-			view.RulesHint = true;
+			view = new TaskListTreeView (sortModel);
 			view.SearchColumn = (int)Columns.Description;
 			view.DoPopupMenu = ShowPopupMenu;
 			view.RowActivated += new RowActivatedHandler (OnRowActivated);
 
 			TreeViewColumn col;
-			col = view.AppendColumn (GettextCatalog.GetString ("Line"), view.TextRenderer, "text", Columns.Line, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("Line"), view.TextRenderer, "text", Columns.Line, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.Clickable = false;
 
-			col = view.AppendColumn (GettextCatalog.GetString ("Description"), view.TextRenderer, "text", Columns.Description, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("Description"), view.TextRenderer, "text", Columns.Description, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.SortColumnId = (int)Columns.Description;
 			col.Resizable = true;
 
-			col = view.AppendColumn (GettextCatalog.GetString ("File"), view.TextRenderer, "text", Columns.File, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("File"), view.TextRenderer, "text", Columns.File, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.SortColumnId = (int)Columns.File;
 			col.Resizable = true;
 
-			col = view.AppendColumn (GettextCatalog.GetString ("Path"), view.TextRenderer, "text", Columns.Path, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("Path"), view.TextRenderer, "text", Columns.Path, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.SortColumnId = (int)Columns.Path;
 			col.Resizable = true;
 
@@ -337,7 +335,7 @@ namespace MonoDevelop.Ide.Tasks
 			return TreeIter.Zero;
 		}
 
-		void ShowPopupMenu (Gdk.EventButton evnt)
+		void ShowPopupMenu (ClickInfo evnt)
 		{
 			var menu = new ContextMenu ();
 			columnsActions = new Dictionary<ContextMenuItem, int> ();
@@ -371,17 +369,15 @@ namespace MonoDevelop.Ide.Tasks
 		{
 			TaskListEntry task = SelectedTask;
 			if (task != null) {
-				clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-				clipboard.Text = task.Description;
-				clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-				clipboard.Text = task.Description;
+				ClipboardHelper.SetText (task.Description);
+				ClipboardHelper.SetText (task.Description, true);
 			}
 		}
 
 		TaskListEntry SelectedTask
 		{
 			get {
-				TreeModel model;
+				ITreeModel model;
 				TreeIter iter;
 				if (view.Selection.GetSelected (out model, out iter))
 				{
@@ -429,7 +425,7 @@ namespace MonoDevelop.Ide.Tasks
 			}
 		}
 
-		Gdk.Color GetColorByPriority (TaskPriority prio)
+		string GetColorByPriority (TaskPriority prio)
 		{
 			switch (prio)
 			{
@@ -442,25 +438,23 @@ namespace MonoDevelop.Ide.Tasks
 			}
 		}
 		
-		static Gdk.Color StringToColor (string colorStr)
+		
+		/// <summary>Converts a stored "mode:RRRR/GGGG/BBBB" colour (16-bit hex channels) to a Pango colour spec (#RRRRGGGGBBBB).</summary>
+		static string StringToColor (string colorStr)
 		{
 			string[] rgb = colorStr.Substring (colorStr.IndexOf (':') + 1).Split ('/');
-			if (rgb.Length != 3) return new Gdk.Color (0, 0, 0);
-			Gdk.Color color = Gdk.Color.Zero;
-			try
-			{
-				color.Red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber);
-				color.Green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber);
-				color.Blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber);
-			}
-			catch
-			{
+			if (rgb.Length != 3) return "#000000";
+			try {
+				ushort red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber);
+				ushort green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber);
+				ushort blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber);
+				return string.Format ("#{0:X4}{1:X4}{2:X4}", red, green, blue);
+			} catch {
 				// something went wrong, then use neutral black color
-				color = new Gdk.Color (0, 0, 0);
+				return "#000000";
 			}
-			return color;
 		}
-		
+
 		void OnPropertyUpdated (object sender, EventArgs e)
 		{
 			highPrioColor = StringToColor (IdeApp.Preferences.UserTasksHighPrioColor);
@@ -490,5 +484,26 @@ namespace MonoDevelop.Ide.Tasks
 			get { return null; } 
 		}
 		#endregion
+
+	}
+	/// <summary>
+	/// Pad tree view raising <see cref="Destroyed"/> when it is destroyed (GTK 4 widgets have no "destroy" signal),
+	/// so the owning task list view can release its event subscriptions.
+	/// </summary>
+	class TaskListTreeView : PadTreeView
+	{
+		public TaskListTreeView (ITreeModel model) : base (model)
+		{
+		}
+
+		public event EventHandler Destroyed;
+
+		public override void Destroy ()
+		{
+			var handler = Destroyed;
+			Destroyed = null;
+			handler?.Invoke (this, EventArgs.Empty);
+			base.Destroy ();
+		}
 	}
 }

@@ -346,8 +346,8 @@ namespace MonoDevelop.Components.Docking
 			
 			if (type == DockGroupType.Tabbed) {
 				if (boundTabStrip != null) {
-					int tabsHeight = boundTabStrip.SizeRequest ().Height;
-					boundTabStrip.SizeAllocate (new Gdk.Rectangle (newAlloc.X, newAlloc.Y, newAlloc.Width, tabsHeight));
+					int tabsHeight = boundTabStrip.GetRequisition ().Height;
+					boundTabStrip.SizeAllocate (new Gdk.Rectangle (newAlloc.X, newAlloc.Y, newAlloc.Width, tabsHeight), -1);
 				}
 				if (allocStatus == AllocStatus.Valid && newAlloc == oldAlloc) {
 					// Even if allocation has not changed, SizeAllocation has to be called on all items to avoid redrawing issues.
@@ -356,7 +356,7 @@ namespace MonoDevelop.Components.Docking
 					return;
 				}
 				if (VisibleObjects.Count > 1 && boundTabStrip != null) {
-					int tabsHeight = boundTabStrip.SizeRequest ().Height;
+					int tabsHeight = boundTabStrip.GetRequisition ().Height;
 					newAlloc.Height -= tabsHeight;
 					newAlloc.Y += tabsHeight;
 					boundTabStrip.QueueDraw ();
@@ -601,7 +601,7 @@ namespace MonoDevelop.Components.Docking
 					ret.Width += req.Width;
 			}
 			if (type == DockGroupType.Tabbed && VisibleObjects.Count > 1 && boundTabStrip != null) {
-				Gtk.Requisition tabs = boundTabStrip.SizeRequest ();
+				Gtk.Requisition tabs = boundTabStrip.GetRequisition ();
 				ret.Height += tabs.Height;
 				if (ret.Width < tabs.Width)
 					ret.Width = tabs.Width;
@@ -729,10 +729,8 @@ namespace MonoDevelop.Components.Docking
 					if (it.Visible) {
 						// Add the dock item to the container and show it if visible
 						if (it.Item.Widget.Parent != Frame.Container) {
-							if (it.Item.Widget.Parent != null) {
-								((Gtk.Container)it.Item.Widget.Parent).Remove (it.Item.Widget);
-							}
-							Frame.Container.Add (it.Item.Widget);
+							DockUtil.RemoveFromParent (it.Item.Widget);
+							Frame.Container.AddChild (it.Item.Widget);
 						}
 						if (!it.Item.Widget.Visible && type != DockGroupType.Tabbed)
 							it.Item.Widget.Show ();
@@ -741,20 +739,18 @@ namespace MonoDevelop.Components.Docking
 						if ((type != DockGroupType.Tabbed || VisibleObjects.Count == 1) && (it.Item.Behavior & DockItemBehavior.NoGrip) == 0) {
 							var tab = it.Item.TitleTab;
 							if (tab.Parent != Frame.Container) {
-								if (tab.Parent != null) {
-									((Gtk.Container)tab.Parent).Remove (tab);
-								}
-								Frame.Container.Add (tab);
+								DockUtil.RemoveFromParent (tab);
+								Frame.Container.AddChild (tab);
 								tab.Active = true;
 							}
-							tab.ShowAll ();
+							tab.Visible = true;
 						}
 					} else {
 						if (it.Item.Widget.Parent == Frame.Container)
-							Frame.Container.Remove (it.Item.Widget);
+							Frame.Container.RemoveChild (it.Item.Widget);
 						var tab = it.Item.TitleTab;
 						if (tab.Parent == Frame.Container)
-							Frame.Container.Remove (tab);
+							Frame.Container.RemoveChild (tab);
 					}
 				}
 				else
@@ -814,7 +810,7 @@ namespace MonoDevelop.Components.Docking
 						height = dh;
 				}
 				if (boundTabStrip != null) {
-					var tr = boundTabStrip.SizeRequest ();
+					var tr = boundTabStrip.GetRequisition ();
 					if (width < tr.Width)
 						width = tr.Width;
 				}
@@ -843,24 +839,24 @@ namespace MonoDevelop.Components.Docking
 			}
 		}
 		
-		public void Draw (Gdk.Rectangle exposedArea, DockGroup currentHandleGrp, int currentHandleIndex)
+		public void Draw (Cairo.Context cr, DockGroup currentHandleGrp, int currentHandleIndex)
 		{
 			if (type != DockGroupType.Tabbed) {
-				DrawSeparators (exposedArea, currentHandleGrp, currentHandleIndex, DrawSeparatorOperation.Draw, false, null);
+				DrawSeparators (cr, currentHandleGrp, currentHandleIndex, DrawSeparatorOperation.Draw, false, null);
 				foreach (DockObject it in VisibleObjects) {
 					DockGroup grp = it as DockGroup;
 					if (grp != null)
-						grp.Draw (exposedArea, currentHandleGrp, currentHandleIndex);
+						grp.Draw (cr, currentHandleGrp, currentHandleIndex);
 				}
 			}
 		}
 		
-		public void DrawSeparators (Gdk.Rectangle exposedArea, DockGroup currentHandleGrp, int currentHandleIndex, DrawSeparatorOperation oper, List<Gdk.Rectangle> areasList)
+		public void DrawSeparators (Cairo.Context cr, DockGroup currentHandleGrp, int currentHandleIndex, DrawSeparatorOperation oper, List<Gdk.Rectangle> areasList)
 		{
-			DrawSeparators (exposedArea, currentHandleGrp, currentHandleIndex, oper, true, areasList);
+			DrawSeparators (cr, currentHandleGrp, currentHandleIndex, oper, true, areasList);
 		}
 		
-		void DrawSeparators (Gdk.Rectangle exposedArea, DockGroup currentHandleGrp, int currentHandleIndex, DrawSeparatorOperation oper, bool drawChildrenSep, List<Gdk.Rectangle> areasList)
+		void DrawSeparators (Cairo.Context cr, DockGroup currentHandleGrp, int currentHandleIndex, DrawSeparatorOperation oper, bool drawChildrenSep, List<Gdk.Rectangle> areasList)
 		{
 			if (type == DockGroupType.Tabbed || VisibleObjects.Count == 0)
 				return;
@@ -873,18 +869,14 @@ namespace MonoDevelop.Components.Docking
 			int hw = horiz ? Frame.HandleSize : Allocation.Width;
 			int hh = horiz ? Allocation.Height : Frame.HandleSize;
 
-			Gdk.GC hgc = null;
-
-			if (areasList == null && oper == DrawSeparatorOperation.Draw) {
-				hgc = new Gdk.GC (Frame.Container.GdkWindow);
-				hgc.RgbFgColor = Styles.DockFrameBackground.ToGdkColor ();
-			}
+			if (areasList == null && oper == DrawSeparatorOperation.Draw && cr != null)
+				cr.SetSourceColor (Styles.DockFrameBackground.ToCairoColor ());
 
 			for (int n=0; n<VisibleObjects.Count; n++) {
 				DockObject ob = VisibleObjects [n];
 				DockGroup grp = ob as DockGroup;
 				if (grp != null && drawChildrenSep)
-					grp.DrawSeparators (exposedArea, currentHandleGrp, currentHandleIndex, oper, areasList);
+					grp.DrawSeparators (cr, currentHandleGrp, currentHandleIndex, oper, areasList);
 				if (ob != last) {
 					if (horiz)
 						x += ob.Allocation.Width + Frame.HandlePadding;
@@ -897,10 +889,13 @@ namespace MonoDevelop.Components.Docking
 							areasList.Add (new Gdk.Rectangle (x, y, hw, hh));
 						break;
 					case DrawSeparatorOperation.Invalidate:
-						Frame.Container.QueueDrawArea (x, y, hw, hh);
+						Frame.Container.QueueDraw ();
 						break;
 					case DrawSeparatorOperation.Draw:
-						Frame.Container.GdkWindow.DrawRectangle (hgc, true, x, y, hw, hh);
+						if (cr != null) {
+							cr.Rectangle (x, y, hw, hh);
+							cr.Fill ();
+						}
 						break;
 					case DrawSeparatorOperation.Allocate:
 						Frame.Container.AllocateSplitter (this, n, new Gdk.Rectangle (x, y, hw, hh));
@@ -913,8 +908,6 @@ namespace MonoDevelop.Components.Docking
 						y += Frame.HandleSize + Frame.HandlePadding;
 				}
 			}
-			if (hgc != null)
-				hgc.Dispose ();
 		}
 		
 		public void ResizeItem (int index, int newSize)
@@ -946,6 +939,9 @@ namespace MonoDevelop.Components.Docking
 			
 			o1.QueueResize ();
 			o2.QueueResize ();
+
+			// Resizing the items changes the layout of the whole container
+			Frame.Container.QueueAllocate ();
 		}
 		
 		internal override void QueueResize ()

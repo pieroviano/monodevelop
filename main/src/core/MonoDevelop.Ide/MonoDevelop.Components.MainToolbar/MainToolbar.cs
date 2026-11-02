@@ -49,11 +49,11 @@ using System.Diagnostics;
 
 namespace MonoDevelop.Components.MainToolbar
 {
-	class MainToolbar: Gtk.EventBox, IMainToolbarView
+	class MainToolbar: BinWidget, IMainToolbarView
 	{
-		HBox contentBox = new HBox (false, 0);
+		Box contentBox = new Box (Orientation.Horizontal, 0);
 
-		HBox configurationCombosBox;
+		Box configurationCombosBox;
 
 		ComboBox configurationCombo;
 		TreeStore configurationStore = new TreeStore (typeof(string), typeof(IConfigurationModel));
@@ -71,7 +71,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		ButtonBar buttonBar = new ButtonBar ();
 		RoundButton button = new RoundButton ();
-		Alignment buttonBarBox;
+		Box buttonBarBox;
 
 		// attributes for the runtime combo (bold / normal)
 		readonly Pango.AttrList boldAttributes = new Pango.AttrList ();
@@ -93,13 +93,13 @@ namespace MonoDevelop.Components.MainToolbar
 			}
 		}
 
-		static bool RuntimeIsSeparator (TreeModel model, TreeIter iter)
+		static bool RuntimeIsSeparator (ITreeModel model, TreeIter iter)
 		{
 			var runtime = (IRuntimeModel)model.GetValue (iter, 0);
 			return runtime == null || runtime.IsSeparator;
 		}
 
-		void RuntimeRenderCell (CellLayout layout, CellRenderer cell, TreeModel model, TreeIter iter)
+		void RuntimeRenderCell (ICellLayout layout, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			var runtime = (IRuntimeModel)model.GetValue (iter, 0);
 			var renderer = (CellRendererText) cell;
@@ -131,12 +131,10 @@ namespace MonoDevelop.Components.MainToolbar
 		TreeIter lastSelection = TreeIter.Zero;
 		public MainToolbar ()
 		{
-			WidgetFlags |= Gtk.WidgetFlags.AppPaintable;
-
 			AddWidget (button);
 			AddSpace (8);
 
-			configurationCombosBox = new HBox (false, 8);
+			configurationCombosBox = new Box (Orientation.Horizontal, 8);
 
 			var ctx = new Gtk.CellRendererText ();
 
@@ -146,9 +144,8 @@ namespace MonoDevelop.Components.MainToolbar
 			runConfigurationCombo.AddAttribute (ctx, "text", 0);
 			runConfigurationCombo.TooltipText = GettextCatalog.GetString ("A project or named set of projects and execution options that should be launched when running or debugging the solution.");
 
-			var runConfigurationComboVBox = new VBox ();
-			runConfigurationComboVBox.PackStart (runConfigurationCombo, true, false, 0);
-			configurationCombosBox.PackStart (runConfigurationComboVBox, false, false, 0);
+			runConfigurationCombo.Valign = Align.Center;
+			configurationCombosBox.Append (runConfigurationCombo);
 		
 			configurationCombo = new Gtk.ComboBox ();
 			configurationCombo.Model = configurationStore;
@@ -156,9 +153,8 @@ namespace MonoDevelop.Components.MainToolbar
 			configurationCombo.AddAttribute (ctx, "text", 0);
 			configurationCombo.TooltipText = GettextCatalog.GetString ("A named set of projects and their configurations to be built when building the solution.");
 
-			var configurationComboVBox = new VBox ();
-			configurationComboVBox.PackStart (configurationCombo, true, false, 0);
-			configurationCombosBox.PackStart (configurationComboVBox, false, false, 0);
+			configurationCombo.Valign = Align.Center;
+			configurationCombosBox.Append (configurationCombo);
 
 			// bold attributes for running runtime targets / (emulators)
 			boldAttributes.Insert (new Pango.AttrWeight (Pango.Weight.Bold));
@@ -173,77 +169,55 @@ namespace MonoDevelop.Components.MainToolbar
 			runtimeCombo.RowSeparatorFunc = RuntimeIsSeparator;
 			runtimeCombo.TooltipText = GettextCatalog.GetString ("The device on which to deploy and launch the projects when running or debugging.");
 
-			var runtimeComboVBox = new VBox ();
-			runtimeComboVBox.PackStart (runtimeCombo, true, false, 0);
-			configurationCombosBox.PackStart (runtimeComboVBox, false, false, 0);
+			runtimeCombo.Valign = Align.Center;
+			configurationCombosBox.Append (runtimeCombo);
 			AddWidget (configurationCombosBox);
 
-			buttonBarBox = new Alignment (0.5f, 0.5f, 0, 0);
-			buttonBarBox.LeftPadding = (uint) 7;
-			buttonBarBox.Add (buttonBar);
-			buttonBarBox.NoShowAll = true;
+			buttonBarBox = new Box (Orientation.Horizontal, 0);
+			buttonBarBox.Halign = Align.Center;
+			buttonBarBox.Valign = Align.Center;
+			buttonBarBox.MarginStart = 7;
+			buttonBarBox.Append (buttonBar);
+			buttonBarBox.Visible = false;
 			AddWidget (buttonBarBox);
 			AddSpace (24);
 
 			statusArea = new StatusArea ();
 			statusArea.ShowMessage (BrandingService.ApplicationName);
 
-			var statusAreaAlign = new Alignment (0, 0, 1, 1);
-			statusAreaAlign.Add (statusArea);
-			contentBox.PackStart (statusAreaAlign, true, true, 0);
+			var statusAreaAlign = new StatusAreaContainer ();
+			statusAreaAlign.Child = statusArea;
+			statusAreaAlign.Hexpand = true;
+			contentBox.Append (statusAreaAlign);
 			AddSpace (24);
-
-			statusAreaAlign.SizeAllocated += (object o, SizeAllocatedArgs args) => {
-				Gtk.Widget toplevel = this.Toplevel;
-				if (toplevel == null)
-					return;
-
-				int windowWidth = toplevel.Allocation.Width;
-				int center = windowWidth / 2;
-				int left = Math.Max (center - 300, args.Allocation.Left);
-				int right = Math.Min (left + 600, args.Allocation.Right);
-				uint left_padding = (uint) (left - args.Allocation.Left);
-				uint right_padding = (uint) (args.Allocation.Right - right);
-
-				if (left_padding != statusAreaAlign.LeftPadding || right_padding != statusAreaAlign.RightPadding)
-					statusAreaAlign.SetPadding (0, 0, (uint) left_padding, (uint) right_padding);
-			};
 
 			matchEntry = new SearchEntry ();
 
 			matchEntry.ForceFilterButtonVisible = true;
-			matchEntry.Entry.FocusOutEvent += (o, e) => {
+			matchEntry.Entry.AddFocusHandler (null, () => {
 				if (SearchEntryLostFocus != null)
-					SearchEntryLostFocus (o, e);
-			};
+					SearchEntryLostFocus (matchEntry.Entry, EventArgs.Empty);
+			});
 
 			matchEntry.Ready = true;
 			matchEntry.Visible = true;
 			matchEntry.IsCheckMenu = true;
 			matchEntry.WidthRequest = 240;
 			if (!Platform.IsMac && !Platform.IsWindows)
-				matchEntry.Entry.ModifyFont (Pango.FontDescription.FromString ("Sans 9")); // TODO: VV: "Segoe UI 9"
+				ApplySearchEntryFont (matchEntry.Entry); // TODO: VV: "Segoe UI 9"
 			matchEntry.RoundedShape = true;
 			matchEntry.Entry.Changed += HandleSearchEntryChanged;
 			matchEntry.Activated += HandleSearchEntryActivated;
-			matchEntry.Entry.KeyPressEvent += HandleSearchEntryKeyPressed;
-			SizeAllocated += (o, e) => {
-				if (SearchEntryResized != null)
-					SearchEntryResized (o, e);
-			};
+			matchEntry.Entry.AddKeyPressHandler (HandleSearchEntryKeyPressed, null, PropagationPhase.Capture);
 
-			contentBox.PackStart (matchEntry, false, false, 0);
+			contentBox.Append (matchEntry);
 
-			var align = new Gtk.Alignment (0, 0, 1f, 1f);
-			align.Show ();
-			align.TopPadding = (uint) 5;
-			align.LeftPadding = (uint) 9;
-			align.RightPadding = (uint) 18;
-			align.BottomPadding = (uint) 10;
-			align.Add (contentBox);
-
-			Add (align);
+			Padding = new Border { Top = 5, Left = 9, Right = 18, Bottom = 10 };
+			Child = contentBox;
 			SetDefaultSizes (-1, 21);
+
+			// Dragging the empty area of the toolbar moves the window (children that handle the click claim it)
+			this.AddClickHandler (HandleToolbarPressed, null, 1, PropagationPhase.Bubble);
 
 			configurationCombo.Changed += (o, e) => {
 				if (ConfigurationChanged != null)
@@ -270,20 +244,61 @@ namespace MonoDevelop.Components.MainToolbar
 
 			button.Clicked += HandleStartButtonClicked;
 
-			this.ShowAll ();
-			this.statusArea.statusIconBox.HideAll ();
+			this.statusArea.statusIconBox.Visible = false;
 		}
 
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+		static Gtk.CssProvider searchEntryFontProvider;
+
+		static void ApplySearchEntryFont (Gtk.Widget entry)
 		{
-			if (evnt.Button == 1 && evnt.Window == GdkWindow) {
-				var window = (Gtk.Window)Toplevel;
-				if (!IdeServices.DesktopService.GetIsFullscreen (window)) {
-					window.BeginMoveDrag (1, (int)evnt.XRoot, (int)evnt.YRoot, evnt.Time);
-					return true;
-				}
+			if (searchEntryFontProvider == null) {
+				searchEntryFontProvider = new Gtk.CssProvider ();
+				searchEntryFontProvider.LoadFromString ("entry.md-toolbar-search { font-family: Sans; font-size: 9pt; }");
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.AddProviderForDisplay (display, searchEntryFontProvider, StyleProviderPriority.Application);
 			}
-			return base.OnButtonPressEvent (evnt);
+			entry.AddCssClass ("md-toolbar-search");
+		}
+
+		void HandleToolbarPressed (ClickInfo click)
+		{
+			if (click.Button != 1 || !(Root is Gtk.Window window) || window.Native?.Surface == null)
+				return;
+			// Only the toolbar background starts a window drag, not the widgets on top of it
+			var picked = Pick (click.X, click.Y, PickFlags.Default);
+			if (picked != this && picked != contentBox)
+				return;
+			if (!IdeServices.DesktopService.GetIsFullscreen (window)) {
+				TranslateCoordinates (window, click.X, click.Y, out double rootX, out double rootY);
+				var toplevel = Gdk.ToplevelAdapter.GetObject (window.Native.Surface);
+				toplevel.BeginMove (click.Gesture.CurrentEventDevice, (int)click.Button, rootX, rootY, click.Time);
+				click.Claim ();
+			}
+		}
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
+			base.OnSizeAllocate (width, height, baseline);
+			SearchEntryResized?.Invoke (this, EventArgs.Empty);
+		}
+
+		/// <summary>Hosts the status area, keeping it centered in the window with a maximum width of 600.</summary>
+		class StatusAreaContainer : BinWidget
+		{
+			protected override void OnSizeAllocate (int width, int height, int baseline)
+			{
+				var child = Child;
+				if (child == null)
+					return;
+				int left = 0, right = width;
+				if (Root is Gtk.Widget toplevel && TranslateCoordinates (toplevel, 0, 0, out double x, out double y)) {
+					int center = toplevel.Width / 2;
+					left = Math.Max ((int)(center - 300 - x), 0);
+					right = Math.Min (left + 600, width);
+				}
+				AllocateChild (child, new Gdk.Rectangle (left, 0, Math.Max (0, right - left), height));
+			}
 		}
 
 		void SetDefaultSizes (int comboHeight, int height)
@@ -301,8 +316,7 @@ namespace MonoDevelop.Components.MainToolbar
 		{
 			Label la = new Label ("");
 			la.WidthRequest = w;
-			la.Show ();
-			contentBox.PackStart (la, false, false, 0);
+			contentBox.Append (la);
 		}
 
 		void HandleSearchEntryChanged (object sender, EventArgs e)
@@ -316,13 +330,13 @@ namespace MonoDevelop.Components.MainToolbar
 				SearchEntryActivated (sender, e);
 		}
 
-		void HandleSearchEntryKeyPressed (object sender, KeyPressEventArgs e)
+		bool HandleSearchEntryKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			if (PerformCommand != null) {
-				bool cmdPressed = (e.Event.State & Gdk.ModifierType.Mod2Mask) != 0;
+				bool cmdPressed = Platform.IsMac && (state & Gdk.ModifierType.MetaMask) != 0;
 				SearchPopupCommand command;
 
-				switch ((Gdk.Key)e.Event.KeyValue) {
+				switch ((Gdk.Key)keyval) {
 				case Gdk.Key.Down:
 				case Gdk.Key.downarrow:
 					if (cmdPressed) {
@@ -361,51 +375,48 @@ namespace MonoDevelop.Components.MainToolbar
 					break;
 
 				default:
-					return;
+					return false;
 				}
 
 				var kargs = new SearchEntryCommandArgs (command);
-				PerformCommand?.Invoke (sender, kargs);
-				e.RetVal = kargs.Handled;
+				PerformCommand?.Invoke (matchEntry.Entry, kargs);
+				return kargs.Handled;
 			}
+			return false;
 		}
 
 		public void AddWidget (Gtk.Widget widget)
 		{
-			contentBox.PackStart (widget, false, false, 0);
+			contentBox.Append (widget);
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Snapshot snapshot)
 		{
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
-				context.Rectangle (
-					evnt.Area.X,
-					evnt.Area.Y,
-					evnt.Area.Width,
-					evnt.Area.Height
-				);
-				context.Clip ();
-				context.LineWidth = 1;
-				if (Background != null && Background.Width > 0) {
-					for (int x=0; x < Allocation.Width; x += Background.Width) {
-						Background.Show (context, x, -TitleBarHeight);
-					}
-				} else {
-					context.Rectangle (0, 0, Allocation.Width, Allocation.Height);
-					using (var lg = new LinearGradient (0, 0, 0, Allocation.Height)) {
-						lg.AddColorStop (0, Style.Light (StateType.Normal).ToCairoColor ());
-						lg.AddColorStop (1, Style.Mid (StateType.Normal).ToCairoColor ());
-						context.SetSource (lg);
-					}
-					context.Fill ();
+			int width = Width, height = Height;
+			if (width > 0 && height > 0) {
+				using (var context = snapshot.CreateCairoContext (new Gdk.Rectangle (0, 0, width, height))) {
+					context.LineWidth = 1;
+					if (Background != null && Background.Width > 0) {
+						for (int x = 0; x < width; x += Background.Width) {
+							Background.Show (context, x, -TitleBarHeight);
+						}
+					} else {
+						context.Rectangle (0, 0, width, height);
+						using (var lg = new LinearGradient (0, 0, 0, height)) {
+							lg.AddColorStop (0, Styles.BackgroundColor.WithIncreasedLight (0.05).ToCairoColor ());
+							lg.AddColorStop (1, Styles.BackgroundColor.WithIncreasedLight (-0.03).ToCairoColor ());
+							context.SetSource (lg);
+						}
+						context.Fill ();
 
+					}
+					context.MoveTo (0, height - 0.5);
+					context.RelLineTo (width, 0);
+					context.SetSourceColor (Styles.ToolbarBottomBorderColor.ToCairoColor ());
+					context.Stroke ();
 				}
-				context.MoveTo (0, Allocation.Height - 0.5);
-				context.RelLineTo (Allocation.Width, 0);
-				context.SetSourceColor (Styles.ToolbarBottomBorderColor.ToCairoColor ());
-				context.Stroke ();
 			}
-			return base.OnExposeEvent (evnt);
+			base.OnSnapshot (snapshot);
 		}
 
 		void HandleStartButtonClicked (object sender, EventArgs e)
@@ -414,17 +425,18 @@ namespace MonoDevelop.Components.MainToolbar
 				RunButtonClicked (sender, e);
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
+			if (disposing) {
+				if (button != null)
+					button.Clicked -= HandleStartButtonClicked;
 
-			if (button != null)
-				button.Clicked -= HandleStartButtonClicked;
-
-			if (Background != null) {
-				((IDisposable)Background).Dispose ();
-				Background = null;
+				if (Background != null) {
+					((IDisposable)Background).Dispose ();
+					Background = null;
+				}
 			}
+			base.Dispose (disposing);
 		}
 
 		#region IMainToolbarView implementation
@@ -630,12 +642,11 @@ namespace MonoDevelop.Components.MainToolbar
 		public void RebuildToolbar (IEnumerable<ButtonBarGroup> groups)
 		{
 			if (!groups.Any ()) {
-				buttonBarBox.Hide ();
+				buttonBarBox.Visible = false;
 				return;
 			}
 
-			buttonBarBox.Show ();
-			buttonBar.ShowAll ();
+			buttonBarBox.Visible = true;
 			buttonBar.Groups = groups;
 		}
 
@@ -651,7 +662,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		public void ShowAccessibilityAnnouncement (string message)
 		{
-			this.Accessible.MakeAccessibilityAnnouncement (message);
+			this.MakeAccessibilityAnnouncement (message);
 		}
 		#endregion
 	}

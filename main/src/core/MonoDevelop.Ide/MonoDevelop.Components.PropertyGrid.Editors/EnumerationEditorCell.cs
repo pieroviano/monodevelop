@@ -56,19 +56,18 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			return val;
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			return new EnumerationEditor ();
 		}
 	}
 	
-	public class EnumerationEditor : Gtk.HBox, IPropertyEditor {
+	public class EnumerationEditor : Gtk.Box, IPropertyEditor {
 
-		Gtk.EventBox ebox;
-		Gtk.ComboBoxEntry combo;
+		Gtk.ComboBoxText combo;
 		Array values;
 
-		public EnumerationEditor () : base (false, 0)
+		public EnumerationEditor () : base (Gtk.Orientation.Horizontal, 0)
 		{
 		}
 		
@@ -88,20 +87,11 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 				else
 					names [f.Name] = f.Name;
 			}
-				       
-			
-			ebox = new Gtk.EventBox ();
-			ebox.Show ();
-			PackStart (ebox, true, true, 0);
 
-			combo = Gtk.ComboBoxEntry.NewText ();
+			combo = new Gtk.ComboBoxText ();
+			combo.Hexpand = true;
 			combo.Changed += combo_Changed;
-			combo.Entry.IsEditable = false;
-			combo.Entry.CanFocus = false;
-			combo.Entry.HasFrame = false;
-			combo.Entry.HeightRequest = combo.SizeRequest ().Height;
-			combo.Show ();
-			ebox.Add (combo);
+			Append (combo);
 
 			foreach (object value in values) {
 				string str = prop.Converter.ConvertToString (value);
@@ -109,16 +99,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 					str = (string) names [str];
 				combo.AppendText (str);
 			}
-		}
-		
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
-			((IDisposable)this).Dispose ();
-		}
-
-		void IDisposable.Dispose ()
-		{
 		}
 
 		public object Value {
@@ -138,7 +118,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		{
 			if (ValueChanged != null)
 				ValueChanged (this, EventArgs.Empty);
-			ebox.TooltipText = Value != null ? Value.ToString () : null;
+			TooltipText = Value != null ? Value.ToString () : null;
 		}
 	}
 }

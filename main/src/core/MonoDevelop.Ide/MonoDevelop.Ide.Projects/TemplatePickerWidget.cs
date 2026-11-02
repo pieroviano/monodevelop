@@ -33,10 +33,11 @@ using MonoDevelop.Components;
 using MonoDevelop.Ide.Templates;
 using System.Linq;
 using MonoDevelop.Ide.Gui.Components;
+using SearchEntry = MonoDevelop.Components.SearchEntry;
 
 namespace MonoDevelop.Ide.Projects
 {
-	class TemplatePickerWidget : Bin
+	class TemplatePickerWidget : MonoDevelop.Components.BinWidget
 	{
 		SectionList sectionList = new SectionList ();
 		SectionList.Section recentSection, installedSection, onlineSection;
@@ -49,13 +50,13 @@ namespace MonoDevelop.Ide.Projects
 		List<TemplateItem> installedTemplates = new List<TemplateItem> ();
 		List<TemplateItem> onlineTemplates = new List<TemplateItem> ();
 		
-		HPaned hsplit = new HPaned ();
-		VPaned vsplit = new VPaned ();
-		VBox rightVbox = new VBox ();
-		HBox searchHbox = new HBox ();
+		Paned hsplit = new Paned (Orientation.Horizontal);
+		Paned vsplit = new Paned (Orientation.Vertical);
+		Box rightVbox = new Box (Orientation.Vertical, 6);
+		Box searchHbox = new Box (Orientation.Horizontal, 0);
 		
 		CompactScrolledWindow infoScrolledWindow = new CompactScrolledWindow ();
-		VBox infoBox = new VBox ();
+		Box infoBox = new Box (Orientation.Vertical, 4);
 		Label infoHeaderLabel = new Label ();
 		Label infoDecriptionLabel = new Label ();
 		
@@ -65,23 +66,12 @@ namespace MonoDevelop.Ide.Projects
 		
 		public TemplatePickerWidget ()
 		{
-			BinContainer.Attach (this);
-			
-			infoBox.BorderWidth = 4;
-			infoBox.Spacing = 4;
+			infoBox.MarginStart = infoBox.MarginEnd = infoBox.MarginTop = infoBox.MarginBottom = 4;
 			infoHeaderLabel.Wrap = true;
 			infoHeaderLabel.Xalign = 0;
 			infoDecriptionLabel.Wrap = true;
 			infoDecriptionLabel.Xalign = 0;
 			infoDecriptionLabel.Yalign = 0;
-			
-			infoBox.SizeAllocated += delegate {
-				var w = infoBox.Allocation.Width - 10;
-				if (infoHeaderLabel.WidthRequest != w) {
-					infoHeaderLabel.WidthRequest = w;
-					infoDecriptionLabel.WidthRequest = w;
-				}
-			};
 			
 			recentSection = sectionList.AddSection (GettextCatalog.GetString ("Recent Templates"), recentTemplateCatView);
 			installedSection = sectionList.AddSection (GettextCatalog.GetString ("Installed Templates"), installedTemplateCatView);
@@ -126,7 +116,6 @@ namespace MonoDevelop.Ide.Projects
 				templateView.Child.GrabFocus ();
 			};
 			searchEntry.Ready = true;
-			searchEntry.Show ();
 			
 			installedTemplateCatView.SelectionChanged += delegate (object sender, EventArgs e) {
 				var selection = installedTemplateCatView.GetSelection ();
@@ -138,24 +127,33 @@ namespace MonoDevelop.Ide.Projects
 				OnActivated ();
 			};
 			
-			Add (hsplit);
-			hsplit.Pack1 (sectionList, true, false);
-			hsplit.Pack2 (rightVbox, true, false);
-			rightVbox.PackStart (searchHbox, false, false, 0);
-			rightVbox.Spacing = 6;
-			searchHbox.PackStart (new Label (), true, true, 0);
-			searchHbox.PackStart (searchEntry, false, false, 0);
-			rightVbox.PackStart (vsplit, true, true, 0);
-			vsplit.Pack1 (templateView, true, false);
-			vsplit.Pack2 (infoScrolledWindow, true, false);
+			Child = hsplit;
+			hsplit.StartChild = sectionList;
+			hsplit.ResizeStartChild = true;
+			hsplit.ShrinkStartChild = false;
+			hsplit.EndChild = rightVbox;
+			hsplit.ResizeEndChild = true;
+			hsplit.ShrinkEndChild = false;
+			searchHbox.Append (new Label { Hexpand = true });
+			searchHbox.Append (searchEntry);
+			rightVbox.Append (searchHbox);
+			vsplit.Vexpand = true;
+			rightVbox.Append (vsplit);
+			vsplit.StartChild = templateView;
+			vsplit.ResizeStartChild = true;
+			vsplit.ShrinkStartChild = false;
+			vsplit.EndChild = infoScrolledWindow;
+			vsplit.ResizeEndChild = true;
+			vsplit.ShrinkEndChild = false;
 			infoScrolledWindow.ShowBorderLine = true;
-			var vp = new Viewport ();
-			vp.ShadowType = ShadowType.None;
-			vp.Add (infoBox);
-			infoScrolledWindow.Add (vp);
-			infoBox.PackStart (infoHeaderLabel, false, false, 0);
-			infoBox.PackStart (infoDecriptionLabel, true, true, 0);
-			hsplit.ShowAll ();
+			infoScrolledWindow.HscrollbarPolicy = PolicyType.Never;
+			infoScrolledWindow.Child = infoBox;
+			infoHeaderLabel.Halign = Align.Start;
+			infoDecriptionLabel.Halign = Align.Start;
+			infoDecriptionLabel.Valign = Align.Start;
+			infoDecriptionLabel.Vexpand = true;
+			infoBox.Append (infoHeaderLabel);
+			infoBox.Append (infoDecriptionLabel);
 			
 			//sane proportions for the splitter children
 			templateView.HeightRequest = 200;
@@ -291,7 +289,7 @@ namespace MonoDevelop.Ide.Projects
 					if (SelectionChanged != null)
 						SelectionChanged (this, EventArgs.Empty);
 				};
-				this.Add (view);
+				this.Child = view;
 			}
 			
 			public void Load (List<TemplateItem> templates)
@@ -428,11 +426,9 @@ namespace MonoDevelop.Ide.Projects
 						DoubleClicked (this, EventArgs.Empty);
 				};
 				
-				Add (tree);
+				Child = tree;
 				HscrollbarPolicy = PolicyType.Automatic;
 				VscrollbarPolicy = PolicyType.Automatic;
-				ShadowType = ShadowType.None;
-				ShowAll ();
 			}
 			
 			public TemplateItem CurrentlySelected {
@@ -504,12 +500,12 @@ namespace MonoDevelop.Ide.Projects
 			{
 				HeadersVisible = false;
 				templateStore = new ListStore (typeof(TemplateItem));
-				Model = filterModel = new TreeModelFilter (templateStore, null);
+				Model = filterModel = (TreeModelFilter) templateStore.FilterNew (null);
 				filterModel.VisibleFunc = FilterFuncWrapper;
 				
 				var col = new TreeViewColumn ();
 				var crp = new CellRendererImage () {
-					StockSize = Gtk.IconSize.Dnd,
+					StockSize = StockIconSize.Dnd,
 					Ypad = 2,
 				};
 				col.PackStart (crp, false);
@@ -520,10 +516,9 @@ namespace MonoDevelop.Ide.Projects
 				col.SetCellDataFunc (crt, CellDataFuncText);
 				
 				AppendColumn (col);
-				ShowAll ();
 			}
 
-			bool FilterFuncWrapper (TreeModel model, TreeIter iter)
+			bool FilterFuncWrapper (ITreeModel model, TreeIter iter)
 			{
 				if (filterFunc == null)
 					return true;
@@ -536,7 +531,7 @@ namespace MonoDevelop.Ide.Projects
 				return filterFunc (item);
 			}
 
-			static void CellDataFuncText (TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter)
+			static void CellDataFuncText (TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter)
 			{
 				var item = (TemplateItem) model.GetValue (iter, 0);
 				string name = GLib.Markup.EscapeText (item.Name);
@@ -546,7 +541,7 @@ namespace MonoDevelop.Ide.Projects
 				((CellRendererText)cell).Markup = name;
 			}
 			
-			static void CellDataFuncIcon (TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter)
+			static void CellDataFuncIcon (TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter)
 			{
 				var item = (TemplateItem) model.GetValue (iter, 0);
 				var id = item.Template.Icon.IsNull ? "md-project" : item.Template.Icon.ToString ();

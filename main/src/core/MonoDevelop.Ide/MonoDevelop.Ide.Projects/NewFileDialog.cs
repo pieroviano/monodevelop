@@ -74,8 +74,6 @@ namespace MonoDevelop.Ide.Projects
 			this.parentSolutionFolder = parentSolutionFolder;
 			this.basePath = basePath;
 
-			BorderWidth = 6;
-			HasSeparator = false;
 
 			InitializeComponents ();
 
@@ -93,7 +91,7 @@ namespace MonoDevelop.Ide.Projects
 
 			catView.Accessible.Name = "NewFileDialog.CategoryView";
 			catView.Accessible.Description = GettextCatalog.GetString ("Select a category for the new file");
-			catView.Accessible.SetTitle (GettextCatalog.GetString ("Categories"));
+			catView.SetTitle (GettextCatalog.GetString ("Categories"));
 
 			labelTemplateTitle.Accessible.Name = "NewFileDialog.TemplateTitleLabel";
 			labelTemplateTitle.Accessible.Description = GettextCatalog.GetString ("The name of the selected template");
@@ -103,27 +101,27 @@ namespace MonoDevelop.Ide.Projects
 
 			iconView.Accessible.Name = "NewFileDialog.TemplateList";
 			iconView.Accessible.Description = GettextCatalog.GetString ("Select a template for the new file");
-			iconView.Accessible.SetTitle (GettextCatalog.GetString ("Templates"));
+			iconView.SetTitle (GettextCatalog.GetString ("Templates"));
 
 			nameEntry.SetCommonAccessibilityAttributes ("NewFileDialog.NameEntry",
 														GettextCatalog.GetString ("Name"),
 														GettextCatalog.GetString ("Enter the name of the new file"));
-			nameEntry.Accessible.SetTitleUIElement (label1.Accessible);
+			nameEntry.SetTitleUIElement (label1);
 
 			label1.Accessible.Name = "NewFileDialog.NameLabel";
-			label1.Accessible.SetTitleFor (nameEntry.Accessible);
+			label1.SetTitleFor (nameEntry);
 
 			projectAddCheckbox.Accessible.Name = "NewFileDialog.AddCheckbox";
 			projectAddCheckbox.Accessible.Description = GettextCatalog.GetString ("Select whether to add this new file to an existing project");
-			projectAddCheckbox.Accessible.AddLinkedUIElement (projectAddCombo.Accessible);
+			projectAddCheckbox.AddLinkedUIElement (projectAddCombo);
 
 			projectAddCombo.Accessible.Name = "NewFileDialog.AddProjectCombo";
 			projectAddCombo.Accessible.Description = GettextCatalog.GetString ("Select which project to add the file to");
-			projectAddCombo.Accessible.SetTitleUIElement (projectAddCombo.Accessible);
+			projectAddCombo.SetTitleUIElement (projectAddCombo);
 
 			projectFolderEntry.Accessible.Name = "NewFileDialog.ProjectFolderEntry";
 			projectFolderEntry.Accessible.Description = GettextCatalog.GetString ("Select which the project folder to add the file");
-			projectFolderEntry.Accessible.SetLabel (GettextCatalog.GetString ("Project Folder"));
+			projectFolderEntry.SetLabel (GettextCatalog.GetString ("Project Folder"));
 		}
 
 		void InitializeView ()
@@ -169,7 +167,7 @@ namespace MonoDevelop.Ide.Projects
 
 		void CategoryChange (object sender, EventArgs e)
 		{
-			TreeModel treeModel;
+			ITreeModel treeModel;
 			TreeIter treeIter;
 
 			if (catView.Selection.GetSelected (out treeModel, out treeIter)) {
@@ -636,8 +634,9 @@ namespace MonoDevelop.Ide.Projects
 		void InitializeComponents ()
 		{
 			iconView = new TemplateView ();
-			iconView.ShowAll ();
-			boxTemplates.PackStart (iconView, true, true, 0);
+			iconView.Vexpand = true;
+			iconView.Hexpand = true;
+			boxTemplates.Append (iconView);
 			
 			catStore = new TreeStore (typeof(string), typeof(List<Category>), typeof(List<TemplateItem>));
 
@@ -718,13 +717,6 @@ namespace MonoDevelop.Ide.Projects
 			UpdateOkStatus ();
 		}
 
-		protected virtual void OnScrolledInfoSizeAllocated (object o, Gtk.SizeAllocatedArgs args)
-		{
-			if (infoLabel.WidthRequest != scrolledInfo.Allocation.Width) {
-				infoLabel.WidthRequest = scrolledInfo.Allocation.Width;
-				labelTemplateTitle.WidthRequest = scrolledInfo.Allocation.Width;
-			}
-		}
 		
 		
 		class Category
@@ -776,11 +768,10 @@ namespace MonoDevelop.Ide.Projects
 					if (DoubleClicked != null)
 						DoubleClicked (this, EventArgs.Empty);
 				};
-				Add (tree);
+				Child = tree;
 				HscrollbarPolicy = PolicyType.Automatic;
 				VscrollbarPolicy = PolicyType.Automatic;
-				ShadowType = ShadowType.In;
-				ShowAll ();
+				HasFrame = true;
 			}
 			
 			public TemplateItem CurrentlySelected {
@@ -818,7 +809,7 @@ namespace MonoDevelop.Ide.Projects
 				
 				TreeViewColumn col = new TreeViewColumn ();
 				CellRendererImage crp = new CellRendererImage ();
-				crp.StockSize = Gtk.IconSize.Dnd;
+				crp.StockSize = StockIconSize.Dnd;
 				crp.Ypad = 2;
 				col.PackStart (crp, false);
 				col.AddAttribute (crp, "stock-id", 0);
@@ -828,7 +819,6 @@ namespace MonoDevelop.Ide.Projects
 				col.AddAttribute (crt, "markup", 1);
 				
 				AppendColumn (col);
-				ShowAll ();
 			}
 			
 			public TemplateItem CurrentlySelected {

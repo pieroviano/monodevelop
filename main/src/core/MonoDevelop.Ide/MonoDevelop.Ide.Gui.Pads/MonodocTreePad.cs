@@ -64,8 +64,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			tree_view.HeadersVisible = false;
 			
 			scroller = new MonoDevelop.Components.CompactScrolledWindow ();
-			scroller.ShadowType = Gtk.ShadowType.None;
-			scroller.Add (tree_view);
+			scroller.Child = tree_view;
 			
 			if (IdeServices.HelpService.HelpTree != null) {
 				root_iter = store.AppendValues (GettextCatalog.GetString ("Mono Documentation"), IdeServices.HelpService.HelpTree);
@@ -83,7 +82,6 @@ namespace MonoDevelop.Ide.Gui.Pads
 					} while (store.IterNext (ref child_iter));
 				}
 			}
-			scroller.ShowAll ();
 		}
 
 		Hashtable populated = new Hashtable ();
@@ -109,7 +107,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 		void RowActivated (object o, EventArgs e)
 		{
 			Gtk.TreeIter iter;
-			Gtk.TreeModel model;
+			Gtk.ITreeModel model;
 				
 			if (tree_view.Selection.GetSelected (out model, out iter)) {
 				var path = store.GetPath (iter);

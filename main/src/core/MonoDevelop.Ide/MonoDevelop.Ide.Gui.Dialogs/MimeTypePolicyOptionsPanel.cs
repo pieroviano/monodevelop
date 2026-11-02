@@ -262,13 +262,12 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			if (isExactMimeType)
 				return panelWidget;
 			
-			VBox box = new VBox ();
-			box.Spacing = 6;
+			var box = DesignerLayout.VBox (6);
 			
 			string baseType = mimeTypeScopes.ElementAt (1);
 			baseType = IdeServices.DesktopService.GetMimeTypeDescription (baseType);
-			defaultSettingsButton = new CheckButton (GettextCatalog.GetString ("Use default settings from '{0}'", baseType));
-			defaultSettingsButton.Clicked += delegate {
+			defaultSettingsButton = new CheckButton { Label = GettextCatalog.GetString ("Use default settings from '{0}'", baseType) };
+			defaultSettingsButton.Toggled += delegate {
 				if (defaultSettingsButton.Active) {
 					panelWidget.Sensitive = false;
 					List<string> baseTypes = new List<string> (mimeTypeScopes);
@@ -281,16 +280,11 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 			defaultSettingsButton.SetCommonAccessibilityAttributes ("MimePanel.DefaultCheckbox", "",
 			                                                        GettextCatalog.GetString ("Check to use the default settings from '{0}'", baseType));
-			defaultSettingsButton.Accessible.AddLinkedUIElement (panelWidget.Accessible);
+			GtkAccessibleHelper.SetRelation (defaultSettingsButton, Gtk.AccessibleRelation.Controls, panelWidget);
 
-			box.PackStart (defaultSettingsButton, false, false, 0);
-			var hsep = new HSeparator ();
-			hsep.Accessible.SetShouldIgnore (true);
-
-			box.PackStart (hsep, false, false, 0);
-			box.ShowAll ();
-			box.PackStart (panelWidget, true, true, 0);
-			panelWidget.Show ();
+			DesignerLayout.Pack (box, defaultSettingsButton);
+			DesignerLayout.Pack (box, new Separator (Orientation.Horizontal));
+			DesignerLayout.Pack (box, panelWidget, true);
 			return box;
 		}
 		

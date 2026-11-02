@@ -36,66 +36,71 @@ using MonoDevelop.Ide.Gui.Shell;
 
 namespace MonoDevelop.Ide
 {
-	class MonoDevelopStatusBar : Gtk.HBox
+	class MonoDevelopStatusBar : Gtk.Box
 	{
-		Gtk.EventBox resizeGrip = new Gtk.EventBox ();
+		Gtk.DrawingArea resizeGrip = new Gtk.DrawingArea ();
 
 		const int ResizeGripWidth = 14;
 
-		internal MonoDevelopStatusBar ()
+		internal MonoDevelopStatusBar () : base (Gtk.Orientation.Horizontal, 0)
 		{
-			BorderWidth = 0;
-			Spacing = 0;
 			HasResizeGrip = true;
 
-			Accessible.Role = Atk.Role.Filler;
+			this.SetRole (AtkCocoa.Roles.AXGroup);
 
 			HeaderBox hb = new HeaderBox (1, 0, 0, 0);
-			hb.Accessible.Role = Atk.Role.Filler;
-			hb.StyleSet += (o, args) => {
+			hb.SetRole (AtkCocoa.Roles.AXGroup);
+			void UpdateColors ()
+			{
 				hb.BorderColor = Styles.DockSeparatorColor.ToGdkColor ();
 				hb.BackgroundColor = Styles.DockBarBackground.ToGdkColor ();
-			};
-			var mainBox = new HBox ();
-			mainBox.Accessible.Role = Atk.Role.Filler;
-			var alignment = new Alignment (0f, 0f, 0f, 0f);
-			alignment.Accessible.Role = Atk.Role.Filler;
-			mainBox.PackStart (alignment, true, true, 0);
-			hb.Add (mainBox);
-			hb.ShowAll ();
-			PackStart (hb, true, true, 0);
-			
+			}
+			UpdateColors ();
+			Styles.Changed += (o, args) => UpdateColors ();
+			var mainBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			mainBox.SetRole (AtkCocoa.Roles.AXGroup);
+			// filler pushing the dock bar and the resize grip to the end
+			var filler = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			filler.Hexpand = true;
+			filler.SetRole (AtkCocoa.Roles.AXGroup);
+			mainBox.Append (filler);
+			mainBox.Hexpand = true;
+			hb.Child = mainBox;
+			hb.Hexpand = true;
+			Append (hb);
+
 			// Dock area
-			
+
 			CustomFrame dfr = new CustomFrame (0, 0, 1, 0);
-			dfr.Accessible.Role = Atk.Role.Filler;
-			dfr.StyleSet += (o, args) => {
+			dfr.SetRole (AtkCocoa.Roles.AXGroup);
+			void UpdateFrameColors ()
+			{
 				dfr.BorderColor = Styles.DockSeparatorColor.ToGdkColor ();
-			};
-			dfr.ShowAll ();
+			}
+			UpdateFrameColors ();
+			Styles.Changed += (o, args) => UpdateFrameColors ();
 			DefaultWorkbench wb = (DefaultWorkbench)IdeApp.Workbench.RootWindow;
 			var dockBar = wb.DockFrame.ExtractDockBar (PositionType.Bottom);
 			dockBar.AlignToEnd = true;
 			dockBar.ShowBorder = false;
-			dockBar.NoShowAll = true;
-			dfr.Add (dockBar);
-			mainBox.PackStart (dfr, false, false, 0);
+			dfr.Child = dockBar;
+			mainBox.Append (dfr);
 
 			// Resize grip
 
-			resizeGrip.Accessible.SetRole (AtkCocoa.Roles.AXGrowArea);
-			resizeGrip.WidthRequest = ResizeGripWidth;
-			resizeGrip.HeightRequest = 0;
-			resizeGrip.VisibleWindow = false;
-			mainBox.PackStart (resizeGrip, false, false, 0);
+			resizeGrip.SetRole (AtkCocoa.Roles.AXGrowArea);
+			resizeGrip.SetSizeRequest (ResizeGripWidth, -1);
+			resizeGrip.DrawFunc = DrawResizeGrip;
+			mainBox.Append (resizeGrip);
 
-			resizeGrip.ButtonPressEvent += delegate (object o, ButtonPressEventArgs args) {
-				if (args.Event.Button == 1) {
-					GdkWindow.BeginResizeDrag (Gdk.WindowEdge.SouthEast, (int)args.Event.Button, (int)args.Event.XRoot, (int)args.Event.YRoot, args.Event.Time);
+			resizeGrip.AddClickHandler (click => {
+				if (click.Button == 1 && resizeGrip.Native?.Surface != null) {
+					var toplevel = Gdk.ToplevelAdapter.GetObject (resizeGrip.Native.Surface);
+					resizeGrip.TranslateCoordinates ((Gtk.Widget)resizeGrip.Root, click.X, click.Y, out double rootX, out double rootY);
+					toplevel.BeginResize (Direction == TextDirection.Ltr ? Gdk.SurfaceEdge.SouthEast : Gdk.SurfaceEdge.SouthWest,
+						click.Gesture.CurrentEventDevice, (int)click.Button, rootX, rootY, click.Time);
 				}
-			};
-
-			this.ShowAll ();
+			}, button: 1);
 
 //			// todo: Move this to the CompletionWindowManager when it's possible.
 //			StatusBarContext completionStatus = null;
@@ -125,31 +130,24 @@ namespace MonoDevelop.Ide
 			set { hasResizeGrip = value; resizeGrip.Visible = hasResizeGrip; }
 		}
 
-		Gdk.Rectangle GetGripRect ()
+		// Draws the classic diagonal grip lines in the bottom corner (Gtk.Style.PaintResizeGrip no longer exists)
+		void DrawResizeGrip (Gtk.DrawingArea area, Cairo.Context cr, int width, int height)
 		{
-			Gdk.Rectangle rect = new Gdk.Rectangle (0, 0, ResizeGripWidth, Allocation.Height);
-			if (rect.Width > Allocation.Width)
-				rect.Width = Allocation.Width;
-			rect.Y = Allocation.Y + Allocation.Height - rect.Height;
-			if (Direction == TextDirection.Ltr)
-				rect.X = Allocation.X + Allocation.Width - rect.Width;
-			else
-				rect.X = Allocation.X + Style.XThickness;
-			return rect;
-		}
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			bool ret = base.OnExposeEvent (evnt);
-			if (HasResizeGrip) {
-				Gdk.Rectangle rect = GetGripRect ();
-				int w = rect.Width - Style.Xthickness;
-				int h = Allocation.Height - Style.YThickness;
-				if (h < 18 - Style.YThickness) h = 18 - Style.YThickness;
-				Gdk.WindowEdge edge = Direction == TextDirection.Ltr ? Gdk.WindowEdge.SouthEast : Gdk.WindowEdge.SouthWest;
-				Gtk.Style.PaintResizeGrip (Style, GdkWindow, State, evnt.Area, this, "statusbar", edge, rect.X, rect.Y, w, h);
+			var color = area.StyleColor.ToCairoColor ();
+			cr.SetSourceRGBA (color.R, color.G, color.B, 0.5);
+			cr.LineWidth = 1;
+			bool ltr = Direction == TextDirection.Ltr;
+			for (int i = 1; i <= 3; i++) {
+				int d = i * 4;
+				if (ltr) {
+					cr.MoveTo (width - d, height - 0.5);
+					cr.LineTo (width - 0.5, height - d);
+				} else {
+					cr.MoveTo (d, height - 0.5);
+					cr.LineTo (0.5, height - d);
+				}
 			}
- 			return ret;
+			cr.Stroke ();
 		}
 	}
 }

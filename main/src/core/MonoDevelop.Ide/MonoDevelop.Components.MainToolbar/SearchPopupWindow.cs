@@ -55,9 +55,6 @@ namespace MonoDevelop.Components.MainToolbar
 
 		public SearchPopupWindow () : base (PopupType.Tooltip)
 		{
-			var native = BackendHost.Backend.Window as Gtk.Window;
-			if (native != null)
-				native.TypeHint = Gdk.WindowTypeHint.Combo;
 			this.TransientFor = Xwt.MessageDialog.RootWindow;
 			Content = new SearchPopupWidget ();
 			Theme.BackgroundColor = Styles.GlobalSearch.BackgroundColor;

@@ -49,7 +49,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 	}
 	
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class BuildMessagePanelWidget : Gtk.Bin
+	internal partial class BuildMessagePanelWidget : MonoDevelop.Components.BinWidget
 	{
 
 		public BuildMessagePanelWidget ()

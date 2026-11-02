@@ -43,8 +43,8 @@ namespace MonoDevelop.Ide.Gui.Shell
 		double [] splitSizes;
 
 		Tabstrip tabstrip;
-		VBox rootTabsBox;
-		HBox bottomBarBox;
+		Gtk.Box rootTabsBox;
+		Gtk.Box bottomBarBox;
 		DocumentViewContainerMode currentMode;
 		bool hasSplit;
 
@@ -57,18 +57,19 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public GtkShellDocumentViewContainer ()
 		{
-			rootTabsBox = new VBox ();
-			rootTabsBox.Accessible.SetShouldIgnore (true);
+			rootTabsBox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			rootTabsBox.SetShouldIgnore (true);
+			rootTabsBox.Vexpand = true;
+			rootTabsBox.Hexpand = true;
 
-			bottomBarBox = new HBox (false, 0);
-			bottomBarBox.Show ();
-			rootTabsBox.PackEnd (bottomBarBox, false, false, 0);
+			bottomBarBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			rootTabsBox.Append (bottomBarBox);
 
 			tabstrip = new Tabstrip ();
-			bottomBarBox.PackStart (tabstrip, true, true, 0);
+			tabstrip.Hexpand = true;
+			bottomBarBox.Append (tabstrip);
 
-			rootTabsBox.Show ();
-			Add (rootTabsBox);
+			Child = rootTabsBox;
 		}
 
 		public void SetSupportedModes (DocumentViewContainerMode supportedModes)
@@ -126,20 +127,25 @@ namespace MonoDevelop.Ide.Gui.Shell
 				activeView = currentContainer.ActiveView;
 				currentContainer.ActiveViewChanged -= Container_ActiveViewChanged;
 				allViews = currentContainer.GetAllViews ().ToList ();
-				currentContainer.Widget.Hide ();
+				currentContainer.Widget.Visible = false;
 				currentContainer.RemoveAllViews ();
 			}
 
 			if (mode == DocumentViewContainerMode.Tabs) {
 				if (tabsContainer == null) {
 					tabsContainer = new GtkShellDocumentViewContainerTabs ();
-					rootTabsBox.PackStart (tabsContainer.Widget, true, true, 0);
+					tabsContainer.Widget.Hexpand = true;
+					tabsContainer.Widget.Vexpand = true;
+					// the view area goes before the tab bar (bottomBarBox)
+					rootTabsBox.Prepend (tabsContainer.Widget);
 				}
 				currentContainer = tabsContainer;
 			} else {
 				if (splitContainer == null) {
 					splitContainer = new GtkShellDocumentViewContainerSplit (mode);
-					rootTabsBox.PackStart (splitContainer.Widget, true, true, 0);
+					splitContainer.Widget.Hexpand = true;
+					splitContainer.Widget.Vexpand = true;
+					rootTabsBox.Prepend (splitContainer.Widget);
 				}
 				currentContainer = splitContainer;
 				if (hasSplit)
@@ -155,7 +161,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 			currentContainer.ActiveView = newActive ?? activeView;
 			currentContainer.ActiveViewChanged += Container_ActiveViewChanged;
-			currentContainer.Widget.Show ();
+			currentContainer.Widget.Visible = true;
 
 			if (newActive != activeView)
 				ActiveViewChanged?.Invoke (this, EventArgs.Empty);
@@ -192,7 +198,8 @@ namespace MonoDevelop.Ide.Gui.Shell
 				if (!alreadyAttached) {
 					// The child's tabstrip is embeddable, but it is not yet embedded
 					child.OnAttachingTabstripToParent ();
-					bottomBarBox.PackStart (child.tabstrip, false, false, 0);
+					child.tabstrip.Hexpand = false;
+					bottomBarBox.Append (child.tabstrip);
 					attachedChildTabstrips.Add (child);
 
 					// Hide the tab that corresponds to this child, since we are now showing the children's tabstrip
@@ -202,8 +209,8 @@ namespace MonoDevelop.Ide.Gui.Shell
 					if (localTab != null)
 						localTab.Visible = false;
 				}
-				var boxChild = (Box.BoxChild)bottomBarBox [child.tabstrip];
-				boxChild.Position = n;
+				// keep the embedded tabstrips in the order of their views, before any other item of the tab area
+				bottomBarBox.ReorderChildAfter (child.tabstrip, n == 0 ? null : childrenWithTabs [n - 1].tabstrip);
 			}
 
 			// Now remove embedded tabstrips which are not embeddable anymore
@@ -240,7 +247,8 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			// The tabstrip is not embeddable anymore, so it is returning to the child.
 			// Add it back to its own tab area and remove the separator
-			bottomBarBox.PackStart (tabstrip, true, true, 0);
+			tabstrip.Hexpand = true;
+			bottomBarBox.Append (tabstrip);
 			tabstrip.RemoveTab (tabstrip.Tabs.Count - 1);
 		}
 
@@ -275,7 +283,6 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			var widget = (GtkShellDocumentViewItem)shellView;
 			widget.ParentContainer = this;
-			widget.Show ();
 			currentContainer.InsertView (position, widget);
 			tabstrip.InsertTab (position, CreateTab ((GtkShellDocumentViewItem)shellView));
 			UpdateTabstrip ();
@@ -325,7 +332,6 @@ namespace MonoDevelop.Ide.Gui.Shell
 			var oldView = currentContainer.GetChild (position);
 			var newView = (GtkShellDocumentViewItem)shellView;
 			newView.ParentContainer = this;
-			newView.Show ();
 			currentContainer.ReplaceView (position, newView);
 			tabstrip.ReplaceTab (position, CreateTab (newView));
 			UpdateTabstrip ();

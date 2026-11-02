@@ -48,7 +48,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			widget.Store ();
 		}
 	}
-	partial class GeneralProjectOptionsWidget : Gtk.Bin
+	partial class GeneralProjectOptionsWidget : MonoDevelop.Components.BinWidget
 	{
 		Project project;
 		OptionsDialog dialog;
@@ -81,24 +81,24 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		void SetAccessibilityAttributes ()
 		{
-			label55.Accessible.Role = Atk.Role.Filler;
-			informationHeaderLabel.Accessible.SetTitleFor (table11.Accessible);
-			table11.Accessible.SetTitleUIElement (informationHeaderLabel.Accessible);
+			label55.SetShouldIgnore (true);
+			informationHeaderLabel.SetTitleFor (table11);
+			table11.SetTitleUIElement (informationHeaderLabel);
 
 			projectNameEntry.SetCommonAccessibilityAttributes ("GeneralProjectOptions.ProjectNameEntry",
 			                                                   GettextCatalog.GetString ("Project Name"),
 			                                                   GettextCatalog.GetString ("Enter the project name"));
-			nameLabel.Accessible.SetTitleFor (projectNameEntry.Accessible);
+			nameLabel.SetTitleFor (projectNameEntry);
 
 			entryVersion.SetCommonAccessibilityAttributes ("GeneralProjectOptions.VersionEntry",
 			                                               GettextCatalog.GetString ("Project Version"),
 			                                               GettextCatalog.GetString ("Enter the project version"));
-			label1.Accessible.SetTitleFor (entryVersion.Accessible);
+			label1.SetTitleFor (entryVersion);
 
 			checkSolutionVersion.SetCommonAccessibilityAttributes ("GeneralProjectOptions.SolutionVersion", "",
 			                                                       GettextCatalog.GetString ("Check to use the same version as the solution"));
 
-			descriptionLabel.Accessible.SetTitleFor (projectDescriptionTextView.Accessible);
+			descriptionLabel.SetTitleFor (projectDescriptionTextView);
 
 			projectDescriptionTextView.SetCommonAccessibilityAttributes ("GeneralProjectOptions.Description",
 			                                                             GettextCatalog.GetString ("Project Description"),
@@ -107,7 +107,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			projectDefaultNamespaceEntry.SetCommonAccessibilityAttributes ("GeneralProjectOptions.Namespace",
 			                                                               GettextCatalog.GetString ("Default Namespace"),
 			                                                               GettextCatalog.GetString ("Enter the default namespace for the project"));
-			defaultNamespaceLabel.Accessible.SetTitleFor (projectDescriptionTextView.Accessible);
+			defaultNamespaceLabel.SetTitleFor (projectDescriptionTextView);
 		}
 
 		public void Store ()

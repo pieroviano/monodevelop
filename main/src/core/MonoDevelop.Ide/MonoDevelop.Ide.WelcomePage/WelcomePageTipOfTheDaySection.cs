@@ -39,6 +39,7 @@ namespace MonoDevelop.Ide.WelcomePage
 		private List<string> tips = new List<string> ();
 		private int currentTip;
 		Gtk.Label label;
+		string tipMarkupFormat;
 
 		public WelcomePageTipOfTheDaySection (): base (GettextCatalog.GetString ("Did you know?"))
 		{
@@ -54,46 +55,53 @@ namespace MonoDevelop.Ide.WelcomePage
 			else
 				currentTip = -1;
 
-			Gtk.VBox box = new Gtk.VBox (false, 12);
-			box.Accessible.SetShouldIgnore (true);
+			var box = new Gtk.Box (Gtk.Orientation.Vertical, 12);
+			box.SetShouldIgnore (true);
 
 			label = new Gtk.Label ();
 
-			label.Accessible.Name = "WelcomePage.TipOfTheDay.TipLabel";
-			label.Accessible.Description = "A tip for using MonoDevelop";
+			label.Name = "WelcomePage.TipOfTheDay.TipLabel";
+			label.SetCommonAttributes (null, null, "A tip for using MonoDevelop");
 
 			label.Xalign = 0;
 			label.Wrap = true;
 			label.WidthRequest = 200;
-			label.ModifyFont (IdeServices.FontService.SansFont.CopyModified (Gui.Styles.FontScale11));
-			label.SetPadding (0, 10);
+			label.Vexpand = true;
+			label.MarginTop = 10;
+			label.MarginBottom = 10;
 
-			label.Text = currentTip != -1 ? tips[currentTip] : "";
-			box.PackStart (label, true, true, 0);
+			// GTK 4: ModifyFont is gone; the tip font is applied through Pango markup.
+			var font = IdeServices.FontService.SansFont.CopyModified (Gui.Styles.FontScale11);
+			tipMarkupFormat = "<span font_desc=\"" + GLib.Markup.EscapeText (font.ToString ()) + "\">{0}</span>";
 
-			var next = new Gtk.Button (GettextCatalog.GetString ("Next Tip"));
-			next.Accessible.Name = "WelcomePage.TipOfTheDay.NextButton";
-			next.Accessible.Description = "Show the next tip";
+			SetTipText (currentTip != -1 ? tips[currentTip] : "");
+			box.Append (label);
 
-			next.Relief = Gtk.ReliefStyle.Normal;
+			var next = new Gtk.Button ();
+			next.Label = GettextCatalog.GetString ("Next Tip");
+			next.Name = "WelcomePage.TipOfTheDay.NextButton";
+			next.SetCommonAttributes (null, null, "Show the next tip");
+			next.Halign = Gtk.Align.Start;
+
 			next.Clicked += delegate {
 				if (tips.Count == 0)
 					return;
 				currentTip = currentTip + 1;
 				if (currentTip >= tips.Count)
 					currentTip = 0;
-				label.Text = tips[currentTip];
+				SetTipText (tips[currentTip]);
 			};
 
-			var al = new Gtk.Alignment (0, 0, 0, 0);
-			al.Accessible.SetShouldIgnore (true);
-			al.Add (next);
-			box.PackStart (al, false, false, 0);
+			box.Append (next);
 			SetContent (box);
 
 			SetTitledWidget (label);
 			SetTitledWidget (next);
 		}
+
+		void SetTipText (string text)
+		{
+			label.Markup = string.Format (tipMarkupFormat, GLib.Markup.EscapeText (text));
+		}
 	}
 }
-

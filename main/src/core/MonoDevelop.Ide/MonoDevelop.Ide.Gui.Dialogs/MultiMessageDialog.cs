@@ -43,46 +43,43 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 		public void AddWarning (string msg)
 		{
-			AddMessage (msg, Gtk.Stock.DialogWarning);
+			AddMessage (msg, "gtk-dialog-warning");
 		}
 
 		public void AddError (string msg)
 		{
-			AddMessage (msg, Gtk.Stock.DialogError);
+			AddMessage (msg, "gtk-dialog-error");
 		}
 		
 		public void AddMessage (string msg, IconId icon)
 		{
 			if (lastImage != null) {
-				HSeparator sep = new HSeparator ();
-				sep.Show ();
-				msgBox.PackStart (sep, false, false, 0);
-				lastImage.IconSize = Gtk.IconSize.Menu;
+				DesignerLayout.Pack (msgBox, new Separator (Orientation.Horizontal));
+				lastImage.IconSize = StockIconSize.Menu;
 			}
 			
-			HBox box = new HBox ();
-			box.Spacing = 12;
-			Alignment imgBox = new Alignment (0, 0, 0, 0);
-			var img = new ImageView (icon, lastImage != null ? Gtk.IconSize.Menu : IconSize.Dialog);
-			imgBox.Add (img);
+			var box = DesignerLayout.HBox (12);
+			var img = new ImageView (icon, lastImage != null ? StockIconSize.Menu : StockIconSize.Dialog);
+			img.Halign = Align.Start;
+			img.Valign = Align.Start;
 			lastImage = img;
-			box.PackStart (imgBox, false, false, 0);
+			DesignerLayout.Pack (box, img);
 			Label lab = new Label (msg);
 			lab.UseUnderline = false;
 			lab.Xalign = 0;
 			lab.Yalign = 0;
 			lab.Wrap = true;
-			lab.WidthRequest = 500;
-			box.PackStart (lab, true, true, 0);
-			msgBox.PackStart (box, false, false, 0);
-			box.ShowAll ();
+			lab.SetSizeRequest (500, -1);
+			DesignerLayout.Pack (box, lab, true);
+			DesignerLayout.Pack (msgBox, box);
 		}
 
-		public new int Run ()
+		public int Run ()
 		{
-			if (msgBox.SizeRequest ().Height < 400) {
+			msgBox.Measure (Orientation.Vertical, -1, out int minHeight, out _, out _, out _);
+			if (minHeight < 400) {
 				scrolled.VscrollbarPolicy = PolicyType.Never;
-				this.Resize (10, 10);
+				this.SetDefaultSize (10, 10);
 			}
 			return MessageService.ShowCustomDialog (this, null);
 		}

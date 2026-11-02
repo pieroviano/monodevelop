@@ -179,7 +179,6 @@ namespace MonoDevelop.Ide
 			// redraws and significantly slow down the running task.
 
 			int maxLength = 20;
-			Gdk.Threads.Enter();
 			Stopwatch sw = new Stopwatch ();
 			sw.Start ();
 
@@ -194,7 +193,6 @@ namespace MonoDevelop.Ide
 
 			sw.Stop ();
 
-			Gdk.Threads.Leave();
 		}
 
 		/// <summary>

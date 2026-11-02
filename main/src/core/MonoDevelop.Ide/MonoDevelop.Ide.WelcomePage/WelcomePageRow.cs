@@ -24,32 +24,28 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
+using MonoDevelop.Components;
+using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageRow: Gtk.HBox
+	public class WelcomePageRow: Gtk.Box
 	{
-		public WelcomePageRow ()
+		public WelcomePageRow () : base (Gtk.Orientation.Horizontal, Styles.WelcomeScreen.Spacing)
 		{
-			Spacing = Styles.WelcomeScreen.Spacing;
 			MinHeight = -1;
 		}
 
 		public WelcomePageRow (params Gtk.Widget[] children): this ()
 		{
 			foreach (var c in children)
-				PackStart (c, false, false, 0);
+				Append (c);
 		}
 
-		public int MinHeight { get; set; }
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
-			if (MinHeight != -1)
-				requisition.Height = Math.Max (requisition.Height, MinHeight);
+		/// <summary>Minimum height of the row, -1 for none.</summary>
+		public int MinHeight {
+			get { return HeightRequest; }
+			set { HeightRequest = value; }
 		}
 	}
 }
-

@@ -1,5 +1,5 @@
 // 
-// SdkLocationPanel.cs
+// 
 //  
 // Author:
 //       Michael Hutchinson <mhutch@xamarin.com>
@@ -90,33 +90,32 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		public abstract void SaveSdkLocationSetting (FilePath location);
 	}
 	
-	class SdkLocationWidget : VBox
+	class SdkLocationWidget : Gtk.Box
 	{
 		FolderEntry locationEntry = new FolderEntry ();
 		Label messageLabel = new Label ();
 		ImageView messageIcon = new ImageView ();
 		SdkLocationPanel panel;
 		
-		public SdkLocationWidget (SdkLocationPanel panel) : base (false, 12)
+		public SdkLocationWidget (SdkLocationPanel panel) : base (Orientation.Vertical, 12)
 		{
 			this.panel = panel;
 			
-			this.PackStart (new Label () {
+			Append (new Label () {
 				Markup = "<b>" + GLib.Markup.EscapeText (panel.Label) + "</b>",
-					Xalign = 0f,
+				Xalign = 0f,
 			});
-			var alignment = new Alignment (0f, 0f, 1f, 1f) { LeftPadding = 24 };
-			this.PackStart (alignment);
-			var vbox = new VBox (false , 6);
-			var locationBox = new HBox (false, 6);
-			var messageBox = new HBox (false, 6);
-			alignment.Add (vbox);
-			vbox.PackStart (messageBox, false, false, 0);
-			vbox.PackStart (locationBox, false, false, 0);
-			locationBox.PackStart (new Label (GettextCatalog.GetString ("Location:")), false, false, 0);
-			locationBox.PackStart (locationEntry, true, true, 0);
-			messageBox.PackStart (messageIcon, false, false, 0);
-			messageBox.PackStart (messageLabel, true, true, 0);
+			var vbox = DesignerLayout.VBox (6);
+			vbox.MarginStart = 24;
+			Append (vbox);
+			var locationBox = DesignerLayout.HBox (6);
+			var messageBox = DesignerLayout.HBox (6);
+			DesignerLayout.Pack (vbox, messageBox);
+			DesignerLayout.Pack (vbox, locationBox);
+			DesignerLayout.Pack (locationBox, new Label (GettextCatalog.GetString ("Location:")));
+			DesignerLayout.Pack (locationBox, locationEntry, true);
+			DesignerLayout.Pack (messageBox, messageIcon);
+			DesignerLayout.Pack (messageBox, messageLabel, true);
 			messageLabel.Xalign = 0f;
 			
 			string location = panel.LoadSdkLocationSetting ();
@@ -128,7 +127,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			Validate ();
 
 			if (panel.RequiresRestart) {
-				PackStart (new HSeparator (), false, false, 0);
+				Append (new Separator (Orientation.Horizontal));
 
 				var tableRestart = new RestartPanel ();
 				tableRestart.RestartRequested += (sender, e) => {
@@ -136,10 +135,8 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 					IdeApp.Restart (true).Ignore();
 				};
 
-				PackStart (tableRestart, false, false, 0);
+				Append (tableRestart);
 			}
-
-			ShowAll ();
 		}
 
 		void UpdateIconAccessibility (bool found)
@@ -155,12 +152,12 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			if (!location.IsNullOrEmpty) {
 				if (panel.ValidateSdkLocation (location)) {
 					messageLabel.Text = GettextCatalog.GetString ("SDK found at specified location.");
-					messageIcon.SetIcon (Gtk.Stock.Apply, IconSize.Menu);
+					messageIcon.SetIcon ("gtk-apply", StockIconSize.Menu);
 					UpdateIconAccessibility (true);
 					return;
 				}
 				messageLabel.Text = GettextCatalog.GetString ("No SDK found at specified location.");
-				messageIcon.SetIcon (Gtk.Stock.Cancel, IconSize.Menu);
+				messageIcon.SetIcon ("gtk-cancel", StockIconSize.Menu);
 				UpdateIconAccessibility (false);
 				return;
 			}
@@ -168,14 +165,14 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			foreach (var loc in panel.DefaultSdkLocations) {
 				if (panel.ValidateSdkLocation (loc)) {
 					messageLabel.Text = GettextCatalog.GetString ("SDK found at default location.");
-					messageIcon.SetIcon (Gtk.Stock.Apply, IconSize.Menu);
+					messageIcon.SetIcon ("gtk-apply", StockIconSize.Menu);
 					UpdateIconAccessibility (true);
 					return;
 				}
 			}
 
 			messageLabel.Text = GettextCatalog.GetString ("No SDK found at default location.");
-			messageIcon.SetIcon (Gtk.Stock.Cancel, IconSize.Menu);
+			messageIcon.SetIcon ("gtk-cancel", StockIconSize.Menu);
 			UpdateIconAccessibility (false);
 		}
 		

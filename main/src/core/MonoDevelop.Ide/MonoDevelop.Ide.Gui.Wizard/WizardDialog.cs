@@ -162,7 +162,7 @@ namespace MonoDevelop.Ide.Gui.Wizard
 			backButton.Clicked += HandleBackButtonClicked;
 			nextButton = new Button (GettextCatalog.GetString ("Next"));
 			nextButton.Clicked += HandleNextButtonClicked;
-			statusImage = new ImageView (ImageService.GetIcon ("md-empty", Gtk.IconSize.Button));
+			statusImage = new ImageView (ImageService.GetIcon ("md-empty", MonoDevelop.Components.StockIconSize.Button));
 
 			if (Toolkit.CurrentEngine.Type == ToolkitType.XamMac) {
 				var s = cancelButton.Surface.GetPreferredSize ();
@@ -184,8 +184,8 @@ namespace MonoDevelop.Ide.Gui.Wizard
 				statusImage.MarginRight = 3;
 			}
 
-			if (ImageService.IsAnimation ("md-spinner-18", Gtk.IconSize.Button)) {
-				animatedStatusIcon = ImageService.GetAnimatedIcon ("md-spinner-18", Gtk.IconSize.Button);
+			if (ImageService.IsAnimation ("md-spinner-18", MonoDevelop.Components.StockIconSize.Button)) {
+				animatedStatusIcon = ImageService.GetAnimatedIcon ("md-spinner-18", MonoDevelop.Components.StockIconSize.Button);
 			}
 
 			buttonBox.PackStart (cancelButton, false, false);
@@ -222,11 +222,6 @@ namespace MonoDevelop.Ide.Gui.Wizard
 
 			Dialog.Content = container;
 
-			if (Toolkit.CurrentEngine.Type == ToolkitType.Gtk) {
-				var nativeNext = nextButton.Surface.NativeWidget as Gtk.Button;
-				nativeNext.CanDefault = true;
-				nativeNext.GrabDefault ();
-			}
 
 			CurrentPage = controller.CurrentPage;
 
@@ -287,7 +282,7 @@ namespace MonoDevelop.Ide.Gui.Wizard
 						statusImage.Image = p.WithAlpha (0.4).ToBitmap ();
 					});
 				} else {
-					statusImage.Image = ImageService.GetIcon ("md-spinner-Button", Gtk.IconSize.Button);
+					statusImage.Image = ImageService.GetIcon ("md-spinner-Button", MonoDevelop.Components.StockIconSize.Button);
 				}
 			});
 		}
@@ -299,7 +294,7 @@ namespace MonoDevelop.Ide.Gui.Wizard
 					statusIconAnimation.Dispose ();
 					statusIconAnimation = null;
 				}
-				statusImage.Image = ImageService.GetIcon ("md-empty", Gtk.IconSize.Button);
+				statusImage.Image = ImageService.GetIcon ("md-empty", MonoDevelop.Components.StockIconSize.Button);
 			});
 		}
 
@@ -350,6 +345,12 @@ namespace MonoDevelop.Ide.Gui.Wizard
 
 		void HandleDialogShown (object sender, EventArgs e)
 		{
+			// Enter activates the Next button (GTK 4: the default widget of the dialog window)
+			if (Toolkit.CurrentEngine.Type == ToolkitType.Gtk4) {
+				var nativeNext = nextButton.Surface.NativeWidget as Gtk.Button;
+				if (nativeNext?.Root as Gtk.Window is Gtk.Window window)
+					window.DefaultWidget = nativeNext;
+			}
 			Reallocate ();
 		}
 

@@ -289,7 +289,7 @@ namespace MonoDevelop.Ide
 			AutoTestService.Start (commandService, Preferences.EnableAutomatedTesting);
 			AutoTestService.NotifyEvent ("MonoDevelop.Ide.IdeStart");
 
-			Gtk.LinkButton.SetUriHook ((button, uri) => Xwt.Desktop.OpenUrl (uri));
+			// GTK 4 link buttons open their uri with the default handler (no global uri hook is needed anymore)
 
 			// Start initializing the type system service in the background
 			Runtime.GetService<TypeSystemService> ().Ignore ();

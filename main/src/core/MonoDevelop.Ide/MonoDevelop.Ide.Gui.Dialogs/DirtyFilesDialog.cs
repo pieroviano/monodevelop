@@ -29,7 +29,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		public DirtyFilesDialog (IReadOnlyList<Document> docs, bool closeWorkspace, bool groupByProject) :
 			base (GettextCatalog.GetString ("Save Files"), IdeApp.Workbench.RootWindow, DialogFlags.Modal)
 		{
-			Accessible.Name = "Dialog.DirtyFiles";
+			this.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles", (string)null, null);
 
 			string description;
 			if (closeWorkspace) {
@@ -37,16 +37,14 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			} else {
 				description = GettextCatalog.GetString ("Select which files should be saved before quitting the application");
 			}
-			Accessible.Description = description;
+			this.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles", (string)null, description);
 
 			tsFiles = new TreeStore (typeof(string), typeof(bool), typeof(Document), typeof(bool));
 			tvFiles = new TreeView (tsFiles);
 			TreeIter topCombineIter = TreeIter.Zero;
 			Hashtable projectIters = new Hashtable ();
 
-			tvFiles.Accessible.Name = "Dialog.DirtyFiles.FileList";
-			tvFiles.Accessible.SetLabel (GettextCatalog.GetString ("Dirty Files"));
-			tvFiles.Accessible.Description = GettextCatalog.GetString ("The list of files which have changes and need saving");
+			tvFiles.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles.FileList", GettextCatalog.GetString ("Dirty Files"), GettextCatalog.GetString ("The list of files which have changes and need saving"));
 			foreach (Document doc in docs) {
 				if (!doc.IsDirty)
 					continue;
@@ -91,67 +89,63 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			tvFiles.ExpandAll ();
 
 			ScrolledWindow sc = new ScrolledWindow ();
-			sc.Accessible.SetShouldIgnore (true);
-			sc.Add (tvFiles);
-			sc.ShadowType = ShadowType.In;
+			sc.Child = tvFiles;
+			sc.HasFrame = true;
+			sc.Hexpand = true;
+			sc.Vexpand = true;
+			DesignerLayout.Margin (sc, 6);
+			DesignerLayout.Pack (this.ContentArea, sc, true);
 
-			sc.BorderWidth = 6;
-			this.VBox.PackStart (sc, true, true, 6);
-
-			btnSaveAndQuit = new Button (closeWorkspace ? GettextCatalog.GetString ("_Save and Quit") : GettextCatalog.GetString ("_Save and Close"));
-			btnSaveAndQuit.Accessible.Name = "Dialog.DirtyFiles.SaveAndQuit";
+			btnSaveAndQuit = DesignerLayout.Button (closeWorkspace ? GettextCatalog.GetString ("_Save and Quit") : GettextCatalog.GetString ("_Save and Close"));
 
 			if (closeWorkspace) {
 				description = GettextCatalog.GetString ("Save the selected files and close the workspace");
 			} else {
 				description = GettextCatalog.GetString ("Save the selected files and quit the application");
 			}
-			btnSaveAndQuit.Accessible.Description = description;
+			btnSaveAndQuit.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles.SaveAndQuit", (string)null, description);
 
-			btnQuit = new Button (closeWorkspace ? Gtk.Stock.Quit : Gtk.Stock.Close);
-			btnQuit.Accessible.Name = "Dialog.DirtyFiles.Quit";
+			btnQuit = DesignerLayout.Button (closeWorkspace ? GettextCatalog.GetString ("_Quit") : GettextCatalog.GetString ("_Close"));
 			if (closeWorkspace) {
 				description = GettextCatalog.GetString ("Close the workspace");
 			} else {
 				description = GettextCatalog.GetString ("Quit the application");
 			}
-			btnQuit.Accessible.Description = description;
+			btnQuit.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles.Quit", (string)null, description);
 
-			btnCancel = new Button (Gtk.Stock.Cancel);
-			btnCancel.Accessible.Name = "Dialog.DirtyFiles.Cancel";
+			btnCancel = DesignerLayout.Button (GettextCatalog.GetString ("_Cancel"));
 			if (closeWorkspace) {
 				description = GettextCatalog.GetString ("Cancel closing the workspace");
 			} else {
 				description = GettextCatalog.GetString ("Cancel quitting the application");
 			}
-			btnCancel.Accessible.Description = description;
+			btnCancel.SetCommonAccessibilityAttributes ("Dialog.DirtyFiles.Cancel", (string)null, description);
 
 			btnSaveAndQuit.Clicked += SaveAndQuit;
 			btnQuit.Clicked += Quit;
 			btnCancel.Clicked += Cancel;
 
-			this.ActionArea.PackStart (btnCancel);
-			this.ActionArea.PackStart (btnQuit);
-			this.ActionArea.PackStart (btnSaveAndQuit);
+			// The buttons respond on their own (SaveAndQuit saves first), so they are not response action widgets
+			var buttonBar = DialogButtonBar.Add (this);
+			DesignerLayout.Pack (buttonBar, btnCancel);
+			DesignerLayout.Pack (buttonBar, btnQuit);
+			DesignerLayout.Pack (buttonBar, btnSaveAndQuit);
 			this.SetDefaultSize (300, 200);
-			this.Child.ShowAll ();
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			btnSaveAndQuit.Clicked -= SaveAndQuit;
 			btnQuit.Clicked -= Quit;
 			btnCancel.Clicked -= Cancel;
 			if (togRender != null) {
 				togRender.Toggled -= toggled;
-				togRender.Destroy ();
 				togRender = null;
 			}
 			if (textRender != null) {
-				textRender.Destroy ();
 				textRender = null;
 			}
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 		
 		async void SaveAndQuit (object o, EventArgs e)
@@ -159,7 +153,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			Sensitive = false;
 
 			List<Task> saveTasks = new List<Task> ();
-			tsFiles.Foreach (delegate (TreeModel model, TreePath path, TreeIter iter) {
+			tsFiles.Foreach (delegate (ITreeModel model, TreePath path, TreeIter iter) {
 				var doc = tsFiles.GetValue (iter, 2) as Document;
 				if (doc == null)
 					return false;

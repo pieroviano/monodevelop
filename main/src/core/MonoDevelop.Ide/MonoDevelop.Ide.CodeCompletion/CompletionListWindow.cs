@@ -75,9 +75,8 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		internal static CompletionListWindow CreateAsDialog ()
 		{
-			var gtkWindow = new CompletionListWindowGtk (Gtk.WindowType.Toplevel);
-			gtkWindow.TypeHint = Gdk.WindowTypeHint.Dialog;
-			gtkWindow.Decorated = false;
+			// GTK 4: the completion list is always an undecorated popover
+			var gtkWindow = new CompletionListWindowGtk ();
 			return new CompletionListWindow (gtkWindow);
 		}
 

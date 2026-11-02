@@ -65,7 +65,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 	}
 	
 	
-	partial class AuthorInformationPanelWidget : Gtk.Bin
+	partial class AuthorInformationPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		AuthorInformation info;
 		

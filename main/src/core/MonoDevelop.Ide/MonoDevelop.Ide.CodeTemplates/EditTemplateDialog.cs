@@ -65,8 +65,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 			checkbuttonSurroundWith.Active = (template.CodeTemplateType & CodeTemplateType.SurroundsWith) == CodeTemplateType.SurroundsWith;
 			
 			Gtk.Widget control = textEditor;
-			scrolledwindow1.AddWithViewport (control);
-			control.ShowAll ();
+			scrolledwindow1.Child = control;
 			textEditor.CaretPositionChanged += CaretPositionChanged;
 			textEditor.Options = DefaultSourceEditorOptions.PlainEditor;
 
@@ -87,7 +86,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 			textEditor.TextChanged += DocumentTextReplaced;
 			this.buttonOk.Clicked += ButtonOkClicked;
 			
-			checkbuttonWhiteSpaces.Hide ();
+			checkbuttonWhiteSpaces.Visible = false;
 			
 			variablesListStore = new ListStore (typeof (string), typeof (CodeTemplateVariable));
 			comboboxVariables.Model = variablesListStore;
@@ -99,27 +98,27 @@ namespace MonoDevelop.Ide.CodeTemplates
 			
 			treeviewVariable.AppendColumn ("", new Gtk.CellRendererText (), "text", 0);
 			CellRendererText nameRenderer = new CellRendererText ();
-			treeviewVariable.AppendColumn ("", nameRenderer, delegate (TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter) {
+			treeviewVariable.AppendColumn ("", nameRenderer, delegate (TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter) {
 				nameRenderer.Markup = ((string)model.GetValue (iter, 2));
 			});
 			
 			grid = new MonoDevelop.Components.PropertyGrid.PropertyGrid ();
 			grid.PropertySort = MonoDevelop.Components.PropertyGrid.PropertySort.Alphabetical;
 			grid.ShowHelp = true;
-			grid.ShowAll ();
 			grid.ShowToolbar = false;
 			
 			vbox4.Remove (scrolledwindow2);
-			vbox4.PackEnd (grid, true, true, 0);
+			grid.Vexpand = true;
+			vbox4.Append (grid);
 			
 			UpdateVariables ();
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnUnrealized ()
 		{
 			textEditor.TextChanged -= DocumentTextReplaced;
 			textEditor.CaretPositionChanged -= CaretPositionChanged;
-			base.OnDestroyed ();
+			base.OnUnrealized ();
 		}
 
 		void ComboboxVariablesChanged (object sender, EventArgs e)

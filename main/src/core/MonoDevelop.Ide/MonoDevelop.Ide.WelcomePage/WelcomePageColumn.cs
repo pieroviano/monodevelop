@@ -24,37 +24,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
-
 using MonoDevelop.Components;
 using MonoDevelop.Components.AtkCocoaHelper;
 
+
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageColumn: Gtk.VBox
+	public class WelcomePageColumn: Gtk.Box
 	{
-		public WelcomePageColumn ()
+		public WelcomePageColumn () : base (Gtk.Orientation.Vertical, Styles.WelcomeScreen.Spacing)
 		{
-			Accessible.SetShouldIgnore (true);
+			this.SetShouldIgnore (true);
 
-			Spacing = Styles.WelcomeScreen.Spacing;
 			MinWidth = -1;
 		}
 
 		public WelcomePageColumn (params Gtk.Widget[] children): this ()
 		{
 			foreach (var c in children)
-				PackStart (c, false, false, 0);
+				Append (c);
 		}
 
-		public int MinWidth { get; set; }
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
-			if (MinWidth != -1)
-				requisition.Width = Math.Max (requisition.Width, MinWidth);
+		/// <summary>Minimum width of the column, -1 for none.</summary>
+		public int MinWidth {
+			get { return WidthRequest; }
+			set { WidthRequest = value; }
 		}
 	}
 }
-

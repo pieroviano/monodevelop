@@ -43,7 +43,7 @@ namespace MonoDevelop.Ide.Gui.Components
 	/// design and code. We expose it here for reuse in other GUIs.
 	/// </remarks>
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class PriorityList : Bin
+	public partial class PriorityList : MonoDevelop.Components.BinWidget
 	{
 		//
 		// Store a list store explicitly to guarantee a

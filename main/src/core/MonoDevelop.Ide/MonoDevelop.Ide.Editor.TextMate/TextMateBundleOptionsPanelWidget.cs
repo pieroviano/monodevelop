@@ -33,7 +33,7 @@ using MonoDevelop.Components;
 namespace MonoDevelop.Ide.Editor.TextMate
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	partial class TextMateBundleOptionsPanelWidget : Gtk.Bin
+	partial class TextMateBundleOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		ListStore styleStore = new ListStore (typeof (string), typeof (LanguageBundle));
 		
@@ -55,7 +55,7 @@ namespace MonoDevelop.Ide.Editor.TextMate
 			FillBundles ();
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnUnroot ()
 		{
 			addButton.Clicked -= AddLanguageBundle;
 			removeButton.Clicked -= RemoveLanguageBundle;
@@ -64,13 +64,13 @@ namespace MonoDevelop.Ide.Editor.TextMate
 				styleStore.Dispose ();
 				styleStore = null;
 			}
-			base.OnDestroyed ();
+			base.OnUnroot ();
 		}
 
 		void AddLanguageBundle (object sender, EventArgs e)
 		{
 			var dialog = new SelectFileDialog (GettextCatalog.GetString ("Language Bundles"), MonoDevelop.Components.FileChooserAction.Open) {
-				TransientFor = this.Toplevel as Gtk.Window,
+				TransientFor = this.Root as Gtk.Window,
 			};
 			dialog.AddFilter (GettextCatalog.GetString ("Bundles"), "*.tmBundle", "*.sublime-package", "*.tmbundle");
 			if (!dialog.Run ())

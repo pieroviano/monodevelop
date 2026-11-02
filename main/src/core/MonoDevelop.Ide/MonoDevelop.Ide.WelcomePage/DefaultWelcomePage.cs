@@ -33,28 +33,27 @@ namespace MonoDevelop.Ide.WelcomePage
 {
 	class DefaultWelcomePage: WelcomePageWidget
 	{
-		protected override void BuildContent (Container parent)
+		protected override void BuildContent (Gtk.Box parent)
 		{
 			LogoImage = Xwt.Drawing.Image.FromResource ("welcome-logo.png");
 			TopBorderImage = Xwt.Drawing.Image.FromResource ("welcome-tile.png");
 
-			var mainAlignment = new Gtk.Alignment (0.5f, 0.5f, 0f, 1f);
-			mainAlignment.Accessible.SetShouldIgnore (true);
-
 			var mainCol = new WelcomePageColumn ();
-			mainCol.Accessible.SetShouldIgnore (true);
-			mainAlignment.Add (mainCol);
+			mainCol.SetShouldIgnore (true);
+			mainCol.Halign = Gtk.Align.Center;
+			mainCol.Valign = Gtk.Align.Center;
+			parent.Append (mainCol);
 
 			var row1 = new WelcomePageRow ();
-			row1.PackStart (new WelcomePageButtonBar (
+			row1.Append (new WelcomePageButtonBar (
 				new WelcomePageBarButton ("MonoDevelop.com", "http://www.monodevelop.com", "welcome-link-md-16.png"),
 				new WelcomePageBarButton (GettextCatalog.GetString ("Documentation"), "http://www.go-mono.com/docs", "welcome-link-info-16.png"),
 				new WelcomePageBarButton (GettextCatalog.GetString ("Support"), "http://monodevelop.com/index.php?title=Help_%26_Contact", "welcome-link-support-16.png"),
 				new WelcomePageBarButton (GettextCatalog.GetString ("Q&A"), "http://stackoverflow.com/questions/tagged/monodevelop", "welcome-link-chat-16.png")
 				)
 			);
-			row1.Accessible.SetShouldIgnore (true);
-			mainCol.PackStart (row1, false, false, 0);
+			row1.SetShouldIgnore (true);
+			mainCol.Append (row1);
 
 			var row2 = new WelcomePageRow (
 				new WelcomePageColumn (
@@ -67,11 +66,8 @@ namespace MonoDevelop.Ide.WelcomePage
 					new WelcomePageTipOfTheDaySection ()
 				)
 			);
-			row2.Accessible.SetShouldIgnore (true);
-			mainCol.PackStart (row2, false, false, 0);
-
-			parent.Add (mainAlignment);
+			row2.SetShouldIgnore (true);
+			mainCol.Append (row2);
 		}
 	}
 }
-

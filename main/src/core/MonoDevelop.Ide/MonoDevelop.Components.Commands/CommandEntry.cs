@@ -97,42 +97,40 @@ namespace MonoDevelop.Components.Commands
 			return manager.GetCommand (cmdId);
 		}
 		
-		internal virtual Gtk.MenuItem CreateMenuItem (CommandManager manager)
+		/// <summary>Evaluates the entry and adds its menu item(s) to the menu being built by <paramref name="context"/>.</summary>
+		internal virtual void AddToMenu (CommandMenuContext context)
 		{
-			return CreateMenuItem (manager, GetCommand (manager), cmdId, true, overrideLabel, disabledVisible);
+			if (cmdId == CommandManager.ToCommandId (Command.Separator)) {
+				context.AddSeparator ();
+				return;
+			}
+
+			Command cmd = GetCommand (context.Manager);
+			if (cmd is CustomCommand customCmd) {
+				context.AddCustomWidget ((Gtk.Widget) Activator.CreateInstance (customCmd.WidgetType));
+				return;
+			}
+
+			context.AddCommand (cmdId, cmd, overrideLabel, disabledVisible);
 		}
 		
-		internal virtual Gtk.ToolItem CreateToolItem (CommandManager manager)
+		/// <summary>Creates the toolbar widget bound to this entry.</summary>
+		internal virtual Gtk.Widget CreateToolItem (CommandManager manager)
 		{
 			if (cmdId == CommandManager.ToCommandId (Command.Separator))
-				return new Gtk.SeparatorToolItem ();
+				return new Gtk.Separator (Gtk.Orientation.Vertical);
 
 			Command cmd = GetCommand (manager);
 			if (cmd == null)
-				return new Gtk.ToolItem ();
+				return new Gtk.Box (Gtk.Orientation.Horizontal, 0);
 			
 			if (cmd is CustomCommand) {
 				Gtk.Widget child = (Gtk.Widget) Activator.CreateInstance (((CustomCommand)cmd).WidgetType);
-				Gtk.ToolItem ti;
-				if (child is Gtk.ToolItem)
-					ti = (Gtk.ToolItem) child;
-				else {
-					ti = new Gtk.ToolItem ();
-					ti.Child = child;
-				}
 				if (cmd.Text != null && cmd.Text.Length > 0) {
 					//strip "_" accelerators from tooltips
-					string text = cmd.Text;
-					while (true) {
-						int underscoreIndex = text.IndexOf ('_');
-						if (underscoreIndex > -1)
-							text = text.Remove (underscoreIndex, 1);
-						else
-							break;
-					}
-					ti.TooltipText = text;
+					child.TooltipText = cmd.Text.Replace ("_", "");
 				}
-				return ti;
+				return child;
 			}
 			
 			ActionCommand acmd = cmd as ActionCommand;
@@ -140,48 +138,14 @@ namespace MonoDevelop.Components.Commands
 				throw new InvalidOperationException ("Unknown cmd type.");
 
 			if (acmd.CommandArray) {
-				CommandMenu menu = new CommandMenu (manager);
-				menu.Append (CreateMenuItem (manager));
-				return new MenuToolButton (menu, acmd.Icon);
+				var set = new CommandEntrySet ();
+				set.Add (this);
+				return new MenuToolButton (new CommandMenu (manager, set), acmd.Icon);
 			}
 			else if (acmd.ActionType == ActionType.Normal)
 				return new CommandToolButton (cmdId, manager);
 			else
 				return new CommandToggleToolButton (cmdId, manager);
 		}
-		
-		internal static Gtk.MenuItem CreateMenuItem (CommandManager manager, object cmdId, bool isArrayMaster)		
-		{
-			return CreateMenuItem (manager, null, cmdId, isArrayMaster, null, true);
-		}
-
-		static Gtk.MenuItem CreateMenuItem (CommandManager manager, Command cmd, object cmdId, bool isArrayMaster, string overrideLabel, bool disabledVisible)
-		{
-			cmdId = CommandManager.ToCommandId (cmdId);
-			if (cmdId == CommandManager.ToCommandId (Command.Separator))
-				return new Gtk.SeparatorMenuItem ();
-			
-			if (cmd == null)
-				cmd = manager.GetCommand (cmdId);
-
-			if (cmd == null) {
-				MonoDevelop.Core.LoggingService.LogWarning ("Unknown command '{0}'", cmdId);
-				return new Gtk.MenuItem ("<Unknown Command>");
-			}
-			
-			if (cmd is CustomCommand) {
-				Gtk.Widget child = (Gtk.Widget) Activator.CreateInstance (((CustomCommand)cmd).WidgetType);
-				CustomMenuItem ti = new CustomMenuItem ();
-				ti.Child = child;
-				return ti;
-			}
-			
-			ActionCommand acmd = cmd as ActionCommand;
-			if (acmd.ActionType == ActionType.Normal || (isArrayMaster && acmd.CommandArray))
-				return new CommandMenuItem (cmdId, manager, overrideLabel, disabledVisible);
-			else
-				return new CommandCheckMenuItem (cmdId, manager, overrideLabel, disabledVisible);
-		}	
 	}
 }
-

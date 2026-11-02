@@ -47,7 +47,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 
-	partial class CombineBuildOptionsWidget : Gtk.Bin 
+	partial class CombineBuildOptionsWidget : MonoDevelop.Components.BinWidget 
 	{
 		readonly Solution solution;
 		

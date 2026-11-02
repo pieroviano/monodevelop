@@ -136,11 +136,11 @@ namespace MonoDevelop.Ide.CodeCompletion
 					headLabel.WidthRequest = -1;
 				}
 				foreach (var cat in o.Categories) {
-					descriptionBox.PackStart (CreateCategory (GetHeaderMarkup (cat.Item1), cat.Item2, foreColor, Theme.Font.ToPangoFont (), LabelMaxWidth - 80), true, true, 4);
+					AppendExpanded (descriptionBox, CreateCategory (GetHeaderMarkup (cat.Item1), cat.Item2, foreColor, Theme.Font.ToPangoFont (), LabelMaxWidth - 80), 4);
 				}
 
 				if (!string.IsNullOrEmpty (o.SummaryMarkup)) {
-					descriptionBox.PackStart (CreateCategory (GetHeaderMarkup (GettextCatalog.GetString ("Summary")), o.SummaryMarkup, foreColor, Theme.Font.ToPangoFont (), LabelMaxWidth - 80), true, true, 4);
+					AppendExpanded (descriptionBox, CreateCategory (GetHeaderMarkup (GettextCatalog.GetString ("Summary")), o.SummaryMarkup, foreColor, Theme.Font.ToPangoFont (), LabelMaxWidth - 80), 4);
 				}
 				if (!string.IsNullOrEmpty (o.FooterMarkup)) {
 
@@ -150,16 +150,16 @@ namespace MonoDevelop.Ide.CodeCompletion
 					contentLabel.BreakOnPunctuation = false;
 					contentLabel.MaxWidth = LabelMaxWidth - 80;
 					contentLabel.Markup = o.FooterMarkup.Trim ();
-					contentLabel.ModifyFg (StateType.Normal, foreColor.ToGdkColor ());
+					CompletionWidgetStyle.SetForeground (contentLabel, foreColor);
 					contentLabel.FontDescription = Theme.Font.ToPangoFont ();
 
-					descriptionBox.PackEnd (contentLabel, true, true, 4);
+					AppendExpanded (descriptionBox, contentLabel, 4);
 				}
 
 				if (string.IsNullOrEmpty (o.SummaryMarkup) && string.IsNullOrEmpty (o.FooterMarkup) && !o.Categories.Any ()) {
-					descriptionBox.Hide ();
+					descriptionBox.Visible = false;
 				} else {
-					descriptionBox.ShowAll ();
+					descriptionBox.Visible = true;
 				}
 				Theme.CurrentPage = current_overload;
 				// if the target is not on the left or top side, we may loose the arrow alignment on our target
@@ -208,11 +208,9 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		void ClearDescriptions ()
 		{
-			while (descriptionBox.Children.Length > 0) {
-				var child = descriptionBox.Children [0];
+			Gtk.Widget child;
+			while ((child = descriptionBox.FirstChild) != null)
 				descriptionBox.Remove (child);
-				child.Destroy ();
-			}
 		}
 
 		public void Clear ()
@@ -224,27 +222,22 @@ namespace MonoDevelop.Ide.CodeCompletion
 			current_overload = 0;
 		}
 
-		internal static VBox CreateCategory (string categoryName, string categoryContentMarkup, Cairo.Color foreColor, Pango.FontDescription font, int labelMaxWidth = 400)
+		internal static Gtk.Box CreateCategory (string categoryName, string categoryContentMarkup, Cairo.Color foreColor, Pango.FontDescription font, int labelMaxWidth = 400)
 		{
-			var vbox = new VBox ();
-
-			vbox.Spacing = 8;
+			var vbox = new Gtk.Box (Gtk.Orientation.Vertical, 8);
 
 			if (categoryName != null) {
 				var catLabel = new FixedWidthWrapLabel ();
 				catLabel.Markup = categoryName;
-				catLabel.ModifyFg (StateType.Normal, foreColor.ToGdkColor ());
+				CompletionWidgetStyle.SetForeground (catLabel, foreColor);
 				catLabel.FontDescription = font.Copy ();
 				catLabel.FontDescription.Weight = Pango.Weight.Bold;
 				catLabel.FontDescription.Size = catLabel.FontDescription.Size + (int)(1 * Pango.Scale.PangoScale);
-				vbox.PackStart (catLabel, false, true, 0);
+				vbox.Append (catLabel);
 			}
 
 			var contentLabel = new FixedWidthWrapLabel ();
-			HBox hbox = new HBox ();
-
-			// hbox.PackStart (new Label(), false, true, 10);
-
+			var hbox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
 
 			contentLabel.Wrap = Pango.WrapMode.WordChar;
 			contentLabel.Spacing = 1;
@@ -252,17 +245,30 @@ namespace MonoDevelop.Ide.CodeCompletion
 			contentLabel.BreakOnPunctuation = false;
 			contentLabel.MaxWidth = labelMaxWidth;
 			contentLabel.Markup = categoryContentMarkup.Trim ();
-			contentLabel.ModifyFg (StateType.Normal, foreColor.ToGdkColor ());
+			CompletionWidgetStyle.SetForeground (contentLabel, foreColor);
 			contentLabel.FontDescription = font;
 
-			hbox.PackStart (contentLabel, true, true, 0);
-			vbox.PackStart (hbox, true, true, 0);
+			contentLabel.Hexpand = true;
+			hbox.Append (contentLabel);
+			hbox.Hexpand = hbox.Vexpand = true;
+			vbox.Append (hbox);
 
 			return vbox;
 		}
 
-		readonly VBox descriptionBox = new VBox (false, 0);
-		readonly VBox vb2 = new VBox (false, 0);
+		readonly Gtk.Box descriptionBox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+		readonly Gtk.Box vb2 = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+
+		/// <summary>Appends <paramref name="child"/> to <paramref name="box"/>, expanded and with the given vertical margin (GTK 2 PackStart (child, true, true, padding)).</summary>
+		static void AppendExpanded (Gtk.Box box, Gtk.Widget child, int padding)
+		{
+			child.Hexpand = child.Vexpand = true;
+			if (box.Orientation == Gtk.Orientation.Vertical)
+				child.MarginTop = child.MarginBottom = padding;
+			else
+				child.MarginStart = child.MarginEnd = padding;
+			box.Append (child);
+		}
 		Cairo.Color foreColor;
 
 		internal void SetDefaultScheme ()
@@ -273,7 +279,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 			Theme.SetSchemeColors (scheme);
 			foreColor = Styles.PopoverWindow.DefaultTextColor.ToCairoColor ();
-			headLabel.ModifyFg (StateType.Normal, foreColor.ToGdkColor ());
+			CompletionWidgetStyle.SetForeground (headLabel, foreColor);
 			headLabel.FontDescription = IdeServices.FontService.GetFontDescription ("Editor").CopyModified (Styles.FontScale11);
 			Theme.Font = IdeServices.FontService.SansFont.CopyModified (Styles.FontScale11).ToXwtFont ();
 			Theme.ShadowColor = Styles.PopoverWindow.ShadowColor;
@@ -293,29 +299,21 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 			descriptionBox.Spacing = 4;
 
-			VBox vb = new VBox (false, 8);
-			vb.PackStart (headLabel, true, true, 4);
-			vb.PackStart (descriptionBox, true, true, 4);
+			var vb = new Gtk.Box (Gtk.Orientation.Vertical, 8);
+			AppendExpanded (vb, headLabel, 4);
+			AppendExpanded (vb, descriptionBox, 4);
 
-			HBox hb = new HBox (false, 4);
-			hb.PackStart (vb, true, true, 6);
+			var hb = new Gtk.Box (Gtk.Orientation.Horizontal, 4);
+			AppendExpanded (hb, vb, 6);
 
 			WindowTransparencyDecorator.Attach (this);
 
 			vb2.Spacing = 4;
-			vb2.PackStart (hb, true, true, 0);
-
-			vb2.SizeRequested += (o, args) => {
-				var w = Math.Max (headLabel.WidthRequest, headLabel.RealWidth);
-				var req = new Gtk.Requisition ();
-				req.Height = args.Requisition.Height;
-				req.Width = (int)Math.Max (w + PaddingLeft + PaddingTop, args.Requisition.Width);
-				args.Args[0] = req;
-			};
+			hb.Hexpand = hb.Vexpand = true;
+			vb2.Append (hb);
 
 			Content = BackendHost.ToolkitEngine.WrapWidget (vb2, Xwt.NativeWidgetSizing.DefaultPreferredSize);
 
-			vb2.ShowAll ();
 			SetDefaultScheme ();
 			Styles.Changed += HandleThemeChanged;
 			IdeApp.Preferences.ColorScheme.Changed += HandleThemeChanged;

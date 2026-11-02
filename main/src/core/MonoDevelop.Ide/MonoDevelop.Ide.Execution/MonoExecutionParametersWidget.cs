@@ -33,7 +33,7 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.Ide.Execution
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class MonoExecutionParametersWidget : Gtk.Bin
+	partial class MonoExecutionParametersWidget : MonoDevelop.Components.BinWidget
 	{
 		MonoExecutionParameters config;
 		public MonoExecutionParametersWidget ()
@@ -56,7 +56,7 @@ namespace MonoDevelop.Ide.Execution
 		{
 			propertyGrid.CommitPendingChanges ();
 			using (var dlg = new MonoExecutionParametersPreview (config))
-				MessageService.ShowCustomDialog (dlg, this.Toplevel as Gtk.Window);
+				MessageService.ShowCustomDialog (dlg, this.Root as Gtk.Window);
 		}
 
 		protected virtual void OnButtonResetClicked (object sender, System.EventArgs e)

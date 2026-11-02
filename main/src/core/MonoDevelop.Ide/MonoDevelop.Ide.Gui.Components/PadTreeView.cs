@@ -56,7 +56,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			Init ();
 		}
 		
-		public PadTreeView (TreeModel model) : base (model)
+		public PadTreeView (ITreeModel model) : base (model)
 		{
 			Init ();
 		}
@@ -81,14 +81,14 @@ namespace MonoDevelop.Ide.Gui.Components
 			get { return textRenderer; }
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			if (changer != null) {
 				changer.Dispose ();
 				changer = null;
 			}
 			renderers.Clear ();
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
 		// Workaround for Bug 1698 - Error list scroll position doesn't reset when list changes, hides items
@@ -106,10 +106,10 @@ namespace MonoDevelop.Ide.Gui.Components
 			forceInternalOffsetUpdate = true;
 		}
 		
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
-			if (forceInternalOffsetUpdate && IsRealized) {
+			base.OnSizeAllocate (width, height, baseline);
+			if (forceInternalOffsetUpdate && IsRealized && Vadjustment != null) {
 				forceInternalOffsetUpdate = false;
 				var v = Vadjustment.Value;
 				int delta = v > 2? 0 : 1;

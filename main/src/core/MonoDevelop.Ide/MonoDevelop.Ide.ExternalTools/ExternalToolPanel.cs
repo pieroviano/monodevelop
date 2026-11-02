@@ -63,7 +63,7 @@ namespace MonoDevelop.Ide.ExternalTools
 		}
 	}
 	
-	public partial class ExternalToolPanelWidget : Gtk.Bin 
+	public partial class ExternalToolPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		// gtk controls
 		ListStore toolListBoxStore;
@@ -131,8 +131,7 @@ namespace MonoDevelop.Ide.ExternalTools
 			useOutputPadCheckBox.Toggled    += StoreValuesInSelectedTool;
 			saveCurrentFileCheckBox.Toggled += StoreValuesInSelectedTool;
 
-			defaultKeyTextBox.KeyPressEvent += OnDefaultKeyEntryKeyPress;
-			defaultKeyTextBox.KeyReleaseEvent += OnDefaultKeyEntryKeyRelease;
+			defaultKeyTextBox.AddKeyPressHandler (OnDefaultKeyEntryKeyPress, OnDefaultKeyEntryKeyRelease, PropagationPhase.Capture);
 
 			SelectionChanged (this, EventArgs.Empty);
 
@@ -151,17 +150,17 @@ namespace MonoDevelop.Ide.ExternalTools
 			                                                 GettextCatalog.GetString ("Click to move the selected tool down the list"));
 			titleTextBox.SetCommonAccessibilityAttributes ("ExternalTools.Title", titleLabel,
 			                                               GettextCatalog.GetString ("Enter the title for this command"));
-			browseButton.Accessible.SetCommonAttributes ("ExternalTools.Command", null,
+			browseButton.SetCommonAttributes ("ExternalTools.Command", null,
 			                                             GettextCatalog.GetString ("Enter or select the path for the external command"));
-			browseButton.SetEntryAccessibleTitleUIElement (commandLabel.Accessible);
+			browseButton.SetEntryAccessibleTitleUIElement (commandLabel);
 			argumentTextBox.SetCommonAccessibilityAttributes ("ExternalTools.Arguments", "",
 			                                                  GettextCatalog.GetString ("Enter the arguments for the external command"));
 			argumentTextBox.SetAccessibilityLabelRelationship (argumentLabel);
-			tagSelectorArgs.Accessible.SetCommonAttributes ("ExternalTools.tagSelectorArgs", GettextCatalog.GetString ("Argument Tags"),
+			tagSelectorArgs.SetCommonAttributes ("ExternalTools.tagSelectorArgs", GettextCatalog.GetString ("Argument Tags"),
                                                             GettextCatalog.GetString ("Select tags to add to the arguments"));
 			workingDirTextBox.SetCommonAccessibilityAttributes ("ExternalTools.workingDir", workingDirLabel,
 			                                                    GettextCatalog.GetString ("Enter the working directory for this command"));
-			tagSelectorPath.Accessible.SetCommonAttributes ("ExternalTools.tagSelectorPath", GettextCatalog.GetString ("Working Directory Tags"),
+			tagSelectorPath.SetCommonAttributes ("ExternalTools.tagSelectorPath", GettextCatalog.GetString ("Working Directory Tags"),
 				                                            GettextCatalog.GetString ("Select tags to add to the working directory"));
 			defaultKeyTextBox.SetCommonAccessibilityAttributes ("ExternalTools.defaultKey", defaultKeyLabel,
 			                                                    GettextCatalog.GetString ("Enter the default key binding for this command"));
@@ -177,7 +176,7 @@ namespace MonoDevelop.Ide.ExternalTools
 		{
 			if (toolListBox.Selection.CountSelectedRows () == 1) {
 				TreeIter selectedItem;
-				TreeModel ls;				
+				ITreeModel ls;				
 				((ListStore)toolListBox.Model).GetIter (out selectedItem, (TreePath)toolListBox.Selection.GetSelectedRows (out ls)[0]);
 				// we know we have a selected item so get it's index
 				// use that to get the path of the item before it, and swap the two
@@ -195,7 +194,7 @@ namespace MonoDevelop.Ide.ExternalTools
 		{
 			if (toolListBox.Selection.CountSelectedRows () == 1) {
 				TreeIter selectedItem;
-				TreeModel ls;				
+				ITreeModel ls;				
 				((ListStore)toolListBox.Model).GetIter (out selectedItem, (TreePath) toolListBox.Selection.GetSelectedRows(out ls)[0]);
 				// swap it with the next one
 				TreeIter toSwap = selectedItem;
@@ -258,13 +257,11 @@ namespace MonoDevelop.Ide.ExternalTools
 			}
 		}
 
-		[GLib.ConnectBefore]
-		void OnDefaultKeyEntryKeyPress (object sender, KeyPressEventArgs e)
+		bool OnDefaultKeyEntryKeyPress (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			Gdk.Key key = e.Event.Key;
+			Gdk.Key key = (Gdk.Key) keyval;
 			string accel;
 
-			e.RetVal = true;
 
 			if (accelComplete) {
 				CurrentKey = String.Empty;
@@ -273,12 +270,12 @@ namespace MonoDevelop.Ide.ExternalTools
 				chord = null;
 
 				if (key == Gdk.Key.BackSpace)
-					return;
+					return true;
 			}
 
 			accelComplete = false;
 			bool combinationComplete;
-			accel = KeyBindingManager.AccelLabelFromKey (e.Event, out combinationComplete);
+			accel = KeyBindingManager.AccelLabelFromKey (keyval, keycode, state, out combinationComplete);
 			if (combinationComplete) {
 				CurrentKey = KeyBindingManager.Binding (chord, accel);
 				accelIncomplete = false;
@@ -291,9 +288,10 @@ namespace MonoDevelop.Ide.ExternalTools
 				accelIncomplete = true;
 				CurrentKey = accel;
 			}
+			return true;
 		}
 
-		void OnDefaultKeyEntryKeyRelease (object sender, KeyReleaseEventArgs e)
+		void OnDefaultKeyEntryKeyRelease (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			if (accelIncomplete)
 				CurrentKey = chord != null ? chord : string.Empty;
@@ -321,7 +319,7 @@ namespace MonoDevelop.Ide.ExternalTools
 			get {
 				if (toolListBox.Selection.CountSelectedRows () == 1) {
 					TreeIter selectedIter;
-					TreeModel ls;
+					ITreeModel ls;
 					((ListStore) toolListBox.Model).GetIter (out selectedIter, (TreePath) toolListBox.Selection.GetSelectedRows (out ls)[0]);
 					return selectedIter;
 				}
@@ -332,7 +330,7 @@ namespace MonoDevelop.Ide.ExternalTools
 			get {
 				if (toolListBox.Selection.CountSelectedRows () == 1) {
 					TreeIter selectedIter;
-					TreeModel ls;
+					ITreeModel ls;
 					((ListStore) toolListBox.Model).GetIter (out selectedIter, (TreePath) toolListBox.Selection.GetSelectedRows (out ls)[0]);
 					return toolListBox.Model.GetValue(selectedIter, 1) as ExternalTool;
 				}
@@ -378,7 +376,7 @@ namespace MonoDevelop.Ide.ExternalTools
 				int maxIndex = 0;
 				// first copy the selected item paths into a temp array
 				TreeIter[] selectedIters = new TreeIter[selectedItemCount];
-				TreeModel lv;
+				ITreeModel lv;
 				TreePath[] pathList = toolListBox.Selection.GetSelectedRows (out lv);
 				for (int i = 0; i < selectedItemCount; i++) {
 					TreePath path = (TreePath) pathList[i];
@@ -414,7 +412,7 @@ namespace MonoDevelop.Ide.ExternalTools
 		{
 			if (toolListBox.Selection.CountSelectedRows () == 1) {
 				TreeIter selectedIter;
-				TreeModel lv;
+				ITreeModel lv;
 				((ListStore) toolListBox.Model).GetIter(out selectedIter, (TreePath) toolListBox.Selection.GetSelectedRows (out lv)[0]);
 				
 				// return index of first level node (since only 1 level list model)

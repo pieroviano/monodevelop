@@ -34,26 +34,26 @@ using MonoDevelop.Components.AtkCocoaHelper;
 namespace MonoDevelop.Ide.Gui.Components
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	public class ProjectFileEntry : Gtk.HBox
+	public class ProjectFileEntry : Gtk.Box
 	{
 		Entry entry;
 		Button button;
 		
-		public ProjectFileEntry ()
+		public ProjectFileEntry () : base (Gtk.Orientation.Horizontal, 2)
 		{
 			entry = new Entry ();
-			PackStart (entry, true, true, 0);
+			entry.Hexpand = true;
+			Append (entry);
 			
 			button = new Button { Label = "…" };
 			button.SetCommonAccessibilityAttributes ("ProjectFileEntry.button",
 				GettextCatalog.GetString ("Select a Project File"),
 				GettextCatalog.GetString ("Click to select a project file"));
 			button.Clicked += ButtonClicked;
-			PackStart (button, false, false, 2);
+			Append (button);
 			entry.Changed += delegate {
 				OnChanged (EventArgs.Empty);
 			};
-			ShowAll ();
 		}
 		
 		void CheckProject ()

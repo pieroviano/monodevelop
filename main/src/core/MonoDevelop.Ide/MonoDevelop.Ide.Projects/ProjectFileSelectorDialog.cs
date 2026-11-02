@@ -67,9 +67,9 @@ namespace MonoDevelop.Ide.Projects
 			
 			this.Build();
 			
-			projBuf = ImageService.GetIcon (project.StockIcon, IconSize.Menu);
-			dirClosedBuf = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.ClosedFolder, IconSize.Menu);
-			dirOpenBuf = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.OpenFolder, IconSize.Menu);
+			projBuf = ImageService.GetIcon (project.StockIcon, StockIconSize.Menu);
+			dirClosedBuf = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.ClosedFolder, StockIconSize.Menu);
+			dirOpenBuf = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.OpenFolder, StockIconSize.Menu);
 			
 			TreeViewColumn projectCol = new TreeViewColumn ();
 			projectCol.Title = GettextCatalog.GetString ("Project Folders");
@@ -87,7 +87,7 @@ namespace MonoDevelop.Ide.Projects
 			projectTree.RowActivated += delegate {
 				fileList.GrabFocus ();
 			};
-			projectTree.KeyPressEvent += ProjectListKeyPressEvent;
+			projectTree.AddKeyPressHandler (ProjectListKeyPressed, phase: PropagationPhase.Capture);
 			
 			TreeViewColumn fileCol = new TreeViewColumn ();
 			var filePixRenderer = new CellRendererImage ();
@@ -103,8 +103,7 @@ namespace MonoDevelop.Ide.Projects
 				if (fileList.Selection.GetSelected (out iter))
 					Respond (ResponseType.Ok);
 			};
-			fileList.KeyPressEvent += FileListKeyPressEvent;
-			fileList.KeyReleaseEvent += FileListKeyReleaseEvent;
+			fileList.AddKeyPressHandler (FileListKeyPressed, phase: PropagationPhase.Capture);
 			
 			TreeIter root;
 			if (dirStore.GetIterFirst (out root))
@@ -120,39 +119,32 @@ namespace MonoDevelop.Ide.Projects
 			this.Modal = true;
 		}
 
-		[GLib.ConnectBefore]
-		void FileListKeyReleaseEvent (object o, KeyReleaseEventArgs args)
-		{
-			if (args.Event.Key == Gdk.Key.Escape) {
-				args.RetVal = true;
-			}
-		}
-		
 		const Gdk.ModifierType modifiers =
 			Gdk.ModifierType.ControlMask | 
 			Gdk.ModifierType.ShiftMask |
-			Gdk.ModifierType.Mod1Mask |
+			Gdk.ModifierType.AltMask |
 			Gdk.ModifierType.SuperMask |
 			Gdk.ModifierType.HyperMask |
 			Gdk.ModifierType.MetaMask;
 
-		[GLib.ConnectBefore]
-		void FileListKeyPressEvent (object o, KeyPressEventArgs args)
+		bool FileListKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (args.Event.Key == Gdk.Key.Escape || args.Event.Key == Gdk.Key.BackSpace
-			    || (args.Event.Key == Gdk.Key.Left && (args.Event.State & modifiers) == 0)) {
-				args.RetVal = true;
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Escape || key == Gdk.Key.BackSpace
+			    || (key == Gdk.Key.Left && (state & modifiers) == 0)) {
 				projectTree.GrabFocus ();
+				return true;
 			}
+			return false;
 		}
 		
-		[GLib.ConnectBefore]
-		void ProjectListKeyPressEvent (object o, KeyPressEventArgs args)
+		bool ProjectListKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (args.Event.Key == Gdk.Key.Right && (args.Event.State & modifiers) == 0) {
-				args.RetVal = true;
+			if ((Gdk.Key)keyval == Gdk.Key.Right && (state & modifiers) == 0) {
 				fileList.GrabFocus ();
+				return true;
 			}
+			return false;
 		}
 		
 		void InitDirs (TreeIter root)
@@ -185,7 +177,7 @@ namespace MonoDevelop.Ide.Projects
 			return value;
 		}
 		
-		void PixDataFunc (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void PixDataFunc (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			var pixRenderer = (CellRendererImage) cell;
 			string dirname = (string) tree_model.GetValue (iter, 0);
@@ -201,7 +193,7 @@ namespace MonoDevelop.Ide.Projects
 			pixRenderer.Image = dirClosedBuf;
 		}
 		
-		void TxtDataFunc (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void TxtDataFunc (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			CellRendererText txtRenderer = (CellRendererText) cell;
 			string dirname = (string) tree_model.GetValue (iter, 0);
@@ -214,7 +206,7 @@ namespace MonoDevelop.Ide.Projects
 			txtRenderer.Text = lastSlash < 0? dirname : dirname.Substring (lastSlash + 1); 
 		}
 		
-		void TxtFileDataFunc (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void TxtFileDataFunc (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			CellRendererText txtRenderer = (CellRendererText) cell;
 			ProjectFile pf = (ProjectFile)tree_model.GetValue (iter, 0);
@@ -229,8 +221,7 @@ namespace MonoDevelop.Ide.Projects
 					filters.Add (defaultFilter);
 					fileTypeCombo.AppendText (defaultFilter.Name);
 				}
-				typeBox.Visible = false;
-				typeBox.ShowAll ();
+				typeBox.Visible = true;
 			}
 
 			filters.Add (new SelectFileDialogFilter (name, pattern));
@@ -277,7 +268,7 @@ namespace MonoDevelop.Ide.Projects
 					continue;
 				
 				if (regex.IsMatch (pf.FilePath.FileName))
-					fileStore.AppendValues (pf, IdeServices.DesktopService.GetIconForFile (pf.FilePath, Gtk.IconSize.Menu));
+					fileStore.AppendValues (pf, IdeServices.DesktopService.GetIconForFile (pf.FilePath, StockIconSize.Menu));
 			}
 			
 			TreeIter root;

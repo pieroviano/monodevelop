@@ -35,7 +35,7 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	class WelcomePageFeedItem : EventBox
+	class WelcomePageFeedItem : BinWidget
 	{
 		static string linkUnderlinedFormat;
 		static string linkFormat;
@@ -48,12 +48,12 @@ namespace MonoDevelop.Ide.WelcomePage
 
 		ImageView image;
 		string text, desc, icon, subtitle, linkUrl;
-		Gtk.IconSize iconSize = IconSize.Menu;
-		VBox box;
+		StockIconSize iconSize = StockIconSize.Menu;
+		Gtk.Box box;
 
 		const int MaxCharacters = 200;
 
-		private static Gdk.Cursor hand_cursor = new Gdk.Cursor(Gdk.CursorType.Hand1);
+		static Gdk.Cursor hand_cursor;
 
 		static WelcomePageFeedItem ()
 		{
@@ -71,11 +71,11 @@ namespace MonoDevelop.Ide.WelcomePage
 		}
 		
 		public WelcomePageFeedItem (XElement el)
-			: this (el, Gtk.IconSize.Menu)
+			: this (el, StockIconSize.Menu)
 		{
 		}
 		
-		public WelcomePageFeedItem (XElement el, Gtk.IconSize iconSize)
+		public WelcomePageFeedItem (XElement el, StockIconSize iconSize)
 			: this ()
 		{
 			this.iconSize = iconSize;
@@ -152,51 +152,62 @@ namespace MonoDevelop.Ide.WelcomePage
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += PerformPress;
 
-			Accessible.Description = "A news item that opens the full story in a browser when clicked";
-			Accessible.Role = Atk.Role.Link;
+			this.SetCommonAttributes (null, null, "A news item that opens the full story in a browser when clicked");
+			this.SetRole (AtkCocoa.Roles.AXLink);
 
-			VisibleWindow = false;
 
-			box = new VBox ();
-			box.Accessible.SetShouldIgnore (true);
+			box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			box.SetShouldIgnore (true);
 
 			titleLabel = new Label () { Xalign = 0 };
-			titleLabel.Accessible.SetShouldIgnore (true);
+			titleLabel.SetShouldIgnore (true);
 			titleLabel.Wrap = false;
 			titleLabel.Ellipsize = Pango.EllipsizeMode.End;
 			titleLabel.LineWrapMode = Pango.WrapMode.Word;
-			box.PackStart (titleLabel, false, false, 0);
+			box.Append (titleLabel);
 
-			subtitleLabel = new Label () { Xalign = 0 };
-			subtitleLabel.Accessible.SetShouldIgnore (true);
-			var align = new Gtk.Alignment (0, 0, 1f, 1f) { 
-				TopPadding = Styles.WelcomeScreen.Pad.MediumTitleMarginBottom,
-				BottomPadding = Styles.WelcomeScreen.Pad.SummaryParagraphMarginTop
+			subtitleLabel = new Label () {
+				Xalign = 0,
+				MarginTop = Styles.WelcomeScreen.Pad.MediumTitleMarginBottom,
+				MarginBottom = Styles.WelcomeScreen.Pad.SummaryParagraphMarginTop,
 			};
-			align.Add (subtitleLabel);
-			align.Accessible.SetShouldIgnore (true);
-			box.PackStart (align, false, false, 0);
+			subtitleLabel.SetShouldIgnore (true);
+			box.Append (subtitleLabel);
 
 			summaryLabel = new Label () { Xalign = 0 };
-			summaryLabel.Accessible.SetShouldIgnore (true);
+			summaryLabel.SetShouldIgnore (true);
 			summaryLabel.Wrap = true;
-			box.PackStart (summaryLabel, true, true, 0);
+			// GTK 4 sizes wrapped labels from their unwrapped text; cap it so the item keeps the width its parent gives it.
+			summaryLabel.MaxWidthChars = 55;
+			titleLabel.MaxWidthChars = 55;
+			summaryLabel.Vexpand = true;
+			box.Append (summaryLabel);
 
 			Pango.AttrRise rise = new Pango.AttrRise (Pango.Units.FromPixels (7));
 			summaryLabel.Attributes = new Pango.AttrList ();
 			summaryLabel.Attributes.Insert (rise);
 
-			Add (box);
+			Child = box;
 
-			Gui.Styles.Changed += UpdateStyle;
+			this.AddMotionHandler (null, (x, y) => {
+				if (hand_cursor == null)
+					hand_cursor = new Gdk.Cursor ("pointer", null);
+				Cursor = hand_cursor;
+				UpdateLabel (true);
+			}, () => {
+				Cursor = null;
+				UpdateLabel (false);
+			});
+			this.AddClickHandler (null, click => {
+				if (click.Button == 1 && click.X >= 0 && click.Y >= 0 && click.X < Width && click.Y < Height)
+					WelcomePageSection.DispatchLink (LinkUrl);
+			}, 1);
 		}
 
 		void UpdateStyle (object sender, EventArgs args)
 		{
 			UpdateLabel (false);
 		}
-
-		int allocWidth;
 
 		void SetDate (string dateString)
 		{
@@ -233,23 +244,13 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			if (allocWidth != allocation.Width) {
-				allocWidth = allocation.Width;
-				titleLabel.WidthRequest = allocWidth;
-				summaryLabel.WidthRequest = allocWidth;
-			}
-			base.OnSizeAllocated (allocation);
-		}
-		
 		public string LinkUrl {
 			get {
 				return linkUrl;
 			}
 			private set {
 				linkUrl = value;
-				Accessible.SetUrl (value);
+				this.SetUrl (value);
 			}
 		}
 		
@@ -299,8 +300,8 @@ namespace MonoDevelop.Ide.WelcomePage
 			subtitleLabel.Markup = string.Format (subtitleFormat, GLib.Markup.EscapeText (subtitle ?? ""));
 			summaryLabel.Markup = string.Format (descFormat, SummaryHtmlToPango(desc ?? ""));
 
-			Accessible.SetTitle (text);
-			Accessible.SetValue (subtitle + " " + desc);
+			this.SetTitle (text);
+			this.SetValue (subtitle + " " + desc);
 		}
 
 		public static string SummaryHtmlToPango(string summaryHtml)
@@ -347,8 +348,7 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 			if (image == null) {
 				image = new ImageView ();
-				box.PackStart (image, false, false, 0);
-				box.ReorderChild (image, 0);
+				box.Prepend (image);
 			}
 			image.Image = ImageService.GetIcon (icon, iconSize);
 		}
@@ -358,29 +358,6 @@ namespace MonoDevelop.Ide.WelcomePage
 			return Regex.Replace (txt, "<.*?>", "");
 		}
 		
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = hand_cursor;
-			UpdateLabel (true);
-			return base.OnEnterNotifyEvent (evnt);
-		}
-		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = null;
-			UpdateLabel (false);
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
-		{
-			if (evnt.Button == 1 && new Gdk.Rectangle (0, 0, Allocation.Width, Allocation.Height).Contains ((int)evnt.X, (int)evnt.Y)) {
-				WelcomePageSection.DispatchLink (LinkUrl);
-				return true;
-			}
-			return base.OnButtonReleaseEvent (evnt);
-		}
-
 		void PerformPress (object sender, EventArgs e)
 		{
 			WelcomePageSection.DispatchLink (LinkUrl);
@@ -405,10 +382,17 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnRoot ()
+		{
+			base.OnRoot ();
+			Gui.Styles.Changed -= UpdateStyle;
+			Gui.Styles.Changed += UpdateStyle;
+		}
+
+		protected override void OnUnroot ()
 		{
 			Gui.Styles.Changed -= UpdateStyle;
-			base.OnDestroyed ();
+			base.OnUnroot ();
 		}
 	}
 }

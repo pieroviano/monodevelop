@@ -15,10 +15,10 @@
 // distribute, sublicense, and/or sell copies of the Software, and to
 // permit persons to whom the Software is furnished to do so, subject to
 // the following conditions:
-// 
+//
 // The above copyright notice and this permission notice shall be
 // included in all copies or substantial portions of the Software.
-// 
+//
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
 // EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 // MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
@@ -36,51 +36,47 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Components.Docking
 {
-	class DockItemContainer: EventBox
+	class DockItemContainer: BinWidget
 	{
 		DockItem item;
 		Widget widget;
-		Container borderFrame;
+		CustomFrame borderFrame;
 		Box contentBox;
-		VBox mainBox;
+		Box mainBox;
 
 		public DockItemContainer (DockFrame frame, DockItem item)
 		{
 			this.item = item;
 			item.LabelChanged += UpdateAccessibilityLabel;
 
-			mainBox = new VBox ();
-			mainBox.Accessible.SetShouldIgnore (false);
+			mainBox = new Box (Orientation.Vertical, 0);
+			mainBox.SetShouldIgnore (false);
 			UpdateAccessibilityLabel (null, null);
-			Add (mainBox);
+			Child = mainBox;
 
-			mainBox.ResizeMode = Gtk.ResizeMode.Queue;
-			mainBox.Spacing = 0;
-			
-			ShowAll ();
+			mainBox.Append (item.GetToolbar (DockPositionType.Top).Container);
 
-			mainBox.PackStart (item.GetToolbar (DockPositionType.Top).Container, false, false, 0);
-			
-			HBox hbox = new HBox ();
-			hbox.Accessible.SetTitle ("Hbox");
-			hbox.Show ();
-			hbox.PackStart (item.GetToolbar (DockPositionType.Left).Container, false, false, 0);
-			
-			contentBox = new HBox ();
-			hbox.Accessible.SetTitle ("Content");
-			contentBox.Show ();
-			hbox.PackStart (contentBox, true, true, 0);
-			
-			hbox.PackStart (item.GetToolbar (DockPositionType.Right).Container, false, false, 0);
-			
-			mainBox.PackStart (hbox, true, true, 0);
-			
-			mainBox.PackStart (item.GetToolbar (DockPositionType.Bottom).Container, false, false, 0);
+			var hbox = new Box (Orientation.Horizontal, 0);
+			hbox.SetTitle ("Hbox");
+			hbox.Vexpand = true;
+			hbox.Append (item.GetToolbar (DockPositionType.Left).Container);
+
+			contentBox = new Box (Orientation.Horizontal, 0);
+			hbox.SetTitle ("Content");
+			contentBox.Hexpand = true;
+			contentBox.Vexpand = true;
+			hbox.Append (contentBox);
+
+			hbox.Append (item.GetToolbar (DockPositionType.Right).Container);
+
+			mainBox.Append (hbox);
+
+			mainBox.Append (item.GetToolbar (DockPositionType.Bottom).Container);
 		}
 
 		void UpdateAccessibilityLabel (object sender, EventArgs args)
 		{
-			mainBox.Accessible.SetTitle (Core.GettextCatalog.GetString ("{0} Pad", item.Label));
+			mainBox.SetTitle (Core.GettextCatalog.GetString ("{0} Pad", item.Label));
 		}
 
 		DockVisualStyle visualStyle;
@@ -88,6 +84,14 @@ namespace MonoDevelop.Components.Docking
 		public DockVisualStyle VisualStyle {
 			get { return visualStyle; }
 			set { visualStyle = value; UpdateVisualStyle (); }
+		}
+
+		/// <summary>Raised when the container is added to or removed from a parent widget.</summary>
+		internal event EventHandler ParentChanged;
+
+		internal void NotifyParentChanged ()
+		{
+			ParentChanged?.Invoke (this, EventArgs.Empty);
 		}
 
 		void OnClickDock (object s, EventArgs a)
@@ -98,27 +102,28 @@ namespace MonoDevelop.Components.Docking
 				item.Status = DockItemStatus.AutoHide;
 		}
 
-        protected override void OnDestroyed()
-        {
-			item.LabelChanged -= UpdateAccessibilityLabel;
-			base.OnDestroyed();
-        }
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing)
+				item.LabelChanged -= UpdateAccessibilityLabel;
+			base.Dispose (disposing);
+		}
 
-        public void UpdateContent ()
+		public void UpdateContent ()
 		{
 			if (widget != null)
-				((Gtk.Container)widget.Parent).Remove (widget);
+				DockUtil.RemoveFromParent (widget);
 			widget = item.Content;
 
 			if (item.DrawFrame) {
 				if (borderFrame == null) {
 					borderFrame = new CustomFrame (1, 1, 1, 1);
-					borderFrame.Show ();
-					contentBox.Add (borderFrame);
+					borderFrame.Hexpand = borderFrame.Vexpand = true;
+					contentBox.Append (borderFrame);
 				}
 				if (widget != null) {
-					borderFrame.Add (widget);
-					widget.Show ();
+					widget.Hexpand = widget.Vexpand = true;
+					borderFrame.Child = widget;
 				}
 			}
 			else if (widget != null) {
@@ -126,8 +131,8 @@ namespace MonoDevelop.Components.Docking
 					contentBox.Remove (borderFrame);
 					borderFrame = null;
 				}
-				contentBox.Add (widget);
-				widget.Show ();
+				widget.Hexpand = widget.Vexpand = true;
+				contentBox.Append (widget);
 			}
 			UpdateVisualStyle ();
 		}
@@ -143,10 +148,7 @@ namespace MonoDevelop.Components.Docking
 				item.GetToolbar (DockPositionType.Right).SetStyle (VisualStyle);
 				item.GetToolbar (DockPositionType.Bottom).SetStyle (VisualStyle);
 
-				if (VisualStyle.TabStyle == DockTabStyle.Normal)
-					ModifyBg (StateType.Normal, VisualStyle.PadBackgroundColor.Value.ToGdkColor ());
-				else 
-					ModifyBg (StateType.Normal, Style.Background(StateType.Normal));
+				QueueDraw ();
 			}
 		}
 
@@ -159,205 +161,176 @@ namespace MonoDevelop.Components.Docking
 					w.Realized += OnTreeRealized;
 			}
 			else {
-				var c = w as Gtk.Container;
-				if (c != null) {
-					foreach (var cw in c.Children)
-						SetTreeStyle (cw);
-				}
+				foreach (var cw in w.GetChildren ())
+					SetTreeStyle (cw);
 			}
 		}
 
 		void OnTreeRealized (object sender, EventArgs e)
 		{
 			var w = (Gtk.TreeView)sender;
-			if (VisualStyle.TreeBackgroundColor != null) {
-				w.ModifyBase (StateType.Normal, VisualStyle.TreeBackgroundColor.Value.ToGdkColor ());
-				w.ModifyBase (StateType.Insensitive, VisualStyle.TreeBackgroundColor.Value.ToGdkColor ());
-			} else {
-				w.ModifyBase (StateType.Normal, Parent.Style.Base (StateType.Normal));
-				w.ModifyBase (StateType.Insensitive, Parent.Style.Base (StateType.Insensitive));
-			}
+			// A null colour restores the theme's tree background
+			DockUtil.SetBackground (w, VisualStyle.TreeBackgroundColor);
 		}
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (VisualStyle.TabStyle == DockTabStyle.Normal) {
-				Gdk.GC gc = new Gdk.GC (GdkWindow);
-				gc.RgbFgColor = VisualStyle.PadBackgroundColor.Value.ToGdkColor ();
-				evnt.Window.DrawRectangle (gc, true, Allocation);
-				gc.Dispose ();
+			if (VisualStyle?.TabStyle == DockTabStyle.Normal && VisualStyle.PadBackgroundColor != null) {
+				var color = VisualStyle.PadBackgroundColor.Value.ToCairoColor ();
+				snapshot.DrawCairo (this, cr => {
+					cr.SetSourceColor (color);
+					cr.Rectangle (0, 0, Width, Height);
+					cr.Fill ();
+				});
 			}
-			return base.OnExposeEvent (evnt);
+			base.OnSnapshot (snapshot);
 		}
 	}
 
-	class CustomFrame: Bin
+	/// <summary>
+	/// Single-child container with a border (margins) and inner padding; set the content with <see cref="BinWidget.Child"/>.
+	/// </summary>
+	class CustomFrame: BinWidget
 	{
-		Gtk.Widget child;
 		int topMargin;
 		int bottomMargin;
 		int leftMargin;
 		int rightMargin;
-		
+
 		int topPadding;
 		int bottomPadding;
 		int leftPadding;
 		int rightPadding;
 
-		Gdk.Color backgroundColor;
-		Gdk.Color borderColor;
+		Gdk.RGBA backgroundColor;
+		Gdk.RGBA borderColor;
 		bool backgroundColorSet, borderColorSet;
-		
+
 		public CustomFrame ()
 		{
 		}
-		
+
 		public CustomFrame (int topMargin, int bottomMargin, int leftMargin, int rightMargin)
 		{
 			SetMargins (topMargin, bottomMargin, leftMargin, rightMargin);
 		}
 
-		protected override void OnStyleSet (Style previous_style)
-		{
-			base.OnStyleSet (previous_style);
-			if (!borderColorSet)
-				borderColor = Style.Dark (Gtk.StateType.Normal);
-		}
-		
 		public void SetMargins (int topMargin, int bottomMargin, int leftMargin, int rightMargin)
 		{
 			this.topMargin = topMargin;
 			this.bottomMargin = bottomMargin;
 			this.leftMargin = leftMargin;
 			this.rightMargin = rightMargin;
+			UpdatePadding ();
 		}
-		
+
 		public void SetPadding (int topPadding, int bottomPadding, int leftPadding, int rightPadding)
 		{
 			this.topPadding = topPadding;
 			this.bottomPadding = bottomPadding;
 			this.leftPadding = leftPadding;
 			this.rightPadding = rightPadding;
+			UpdatePadding ();
 		}
-		
+
+		void UpdatePadding ()
+		{
+			Padding = new Gtk.Border {
+				Left = (short)(leftMargin + leftPadding),
+				Right = (short)(rightMargin + rightPadding),
+				Top = (short)(topMargin + topPadding),
+				Bottom = (short)(bottomMargin + bottomPadding),
+			};
+		}
+
 		public bool GradientBackround { get; set; }
 
-		public Gdk.Color BackgroundColor {
+		public Gdk.RGBA BackgroundColor {
 			get { return backgroundColor; }
-			set { backgroundColor = value; backgroundColorSet = true; }
+			set { backgroundColor = value; backgroundColorSet = true; QueueDraw (); }
 		}
 
-		public Gdk.Color BorderColor {
-			get { return borderColor; }
-			set { borderColor = value; borderColorSet = true; }
+		public Gdk.RGBA BorderColor {
+			get { return borderColorSet ? borderColor : DefaultBorderColor; }
+			set { borderColor = value; borderColorSet = true; QueueDraw (); }
 		}
 
-		protected override void OnAdded (Widget widget)
-		{
-			base.OnAdded (widget);
-			child = widget;
-		}
-		
-		protected override void OnRemoved (Widget widget)
-		{
-			base.OnRemoved (widget);
-			child = null;
-		}
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			if (child != null) {
-				requisition = child.SizeRequest ();
-				requisition.Width += leftMargin + rightMargin + leftPadding + rightPadding;
-				requisition.Height += topMargin + bottomMargin + topPadding + bottomPadding;
-			} else {
-				requisition.Width = 0;
-				requisition.Height = 0;
+		Gdk.RGBA DefaultBorderColor {
+			get {
+				// Derived from the theme's text colour (replaces Style.Dark (StateType.Normal))
+				var fg = StyleColor;
+				return new Gdk.RGBA { Red = fg.Red, Green = fg.Green, Blue = fg.Blue, Alpha = 0.35f };
 			}
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			base.OnSizeAllocated (allocation);
-			if (allocation.Width > leftMargin + rightMargin + leftPadding + rightPadding) {
-				allocation.X += leftMargin + leftPadding;
-				allocation.Width -= leftMargin + rightMargin + leftPadding + rightPadding;
-			}
-			if (allocation.Height > topMargin + bottomMargin + topPadding + bottomPadding) {
-				allocation.Y += topMargin + topPadding;
-				allocation.Height -= topMargin + bottomMargin + topPadding + bottomPadding;
-			}
-			if (child != null)
-				child.SizeAllocate (allocation);
-		}
+			int width = Width, height = Height;
+			if (width <= 0 || height <= 0)
+				return;
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			Gdk.Rectangle rect = Allocation;
-			
-			//Gdk.Rectangle.Right and Bottom are inconsistent
-			int right = rect.X + rect.Width, bottom = rect.Y + rect.Height;
-
-			var bcolor = backgroundColorSet ? BackgroundColor : Style.Background (Gtk.StateType.Normal);
-			using (Cairo.Context cr = Gdk.CairoHelper.Create (evnt.Window)) {
-			
-				if (GradientBackround) {
-					cr.NewPath ();
-					cr.MoveTo (rect.X, rect.Y);
-					cr.RelLineTo (rect.Width, 0);
-					cr.RelLineTo (0, rect.Height);
-					cr.RelLineTo (-rect.Width, 0);
-					cr.RelLineTo (0, -rect.Height);
-					cr.ClosePath ();
-
-					// FIXME: VV: Remove gradient features
-					using (Cairo.Gradient pat = new Cairo.LinearGradient (rect.X, rect.Y, rect.X, bottom)) {
-						pat.AddColorStop (0, bcolor.ToCairoColor ());
-						Xwt.Drawing.Color gcol = bcolor.ToXwtColor ();
-						gcol.Light -= 0.1;
-						if (gcol.Light < 0)
-							gcol.Light = 0;
-						pat.AddColorStop (1, gcol.ToCairoColor ());
-						cr.SetSource (pat);
+			if (backgroundColorSet) {
+				var bcolor = backgroundColor.ToCairoColor ();
+				snapshot.DrawCairo (this, cr => {
+					if (GradientBackround) {
+						// FIXME: VV: Remove gradient features
+						using (Cairo.Gradient pat = new Cairo.LinearGradient (0, 0, 0, height)) {
+							pat.AddColorStop (0, bcolor);
+							Xwt.Drawing.Color gcol = bcolor.ToXwtColor ();
+							gcol.Light -= 0.1;
+							if (gcol.Light < 0)
+								gcol.Light = 0;
+							pat.AddColorStop (1, gcol.ToCairoColor ());
+							cr.Rectangle (0, 0, width, height);
+							cr.SetSource (pat);
+							cr.Fill ();
+						}
+					} else {
+						cr.Rectangle (0, 0, width, height);
+						cr.SetSourceColor (bcolor);
 						cr.Fill ();
 					}
-				} else {
-					if (backgroundColorSet) {
-						Gdk.GC gc = new Gdk.GC (GdkWindow);
-						gc.RgbFgColor = bcolor;
-						evnt.Window.DrawRectangle (gc, true, rect.X, rect.Y, rect.Width, rect.Height);
-						gc.Dispose ();
-					}
+				});
+			}
+
+			base.OnSnapshot (snapshot);
+
+			var border = BorderColor.ToCairoColor ();
+			snapshot.DrawCairo (this, cr => {
+				cr.SetSourceColor (border);
+
+				if (topMargin > 0) {
+					double y = topMargin / 2d;
+					cr.LineWidth = topMargin;
+					cr.MoveTo (0, y);
+					cr.LineTo (width, y);
+					cr.Stroke ();
 				}
-			
-			}
-			base.OnExposeEvent (evnt);
 
-			using (Cairo.Context cr = Gdk.CairoHelper.Create (evnt.Window)) {
-				cr.SetSourceColor (BorderColor.ToCairoColor ());
-				
-				double y = rect.Y + topMargin / 2d;
-				cr.LineWidth = topMargin;
-				cr.Line (rect.X, y, right, y);
-				cr.Stroke ();
-				
-				y = bottom - bottomMargin / 2d;
-				cr.LineWidth = bottomMargin;
-				cr.Line (rect.X, y, right, y);
-				cr.Stroke ();
-				
-				double x = rect.X + leftMargin / 2d;
-				cr.LineWidth = leftMargin;
-				cr.Line (x, rect.Y, x, bottom);
-				cr.Stroke ();
-				
-				x = right - rightMargin / 2d;
-				cr.LineWidth = rightMargin;
-				cr.Line (x, rect.Y, x, bottom);
-				cr.Stroke ();
+				if (bottomMargin > 0) {
+					double y = height - bottomMargin / 2d;
+					cr.LineWidth = bottomMargin;
+					cr.MoveTo (0, y);
+					cr.LineTo (width, y);
+					cr.Stroke ();
+				}
 
-				return false;
-			}
+				if (leftMargin > 0) {
+					double x = leftMargin / 2d;
+					cr.LineWidth = leftMargin;
+					cr.MoveTo (x, 0);
+					cr.LineTo (x, height);
+					cr.Stroke ();
+				}
+
+				if (rightMargin > 0) {
+					double x = width - rightMargin / 2d;
+					cr.LineWidth = rightMargin;
+					cr.MoveTo (x, 0);
+					cr.LineTo (x, height);
+					cr.Stroke ();
+				}
+			});
 		}
 	}
 }

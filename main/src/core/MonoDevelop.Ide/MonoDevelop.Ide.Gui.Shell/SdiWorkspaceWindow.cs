@@ -35,7 +35,7 @@ using MonoDevelop.Ide.Gui.Documents;
 
 namespace MonoDevelop.Ide.Gui.Shell
 {
-	internal class SdiWorkspaceWindow : EventBox, IWorkbenchWindow, ICommandDelegatorRouter
+	internal class SdiWorkspaceWindow : BinWidget, IWorkbenchWindow, ICommandDelegatorRouter
 	{
 		DefaultWorkbench workbench;
 		DocumentController controller;
@@ -82,17 +82,33 @@ namespace MonoDevelop.Ide.Gui.Shell
 			controller.HasUnsavedChangesChanged += HandleDirtyChanged;
 
 			SetTitleEvent ();
+
+			// activate the notebook containing this window when it is clicked
+			this.AddClickHandler (null, click => {
+				var notebook = FindNotebook ();
+				if (notebook != null)
+					DockNotebook.ActiveNotebook = notebook;
+			}, phase: Gtk.PropagationPhase.Capture);
+		}
+
+		SdiDragNotebook FindNotebook ()
+		{
+			for (var w = Parent; w != null; w = w.Parent) {
+				if (w is SdiDragNotebook notebook)
+					return notebook;
+			}
+			return null;
 		}
 
 		public void SetRootView (IShellDocumentViewItem view)
 		{
 			this.view = (GtkShellDocumentViewItem) view;
-			if (Child != null)
-				Remove (Child);
+			Child = null;
 			if (view != null) {
 				var widget = (Gtk.Widget)view;
-				widget.Show ();
-				Add (widget);
+				widget.Hexpand = true;
+				widget.Vexpand = true;
+				Child = widget;
 			}
 		}
 
@@ -133,14 +149,6 @@ namespace MonoDevelop.Ide.Gui.Shell
 			}
 		}
 		
-		protected override bool OnWidgetEvent (Gdk.Event evt)
-		{
-			if (evt.Type == Gdk.EventType.ButtonRelease)
-				DockNotebook.ActiveNotebook = (SdiDragNotebook)Parent.Parent;
-
-			return base.OnWidgetEvent (evt);
-		}
-
 		public bool ShowNotification {
 			get {
 				return showNotification;
@@ -173,7 +181,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public void SelectWindow ()
 		{
-			var window = tabControl.Toplevel as Gtk.Window;
+			var window = tabControl.Root as Gtk.Window;
 			if (window != null) {
 				if (window is DockWindow) {
 					IdeServices.DesktopService.GrabDesktopFocus (window);
@@ -283,16 +291,28 @@ namespace MonoDevelop.Ide.Gui.Shell
 		public void Close ()
 		{
 			view?.DetachFromView ();
-			Destroy ();
+			DetachController ();
+			if (Parent is ContainerWidget container)
+				container.RemoveChild (this);
+			else if (Parent is Gtk.Box box)
+				box.Remove (this);
+			else if (Parent != null)
+				Unparent ();
 		}
 
-		protected override void OnDestroyed ()
+		void DetachController ()
 		{
 			controller.DocumentTitleChanged -= SetTitleEvent;
 			controller.HasUnsavedChangesChanged -= HandleDirtyChanged;
 
 			document = null;
-			base.OnDestroyed ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing)
+				DetachController ();
+			base.Dispose (disposing);
 		}
 
 		object ICommandDelegatorRouter.GetNextCommandTarget ()
@@ -304,11 +324,14 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			// If command checks are flowing through this view, it means the view's notebook
 			// is the active notebook.
-			if (!(Toplevel is Gtk.Window))
+			if (!(Root is Gtk.Window window))
 				return Document;
 
-			if (((Gtk.Window)Toplevel).HasToplevelFocus)
-				DockNotebook.ActiveNotebook = (SdiDragNotebook)Parent.Parent;
+			if (window.IsActive) {
+				var notebook = FindNotebook ();
+				if (notebook != null)
+					DockNotebook.ActiveNotebook = notebook;
+			}
 
 			return Document;
 		}
@@ -324,7 +347,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 				else
 					tab.Tooltip = controller.DocumentTitle;
 			}
-			tab.Icon = controller.DocumentIcon?.WithSize (IconSize.Menu);
+			tab.Icon = controller.DocumentIcon?.WithSize (StockIconSize.Menu);
 		}
 		
 		void OnTitleChanged(EventArgs e)

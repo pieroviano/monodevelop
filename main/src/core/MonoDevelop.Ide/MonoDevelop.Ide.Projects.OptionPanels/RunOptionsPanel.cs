@@ -64,7 +64,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}	
 	
-	public partial class RunOptionsPanelWidget : Gtk.Bin
+	public partial class RunOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		ProjectConfiguration configuration;
 

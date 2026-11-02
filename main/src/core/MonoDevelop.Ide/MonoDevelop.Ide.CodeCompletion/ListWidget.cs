@@ -98,7 +98,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 	}
 
 	[Obsolete]
-	class ListWidget : Gtk.DrawingArea
+	class ListWidget : CairoWidget
 	{
 		const int minSize = 400;
 		const int maxListWidth = 800;
@@ -113,7 +113,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 		Pango.Layout layout, categoryLayout, noMatchLayout;
 		CompletionListWindowGtk win;
 		FontDescription itemFont, noMatchFont, categoryFont;
-		Adjustment vadj;
+		readonly Adjustment vadj = new Adjustment (0, 0, 0, 0, 0, 0);
 
 		int selection = 0;
 
@@ -186,42 +186,37 @@ namespace MonoDevelop.Ide.CodeCompletion
 		public ListWidget (CompletionListWindowGtk win)
 		{
 			this.win = win;
-			this.Events = EventMask.ButtonPressMask | EventMask.ButtonReleaseMask | EventMask.PointerMotionMask;
 			categoryLayout = new Pango.Layout (this.PangoContext);
 			noMatchLayout = new Pango.Layout (this.PangoContext);
 			layout = new Pango.Layout (this.PangoContext);
 			layout.Wrap = Pango.WrapMode.Char;
 
 			SetFont ();
-			this.Show ();
+
+			Hexpand = Vexpand = true;
+			vadj.ValueChanged += HandleValueChanged;
+
+			this.AddClickHandler (HandleButtonPressed, HandleButtonReleased);
+			this.AddMotionHandler (HandleMotion);
 		}
 
 		
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
-			if (layout != null) {
-				layout.Dispose ();
-				categoryLayout.Dispose ();
-				noMatchLayout.Dispose ();
-				layout = categoryLayout = noMatchLayout = null;
+			if (disposing) {
+				vadj.ValueChanged -= HandleValueChanged;
+				if (layout != null) {
+					layout.Dispose ();
+					categoryLayout.Dispose ();
+					noMatchLayout.Dispose ();
+					layout = categoryLayout = noMatchLayout = null;
+				}
+				if (itemFont != null) {
+					itemFont.Dispose ();
+					itemFont = null;
+				}
 			}
-			if (itemFont != null) {
-				itemFont.Dispose ();
-				itemFont = null;
-			}
-		}
-
-		protected override void OnSetScrollAdjustments (Adjustment hadj, Adjustment vadj)
-		{
-			if (this.vadj != null)
-				this.vadj.ValueChanged -= HandleValueChanged;
-			this.vadj = vadj;
-			base.OnSetScrollAdjustments (hadj, vadj);
-			if (this.vadj != null) {
-				this.vadj.ValueChanged += HandleValueChanged;
-				SetAdjustments ();
-			}
+			base.Dispose (disposing);
 		}
 
 		void HandleValueChanged (object sender, EventArgs e)
@@ -357,33 +352,25 @@ namespace MonoDevelop.Ide.CodeCompletion
 			}
 		}
 
-		protected override bool OnButtonPressEvent (EventButton e)
+		/// <summary>Raised when a mouse button is pressed on the list (after the clicked row has been selected).</summary>
+		public event Action<ClickInfo> ButtonPressed;
+
+		void HandleButtonPressed (ClickInfo click)
 		{
-			SelectedItemIndex = GetRowByPosition ((int)e.Y);
+			SelectedItemIndex = GetRowByPosition ((int)click.Y);
 			buttonPressed = true;
-			return base.OnButtonPressEvent (e);
+			ButtonPressed?.Invoke (click);
 		}
-		
-		protected override bool OnButtonReleaseEvent (EventButton e)
+
+		void HandleButtonReleased (ClickInfo click)
 		{
 			buttonPressed = false;
-			return base.OnButtonReleaseEvent (e);
 		}
-		
-		protected override void OnRealized ()
+
+		void HandleMotion (double x, double y)
 		{
-			base.OnRealized ();
-			this.GdkWindow.Background = this.Style.Base (StateType.Normal);
-		}
-		
-		protected override bool OnMotionNotifyEvent (EventMotion e)
-		{
-			if (!buttonPressed)
-				return base.OnMotionNotifyEvent (e);
-			int winWidth, winHeight;
-			this.GdkWindow.GetSize (out winWidth, out winHeight);
-			SelectedItemIndex = GetRowByPosition ((int)e.Y);
-			return true;
+			if (buttonPressed)
+				SelectedItemIndex = GetRowByPosition ((int)y);
 		}
 		
 		string NoMatchesMsg {
@@ -394,15 +381,12 @@ namespace MonoDevelop.Ide.CodeCompletion
 			get { return MonoDevelop.Core.GettextCatalog.GetString ("No suggestions"); }
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
+		protected override void OnDraw (Cairo.Context context, int width, int height)
 		{
-			using (var context = Gdk.CairoHelper.Create (args.Window)) {
+			{
 				var scalef = GtkWorkarounds.GetScaleFactor (this);
 				context.LineWidth = 1;
-				var alloc = Allocation;
-				int width = alloc.Width;
-				int height = alloc.Height;
-				context.Rectangle (args.Area.X, args.Area.Y, args.Area.Width, args.Area.Height);
+				context.Rectangle (0, 0, width, height);
 				var backgroundColor = Styles.CodeCompletion.BackgroundColor.ToCairoColor ();
 				var textColor = Styles.CodeCompletion.TextColor.ToCairoColor ();
 				var categoryColor = Styles.CodeCompletion.CategoryColor.ToCairoColor ();
@@ -421,7 +405,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 					context.SetSourceColor (textColor);
 					context.MoveTo ((width - lWidth) / 2, yPos + (height - lHeight - yPos) / 2 - lHeight / 2);
 					Pango.CairoHelper.ShowLayout (context, noMatchLayout);
-					return false;
+					return;
 				}
 
 				Iterate (true, ref yPos, delegate (CategorizedCompletionItems category, int ypos) {
@@ -433,11 +417,11 @@ namespace MonoDevelop.Ide.CodeCompletion
 					//	window.DrawRectangle (this.Style.BackgroundGC (StateType.Insensitive), true, 0, yPos, width, rowHeight);
 					int x = 2;
 					if (category.CompletionCategory != null && !string.IsNullOrEmpty (category.CompletionCategory.Icon)) {
-						var icon = ImageService.GetIcon (category.CompletionCategory.Icon, IconSize.Menu);
+						var icon = ImageService.GetIcon (category.CompletionCategory.Icon, StockIconSize.Menu);
 						context.DrawImage (this, icon, 0, ypos);
 						x = (int)icon.Width + 4;
 					}
-					context.Rectangle (0, ypos, Allocation.Width, rowHeight);
+					context.Rectangle (0, ypos, width, rowHeight);
 					context.SetSourceColor (backgroundColor);
 					context.Fill ();
 
@@ -505,8 +489,8 @@ namespace MonoDevelop.Ide.CodeCompletion
 						icon = icon.WithStyles ("sel");
 					iconWidth = (int)icon.Width;
 					iconHeight = (int)icon.Height;
-				} else if (!Gtk.Icon.SizeLookup (IconSize.Menu, out iconWidth, out iconHeight)) {
-					iconHeight = iconWidth = 24;
+				} else {
+					StockIconSize.Menu.GetSize (out iconWidth, out iconHeight);
 				}
 
 				int wi, he, typos, iypos;
@@ -522,11 +506,11 @@ namespace MonoDevelop.Ide.CodeCompletion
 					context.SetSourceColor (barStyle.ToCairoColor ());
 
 					if (SelectionEnabled) {
-						context.Rectangle (0, ypos, Allocation.Width, rowHeight);
+						context.Rectangle (0, ypos, width, rowHeight);
 						context.Fill ();
 					} else {
 						context.LineWidth++;
-						context.Rectangle (0.5, ypos + 0.5, Allocation.Width - 1, rowHeight - 1);
+						context.Rectangle (0.5, ypos + 0.5, width - 1, rowHeight - 1);
 						context.Stroke ();
 						context.LineWidth--;
 					}
@@ -539,7 +523,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 				context.SetSourceColor ((drawIconAsSelected ? Styles.CodeCompletion.SelectionTextColor : Styles.CodeCompletion.TextColor).ToCairoColor ());
 				var textXPos = xpos + iconWidth + 2;
 				context.MoveTo (textXPos, typos);
-				layout.Width = (int)((Allocation.Width - textXPos) * Pango.Scale.PangoScale);
+				layout.Width = (int)((width - textXPos) * Pango.Scale.PangoScale);
 				layout.Ellipsize = EllipsizeMode.End;
 				Pango.CairoHelper.ShowLayout (context, layout);
 				int textW, textH;
@@ -562,12 +546,12 @@ namespace MonoDevelop.Ide.CodeCompletion
 						const int leftpadding = 8;
 						const int rightpadding = 3;
 						w += rightpadding;
-						w = Math.Min (w, Allocation.Width - textXPos - textW - leftpadding);
+						w = Math.Min (w, width - textXPos - textW - leftpadding);
 						wi += w;
 						typos = h < rowHeight ? ypos + (rowHeight - h) / 2 : ypos;
 						if (scalef <= 1.0)
 							typos -= 1; // 1px up on non HiDPI
-						context.MoveTo (Allocation.Width - w, typos);
+						context.MoveTo (width - w, typos);
 						layout.Width = (int)(w * Pango.Scale.PangoScale);
 						layout.Ellipsize = EllipsizeMode.End;
 
@@ -582,9 +566,9 @@ namespace MonoDevelop.Ide.CodeCompletion
 						win.ResetSizes ();
 					} else {
 						//workaround for the vscrollbar display - the calculated width needs to be the width ofthe render region.
-						if (Allocation.Width < listWidth) {
-							if (listWidth - Allocation.Width < 30) {
-								WidthRequest = listWidth + listWidth - Allocation.Width;
+						if (width < listWidth) {
+							if (listWidth - width < 30) {
+								WidthRequest = listWidth + listWidth - width;
 								win.ResetSizes ();
 							}
 						}
@@ -592,16 +576,13 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 					return true;
 				});
-
-				return false;
 			}
 		}
 		
 		public int TextOffset {
 			get {
 				int iconWidth, iconHeight;
-				if (!Gtk.Icon.SizeLookup (Gtk.IconSize.Menu, out iconWidth, out iconHeight))
-					iconHeight = iconWidth = 16;
+				StockIconSize.Menu.GetSize (out iconWidth, out iconHeight);
 				var xSpacing = marginIconSpacing + iconTextSpacing;
 				return iconWidth + xSpacing + 5;
 			}
@@ -629,10 +610,10 @@ namespace MonoDevelop.Ide.CodeCompletion
 			if (InCategoryMode && categories.Any (cat => cat.CompletionCategory == null))
 				viewableCats--;
 
-			var upper = Math.Max (Allocation.Height, (filteredItems.Count + viewableCats) * rowHeight);
-			if (upper != vadj.Upper || Allocation.Height != vadj.PageSize) {
-				vadj.SetBounds (0, upper, rowHeight, Allocation.Height, Allocation.Height);
-				if (vadj.Upper <= Allocation.Height)
+			var upper = Math.Max (Height, (filteredItems.Count + viewableCats) * rowHeight);
+			if (upper != vadj.Upper || Height != vadj.PageSize) {
+				vadj.SetBounds (0, upper, rowHeight, Height, Height);
+				if (vadj.Upper <= Height)
 					vadj.Value = 0;
 			}
 			if (scrollToSelectedItem)
@@ -657,30 +638,22 @@ namespace MonoDevelop.Ide.CodeCompletion
 				return true;
 			});
 
-			return new Gdk.Rectangle (0, outpos, Allocation.Width, rowHeight);
+			return new Gdk.Rectangle (0, outpos, Width, rowHeight);
 		}
 		
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
+			base.OnSizeAllocate (width, height, baseline);
 			SetAdjustments (false);
-		}
-		
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
-			requisition.Width = listWidth;
-			if (rowHeight > 0)
-				requisition.Height += requisition.Height % rowHeight;
 		}
 
 		void CalcVisibleRows ()
 		{
-			var icon = ImageService.GetIcon (TypeSystem.Stock.Namespace, IconSize.Menu);
+			var icon = ImageService.GetIcon (TypeSystem.Stock.Namespace, StockIconSize.Menu);
 			rowHeight = Math.Max (1, (int)icon.Height + 2);
 
 			int newHeight = rowHeight * rows;
-			if (Allocation.Width != listWidth || Allocation.Height != newHeight)
+			if (Width != listWidth || Height != newHeight)
 				this.SetSizeRequest (listWidth, newHeight);
 			SetAdjustments ();
 		}

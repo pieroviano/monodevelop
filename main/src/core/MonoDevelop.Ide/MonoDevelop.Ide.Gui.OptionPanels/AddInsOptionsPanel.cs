@@ -61,7 +61,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 		
-	internal partial class AddInsPanelWidget :  Gtk.Bin 
+	internal partial class AddInsPanelWidget :  MonoDevelop.Components.BinWidget 
 	{
 		public AddInsPanelWidget ()
 		{

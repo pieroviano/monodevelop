@@ -41,20 +41,19 @@ namespace MonoDevelop.Ide.WelcomePage
 		
 		public override Control CreatePanelWidget ()
 		{
-			VBox vbox = new VBox();
+			var vbox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
 			showOnStartCheckButton.Label = GettextCatalog.GetString ("Show welcome page on startup");
 			showOnStartCheckButton.Active = WelcomePageOptions.ShowOnStartup;
-			vbox.PackStart(showOnStartCheckButton, false, false, 0);
+			vbox.Append (showOnStartCheckButton);
 			
 			internetUpdateCheckButton.Label = GettextCatalog.GetString ("Update welcome page from internet");
 			internetUpdateCheckButton.Active = WelcomePageOptions.UpdateFromInternet;
-			vbox.PackStart(internetUpdateCheckButton, false, false, 0);
+			vbox.Append (internetUpdateCheckButton);
 			
 			closeOnOpenSlnCheckButton.Label = GettextCatalog.GetString ("Close welcome page after opening a solution");
 			closeOnOpenSlnCheckButton.Active = WelcomePageOptions.CloseWhenSolutionOpened;
-			vbox.PackStart(closeOnOpenSlnCheckButton, false, false, 0);
+			vbox.Append (closeOnOpenSlnCheckButton);
 			
-			vbox.ShowAll ();
 			return vbox;
 		}
 		

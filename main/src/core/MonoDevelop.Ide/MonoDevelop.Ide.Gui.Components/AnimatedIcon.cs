@@ -52,7 +52,7 @@ namespace MonoDevelop.Ide.Gui.Components
 
 		string animationSpec;
 		RuntimeAddin addin;
-		Gtk.IconSize size;
+		MonoDevelop.Components.StockIconSize size;
 
 		const int defaultPause = 200;
 		List<Xwt.Drawing.Image> images;
@@ -67,7 +67,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			animationItems ["fade-out"] = typeof(FadeOutEffect);
 		}
 
-		public AnimatedIcon (RuntimeAddin addin, string animationSpec, Gtk.IconSize size)
+		public AnimatedIcon (RuntimeAddin addin, string animationSpec, MonoDevelop.Components.StockIconSize size)
 		{
 			this.addin = addin;
 			this.size = size;

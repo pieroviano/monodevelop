@@ -41,26 +41,26 @@ using System.Linq;
 
 namespace MonoDevelop.Ide.Gui.Dialogs
 {
-	internal class VersionInformationTabPage: VBox
+	internal class VersionInformationTabPage: Gtk.Box
 	{
 		bool destroyed;
 		
-		public VersionInformationTabPage ()
+		public VersionInformationTabPage () : base (Gtk.Orientation.Vertical, 0)
 		{
-			BorderWidth = 6;
+			DesignerLayout.Margin (this, 6);
 			SetLabel (GettextCatalog.GetString ("Loading..."));
 			
 			new System.Threading.Thread (() => {
 				try {
 					var info = SystemInformation.GetDescription ().ToArray ();
-					Gtk.Application.Invoke ((o, args) => {
+					Runtime.RunInMainThread (() => {
 						if (destroyed)
 							return;
 						SetText (info);
 					});
 				} catch (Exception ex) {
 					LoggingService.LogError ("Failed to load version information", ex);
-					Gtk.Application.Invoke ((o, args) => {
+					Runtime.RunInMainThread (() => {
 						if (destroyed)
 							return;
 						SetLabel (GettextCatalog.GetString ("Failed to load version information."));
@@ -71,8 +71,11 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		void Clear ()
 		{
-			foreach (var c in this.Children) {
-				this.Remove (c);
+			var child = FirstChild;
+			while (child != null) {
+				var next = child.NextSibling;
+				Remove (child);
+				child = next;
 			}
 		}
 		
@@ -80,8 +83,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			Clear ();
 			var label = new Gtk.Label (text);
-			PackStart (label, true, true, 0);
-			ShowAll ();
+			DesignerLayout.Pack (this, label, true);
 		}
 
 		void SetText (IEnumerable<ISystemInformationProvider> text)
@@ -101,60 +103,54 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 			buf.Markup = sb.ToString ().Trim () + "\n";
 
-			var contentBox = new VBox ();
-			contentBox.BorderWidth = 4;
-			contentBox.PackStart (buf, false, false, 0);
+			var contentBox = DesignerLayout.Margin (DesignerLayout.VBox (0), 4);
+			DesignerLayout.Pack (contentBox, buf);
 
-			var asmButton = new Gtk.Button (GettextCatalog.GetString ("Show loaded assemblies"));
+			var asmButton = new Gtk.Button { Label = GettextCatalog.GetString ("Show loaded assemblies") };
+			asmButton.Halign = Gtk.Align.Start;
 			asmButton.Clicked += (sender, e) => {
-				asmButton.Hide ();
-				contentBox.PackStart (CreateAssembliesTable (), false, false, 0);
+				asmButton.Visible = false;
+				DesignerLayout.Pack (contentBox, CreateAssembliesTable ());
 			};
-			var hb = new Gtk.HBox ();
-			hb.PackStart (asmButton, false, false, 0);
-			contentBox.PackStart (hb, false, false, 0);
+			DesignerLayout.Pack (contentBox, asmButton);
 
 			var sw = new MonoDevelop.Components.CompactScrolledWindow () {
 				ShowBorderLine = true,
-				BorderWidth = 2
 			};
-			sw.AddWithViewport (contentBox);
-			sw.ShadowType = ShadowType.None;
-			((Gtk.Viewport)sw.Child).ShadowType = ShadowType.None;
-
-			PackStart (sw, true, true, 0);
-			ShowAll ();
+			sw.Child = contentBox;
+			sw.Hexpand = true;
+			sw.Vexpand = true;
+			DesignerLayout.Pack (this, sw, true);
 		}
 
 		Gtk.Widget CreateAssembliesTable ()
 		{
-			var box = new Gtk.VBox ();
-			box.PackStart (new Gtk.Label () {
+			var box = DesignerLayout.VBox (0);
+			DesignerLayout.Pack (box, new Gtk.Label () {
 				Markup = string.Format ("<b>{0}</b>", GettextCatalog.GetString ("Loaded Assemblies")),
 				Xalign = 0
 			});
-			var table = new Gtk.Table (0, 0, false);
-			table.ColumnSpacing = 3;
-			uint line = 0;
+			var table = DesignerLayout.Grid (0, 3);
+			int line = 0;
 			foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies ().Where (a => !a.IsDynamic).OrderBy (a => a.FullName)) {
 				try {
 					var assemblyName = assembly.GetName ();
-					table.Attach (new Gtk.Label (assemblyName.Name) { Xalign = 0 }, 0, 1, line, line + 1);
-					table.Attach (new Gtk.Label (assemblyName.Version.ToString ()) { Xalign = 0 }, 1, 2, line, line + 1);
-					table.Attach (new Gtk.Label (System.IO.Path.GetFullPath (assembly.Location)) { Xalign = 0 }, 2, 3, line, line + 1);
+					table.Attach (new Gtk.Label (assemblyName.Name) { Xalign = 0 }, 0, line, 1, 1);
+					table.Attach (new Gtk.Label (assemblyName.Version.ToString ()) { Xalign = 0 }, 1, line, 1, 1);
+					table.Attach (new Gtk.Label (System.IO.Path.GetFullPath (assembly.Location)) { Xalign = 0 }, 2, line, 1, 1);
 				} catch {
 				}
 				line++;
 			}
-			box.PackStart (table, false, false, 0);
-			box.ShowAll ();
+			DesignerLayout.Pack (box, table);
 			return box;
 		}
 
-		protected override void OnDestroyed ()
+		// GTK 4 has no ::destroy: the page is gone once it is unrealized (removed from its toplevel)
+		protected override void OnUnrealized ()
 		{
 			destroyed = true;
-			base.OnDestroyed ();
+			base.OnUnrealized ();
 		}
 	}
 }

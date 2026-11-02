@@ -54,7 +54,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 		
-	partial class CombineInformationWidget : Gtk.Bin 
+	partial class CombineInformationWidget : MonoDevelop.Components.BinWidget 
 	{
 		public CombineInformationWidget (Solution solution) 
 		{

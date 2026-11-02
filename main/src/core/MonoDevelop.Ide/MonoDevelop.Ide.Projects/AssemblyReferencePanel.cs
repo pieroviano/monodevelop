@@ -33,6 +33,7 @@ using System.Linq;
 using MonoDevelop.Projects;
 using MonoDevelop.Core;
 using MonoDevelop.Components;
+using MonoDevelop.Ide.Gui;
 
 using Gtk;
 using MonoDevelop.Core.Assemblies;
@@ -44,7 +45,7 @@ using System.Reflection;
 
 namespace MonoDevelop.Ide.Projects
 {
-	internal class AssemblyReferencePanel : VBox, IReferencePanel
+	internal class AssemblyReferencePanel : Box, IReferencePanel
 	{
 		SelectReferenceDialog selectDialog;
 		ListStore store = null;
@@ -78,9 +79,8 @@ namespace MonoDevelop.Ide.Projects
 		const int ColIcon = 5;
 		const int ColMatchRank = 6;
 
-		public AssemblyReferencePanel (SelectReferenceDialog selectDialog)
+		public AssemblyReferencePanel (SelectReferenceDialog selectDialog) : base (Orientation.Vertical, 6)
 		{
-			Spacing = 6;
 			this.selectDialog = selectDialog;
 
 			store = new ListStore (typeof (string), typeof (string), typeof (AssemblyInfo), typeof (bool), typeof (string), typeof(IconId), typeof(int));
@@ -114,22 +114,18 @@ namespace MonoDevelop.Ide.Projects
 			store.SetSortColumnId (0, SortType.Ascending);
 			store.SetSortFunc (0, new TreeIterCompareFunc (Sort));
 
-			ScrolledWindow sc = new ScrolledWindow ();
-			sc.ShadowType = Gtk.ShadowType.In;
-			sc.Add (treeView);
-			PackStart (sc, true, true, 0);
+			ScrolledWindow sc = new ScrolledWindow { HasFrame = true, Vexpand = true };
+			sc.Child = treeView;
+			Append (sc);
 
-			var but = new Gtk.Button (GettextCatalog.GetString ("Browse..."));
+			var but = new Gtk.Button { Label = GettextCatalog.GetString ("Browse..."), Halign = Align.End };
 			but.Clicked += HandleClicked;
-			var hbox = new Gtk.HBox ();
-			hbox.PackEnd (but, false, false, 0);
-			PackStart (hbox, false, false, 0);
+			Append (but);
 
-			ShowAll ();
-			BorderWidth = 6;
+			MarginStart = MarginEnd = MarginTop = MarginBottom = 6;
 		}
 
-		private int Sort (TreeModel model, TreeIter left, TreeIter right)
+		private int Sort (ITreeModel model, TreeIter left, TreeIter right)
 		{
 			int result = 0;
 
@@ -287,8 +283,8 @@ namespace MonoDevelop.Ide.Projects
 		{
 			StringBuilder result = StringBuilderCache.Allocate ();
 			int lastPos = 0;
-			var color = HslColor.GenerateHighlightColors (widget.Style.Base (StateType.Normal), 
-				widget.Style.Text (StateType.Normal), 3)[2];
+			var color = HslColor.GenerateHighlightColors (Styles.BaseBackgroundColor,
+				Styles.BaseForegroundColor, 3)[2];
 			for (int n=0; n < matches.Length; n++) {
 				int pos = matches[n] - startIndex;
 				if (pos < 0 || pos >= text.Length)

@@ -51,30 +51,14 @@ namespace MonoDevelop.Ide
 		
 		public static string GetGtkVersion ()
 		{
-			uint v1 = 2, v2 = 0, v3 = 0;
-			
-			while (v1 < 99 && Gtk.Global.CheckVersion (v1, v2, v3) == null)
-				v1++;
-			v1--;
-			
-			while (v2 < 99 && Gtk.Global.CheckVersion (v1, v2, v3) == null)
-				v2++;
-			v2--;
-			
-			v3 = 0;
-			while (v3 < 99 && Gtk.Global.CheckVersion (v1, v2, v3) == null)
-				v3++;
-			v3--;
-			
-			if (v1 == 99 || v2 == 99 || v3 == 99)
-				return "unknown";
-			return v1 +"." + v2 + "."+ v3;
+			// the version of the GTK library that is loaded at run time
+			return Gtk.GtkVersion.Current.ToString ();
 		}
 		
 		static string GetGtkTheme ()
 		{
 			var settings = Gtk.Settings.Default;
-			return settings != null ? settings.ThemeName : null;
+			return settings != null ? settings.GtkThemeName : null;
 		}
 
 		static string GetMonoUpdateInfo ()

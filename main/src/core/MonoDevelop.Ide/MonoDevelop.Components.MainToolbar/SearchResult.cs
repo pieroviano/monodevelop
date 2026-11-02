@@ -173,7 +173,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		public override Xwt.Drawing.Image Icon {
 			get {
-				return IdeServices.DesktopService.GetIconForFile (file.FilePath, IconSize.Menu);
+				return IdeServices.DesktopService.GetIconForFile (file.FilePath).WithSize (Xwt.IconSize.Small);
 			}
 		}
 
@@ -232,7 +232,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 		public override Xwt.Drawing.Image Icon {
 			get {
-				return ImageService.GetIcon ("md-command", IconSize.Menu);
+				return ImageService.GetIcon ("md-command", StockIconSize.Menu);
 			}
 		}
 

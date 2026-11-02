@@ -37,7 +37,7 @@ using System.ComponentModel;
 namespace MonoDevelop.Ide.Projects
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	partial class GtkProjectFolderPreviewWidget : Gtk.Bin
+	partial class GtkProjectFolderPreviewWidget : MonoDevelop.Components.BinWidget
 	{
 		const string FolderIconId = "md-open-folder";
 		const string FileIconId = "md-empty-file-icon";
@@ -61,17 +61,21 @@ namespace MonoDevelop.Ide.Projects
 			Styles.Changed += (sender, e) => UpdateStyles ();
 		}
 
+		static CssProvider treeViewProvider;
+
 		static void UpdateStyles ()
 		{
 			var bgColorHex = Styles.ColorGetHex (Styles.NewProjectDialog.ProjectConfigurationRightHandBackgroundColor);
 
-			string rcstyle = "style \"projectFolderPreviewWidget\"\r\n{\r\n" +
-				"    base[NORMAL] = \"" + bgColorHex + "\"\r\n" +
-				"    GtkTreeView::even-row-color = \"" + bgColorHex + "\"\r\n" +
-				"}\r\n";
-			rcstyle += "widget \"*projectFolderPreviewWidget*\" style \"projectFolderPreviewWidget\"\r\n";
+			string css = "#projectFolderPreviewWidget, #projectFolderPreviewWidget.view { background-color: " + bgColorHex + "; }\n";
 
-			Rc.ParseString (rcstyle);
+			if (treeViewProvider == null) {
+				treeViewProvider = new CssProvider ();
+				var display = Gdk.Display.Default;
+				if (display != null)
+					StyleContext.AddProviderForDisplay (display, treeViewProvider, (uint)StyleProviderPriority.Application);
+			}
+			treeViewProvider.LoadFromString (css);
 		}
 
 		public GtkProjectFolderPreviewWidget ()
@@ -89,11 +93,11 @@ namespace MonoDevelop.Ide.Projects
 
 			// Accessibility
 			previewLabel.Accessible.Name = "projectFolderPreviewLabel";
-			previewLabel.Accessible.SetTitleFor (folderTreeView.Accessible);
+			previewLabel.SetTitleFor (folderTreeView);
 
 			folderTreeView.Accessible.Name = "projectFolderPreviewWidget";
 			folderTreeView.Accessible.Description = GettextCatalog.GetString ("A preview of how the folder will look");
-			folderTreeView.Accessible.SetTitleUIElement (previewLabel.Accessible);
+			folderTreeView.SetTitleUIElement (previewLabel);
 		}
 
 		void CreateFolderTreeViewColumns ()
@@ -122,7 +126,7 @@ namespace MonoDevelop.Ide.Projects
 			folderTreeView.AppendColumn (column);
 		}
 
-		static bool TreeViewSelection (TreeSelection selection, TreeModel model, TreePath path, bool path_currently_selected)
+		static bool TreeViewSelection (TreeSelection selection, ITreeModel model, TreePath path, bool path_currently_selected)
 		{
 			return false;
 		}
@@ -231,7 +235,7 @@ namespace MonoDevelop.Ide.Projects
 
 		static Xwt.Drawing.Image GetTransparentIcon (IconId iconId)
 		{
-			return ImageService.GetIcon (iconId, IconSize.Menu).WithAlpha (0.3);
+			return ImageService.GetIcon (iconId, StockIconSize.Menu).WithAlpha (0.3);
 		}
 
 		TreeIter AddGitIgnoreToTree ()

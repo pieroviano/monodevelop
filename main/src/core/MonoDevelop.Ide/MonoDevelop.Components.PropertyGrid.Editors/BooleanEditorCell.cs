@@ -34,66 +34,55 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 	[PropertyEditorType (typeof (bool))]
 	public class BooleanEditorCell : PropertyEditorCell 
 	{
-		static int indicatorSize;
-		static int indicatorSpacing;
-		static Gtk.Style style;
+		const int indicatorSize = 16;
+		const int indicatorSpacing = 2;
 
-		static BooleanEditorCell ()
-		{
-			// reinit style
-			MonoDevelop.Ide.Gui.Styles.Changed += (sender, e) => style = null;
-		}
-
-		// we can't override Initialize () or use the default constructor for this,
-		// because a valid Gdk.Window is required for full Gtk.Style initialization
-		static void InitializeStyle (Gtk.Widget container)
-		{
-			if (style == null && container.GdkWindow != null) {
-				Gtk.CheckButton cb = new BooleanEditor ();
-				cb.GdkWindow = container.GdkWindow;
-				cb.Parent = container;
-				cb.Realize ();
-				style = cb.Style;
-				style.Attach (container.GdkWindow);
-				indicatorSize = (int) cb.StyleGetProperty ("indicator-size");
-				indicatorSpacing = (int) cb.StyleGetProperty ("indicator-spacing");
-				style.Detach ();
-				cb.Dispose ();
-			}
-		}
-		
 		public override void GetSize (int availableWidth, out int width, out int height)
 		{
-			if (style == null)
-				InitializeStyle (Container);
 			width = indicatorSize;
 			height = indicatorSize;
 		}
 		
-		public override void Render (Gdk.Drawable window, Cairo.Context ctx, Gdk.Rectangle bounds, Gtk.StateType state)
+		internal static void DrawCheck (Cairo.Context ctx, Gdk.RGBA color, double x, double y, int s, bool active)
 		{
-			if (style == null)
-				InitializeStyle (Container);
-			
-			Gtk.ShadowType sh = (bool) Value ? Gtk.ShadowType.In : Gtk.ShadowType.Out;
+			ctx.Save ();
+			ctx.SetSourceColor (color.ToCairoColor ());
+			ctx.LineWidth = 1;
+			ctx.Rectangle (x, y, s - 1, s - 1);
+			ctx.Stroke ();
+			if (active) {
+				ctx.LineWidth = 2;
+				ctx.MoveTo (x + s * 0.2, y + s * 0.5);
+				ctx.LineTo (x + s * 0.42, y + s * 0.72);
+				ctx.LineTo (x + s * 0.8, y + s * 0.25);
+				ctx.Stroke ();
+			}
+			ctx.Restore ();
+		}
 
+		public override void Render (Cairo.Context ctx, Gdk.Rectangle bounds, Gtk.StateFlags state)
+		{
 			int s = indicatorSize - 1;
 			if (s > bounds.Height)
 				s = bounds.Height;
 			if (s > bounds.Width)
 				s = bounds.Width;
-
-			Gtk.Style.PaintCheck (style, window, state, sh, bounds, Container, "checkbutton", bounds.X + indicatorSpacing - 1, bounds.Y + (bounds.Height - s)/2, s, s);
+			DrawCheck (ctx, GetTextColor (state), bounds.X + indicatorSpacing - 1 + 0.5, bounds.Y + (bounds.Height - s) / 2 + 0.5, s, (bool) Value);
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
-			return new BooleanEditor { State = state };
+			return new BooleanEditor ();
 		}
 	}
 	
 	public class BooleanEditor : Gtk.CheckButton, IPropertyEditor 
 	{
+		public BooleanEditor ()
+		{
+			Toggled += (sender, e) => ValueChanged?.Invoke (this, EventArgs.Empty);
+		}
+
 		public void Initialize (EditSession session)
 		{
 			if (session.Property.PropertyType != typeof(bool))
@@ -104,13 +93,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		public object Value { 
 			get { return Active; } 
 			set { Active = (bool) value; }
-		}
-		
-		protected override void OnToggled ()
-		{
-			base.OnToggled ();
-			if (ValueChanged != null)
-				ValueChanged (this, EventArgs.Empty);
 		}
 
 		public event EventHandler ValueChanged;

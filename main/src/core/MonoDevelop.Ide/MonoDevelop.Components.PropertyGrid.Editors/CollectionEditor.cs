@@ -76,7 +76,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			string displayName = Property.DisplayName;
 
 			//populate list with existing items
-			ListStore itemStore = new ListStore (typeof (object), typeof (int), typeof (string));
+ListStore itemStore = new ListStore (typeof (object), typeof (int), typeof (string));
 			for (int i=0; i<collection.Count; i++)
 				itemStore.AppendValues(collection [i], i, collection [i].ToString ());
 
@@ -90,20 +90,30 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			var dialog = new Gtk.Dialog () {
 				Title = displayName + " Editor",
 				Modal = true,
-				AllowGrow = true,
-				AllowShrink = true,
+				Resizable = true,
 			};
 			IdeTheme.ApplyTheme (dialog);
-			var toplevel = this.Container.GetNativeWidget<Gtk.Widget> ().Toplevel as Gtk.Window;
+			var toplevel = this.ContainerWidget.Root as Gtk.Window;
 			if (toplevel != null)
 				dialog.TransientFor = toplevel;
-			
-			dialog.AddActionWidget (new Button (Stock.Cancel), ResponseType.Cancel);
-			dialog.AddActionWidget (new Button (Stock.Ok), ResponseType.Ok);
+			dialog.AddButton (MonoDevelop.Core.GettextCatalog.GetString ("_Cancel"), (int) ResponseType.Cancel);
+			dialog.AddButton (MonoDevelop.Core.GettextCatalog.GetString ("_OK"), (int) ResponseType.Ok);
 			
 			//three columns for items, sorting, PropGrid
-			HBox hBox = new HBox ();
-			dialog.VBox.PackStart (hBox, true, true, 5);
+			var hBox = new Box (Orientation.Horizontal, 5);
+			hBox.MarginTop = hBox.MarginBottom = hBox.MarginStart = hBox.MarginEnd = 5;
+			hBox.Hexpand = hBox.Vexpand = true;
+			dialog.ContentArea.Append (hBox);
+
+			//list (TreeView) in a ScrolledWindow first
+			ScrolledWindow listScroll = new ScrolledWindow ();
+			listScroll.WidthRequest = 200;
+			listScroll.HeightRequest = 320;
+			hBox.Append (listScroll);
+
+			//followed by a ButtonBox
+			var buttonBox = new Box (Orientation.Vertical, 6);
+			hBox.Append (buttonBox);
 
 			//propGrid at end
 			grid = new PropertyGrid (base.EditorManager) {
@@ -111,37 +121,27 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 				WidthRequest = 200,
 				ShowHelp = false
 			};
-			hBox.PackEnd (grid, true, true, 5);
-
-			//followed by a ButtonBox
-			VBox buttonBox = new VBox ();
-			buttonBox.Spacing = 6;
-			hBox.PackEnd (buttonBox, false, false, 5);
+			grid.Hexpand = true;
+			hBox.Append (grid);
 			
 			//add/remove buttons
-			Button addButton = new Button (new ImageView (Stock.Add, IconSize.Button));
-			buttonBox.PackStart (addButton, false, false, 0);
+			Button addButton = Button.NewFromIconName ("list-add-symbolic");
+			buttonBox.Append (addButton);
 			if (types [0].IsAbstract)
 				addButton.Sensitive = false;
-			Button removeButton = new Button (new ImageView (Stock.Remove, IconSize.Button));
-			buttonBox.PackStart (removeButton, false, false, 0);
+			Button removeButton = Button.NewFromIconName ("list-remove-symbolic");
+			buttonBox.Append (removeButton);
 			
 			//sorting buttons
-			Button upButton = new Button (new ImageView (Stock.GoUp, IconSize.Button));
-			buttonBox.PackStart (upButton, false, false, 0);
-			Button downButton = new Button (new ImageView (Stock.GoDown, IconSize.Button));
-			buttonBox.PackStart (downButton, false, false, 0);
+			Button upButton = Button.NewFromIconName ("go-up-symbolic");
+			buttonBox.Append (upButton);
+			Button downButton = Button.NewFromIconName ("go-down-symbolic");
+			buttonBox.Append (downButton);
 
-			//Third column has list (TreeView) in a ScrolledWindow
-			ScrolledWindow listScroll = new ScrolledWindow ();
-			listScroll.WidthRequest = 200;
-			listScroll.HeightRequest = 320;
-			hBox.PackStart (listScroll, false, false, 5);
-			
 			itemTree = new TreeView (itemStore);
 			itemTree.Selection.Mode = SelectionMode.Single;
 			itemTree.HeadersVisible = false;
-			listScroll.AddWithViewport (itemTree);
+			listScroll.Child = itemTree;
 
 			//renderers and attribs for TreeView
 			CellRenderer rdr = new CellRendererText ();
@@ -264,7 +264,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			TreeIter selectionIter;
 			removeButton.Sensitive = itemTree.Selection.GetSelected (out selectionIter);
 			
-			dialog.ShowAll ();
 			grid.ShowToolbar = false;
 			
 			#endregion
@@ -277,8 +276,12 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			
 					try {
 						collection.Clear ();
-						foreach (object[] o in itemStore)
-							collection.Add (o [0]);
+						TreeIter storeIter;
+						if (itemStore.GetIterFirst (out storeIter)) {
+							do {
+								collection.Add (itemStore.GetValue (storeIter, 0));
+							} while (itemStore.IterNext (ref storeIter));
+						}
 						EndTransaction (Instance, tran, old, collection, true);
 					} catch {
 						EndTransaction (Instance, tran, old, collection, false);
@@ -347,7 +350,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		}
 
 		//generally useful function... why not in model already?
-		static bool IterPrev (TreeModel model, ref TreeIter iter)
+		static bool IterPrev (ITreeModel model, ref TreeIter iter)
 		{
 			TreePath tp = model.GetPath (iter);
 			return tp.Prev() && model.GetIter (out iter, tp);

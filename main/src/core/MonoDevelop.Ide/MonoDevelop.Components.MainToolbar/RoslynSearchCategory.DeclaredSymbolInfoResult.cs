@@ -27,7 +27,7 @@ namespace MonoDevelop.Components.MainToolbar
 
 			public override Xwt.Drawing.Image Icon {
 				get {
-					return ImageService.GetIcon (result.GetStockIconForNavigableItem (), IconSize.Menu);
+					return ImageService.GetIcon (result.GetStockIconForNavigableItem (), StockIconSize.Menu);
 				}
 			}
 

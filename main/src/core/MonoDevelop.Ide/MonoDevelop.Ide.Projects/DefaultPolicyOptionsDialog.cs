@@ -37,12 +37,13 @@ using MonoDevelop.Components;
 using Gtk;
 using System.Linq;
 using MonoDevelop.Projects;
+using MenuButton = MonoDevelop.Components.MenuButton;
 
 namespace MonoDevelop.Ide.Projects
 {
 	public class DefaultPolicyOptionsDialog : OptionsDialog
 	{
-		ComboBox policiesCombo;
+		ComboBoxText policiesCombo;
 		MenuButton newButton;
 		Button deleteButton;
 		MenuButton exportButton;
@@ -60,18 +61,27 @@ namespace MonoDevelop.Ide.Projects
 			this.Title = GettextCatalog.GetString ("Policies");
 			editingSet = (PolicySet) DataObject;
 			
-			HBox topBar = new HBox ();
-			topBar.Spacing = 3;
-			topBar.PackStart (new Label (GettextCatalog.GetString ("Editing Policy:")), false, false, 0);
+			Box topBar = new Box (Orientation.Horizontal, 3);
+			topBar.Append (new Label (GettextCatalog.GetString ("Editing Policy:")));
 			
-			policiesCombo = ComboBox.NewText ();
-			topBar.PackStart (policiesCombo, false, false, 0);
+			policiesCombo = new ComboBoxText ();
+			topBar.Append (policiesCombo);
 			
-			deleteButton = new Button (GettextCatalog.GetString ("Delete Policy"));
-			topBar.PackEnd (deleteButton, false, false, 0);
-			
+			// the buttons are right aligned, the first one appended is the last one on screen
+			var buttonBox = new Box (Orientation.Horizontal, 3) { Hexpand = true, Halign = Align.End };
+			topBar.Append (buttonBox);
+
+			newButton = new MenuButton ();
+			newButton.Label = GettextCatalog.GetString ("Add Policy");
+			buttonBox.Append (newButton);
+
 			exportButton = new MenuButton ();
 			exportButton.Label = GettextCatalog.GetString ("Export");
+			buttonBox.Append (exportButton);
+
+			deleteButton = new Button { Label = GettextCatalog.GetString ("Delete Policy") };
+			buttonBox.Append (deleteButton);
+			
 			exportButton.ContextMenuRequested = delegate {
 				ContextMenu menu = new ContextMenu ();
 
@@ -88,10 +98,7 @@ namespace MonoDevelop.Ide.Projects
 
 				return menu;
 			};
-			topBar.PackEnd (exportButton, false, false, 0);
 			
-			newButton = new MenuButton ();
-			newButton.Label = GettextCatalog.GetString ("Add Policy");
 			newButton.ContextMenuRequested = delegate {
 				ContextMenu menu = new ContextMenu ();
 
@@ -112,26 +119,18 @@ namespace MonoDevelop.Ide.Projects
 
 				return menu;
 			};
-			topBar.PackEnd (newButton, false, false, 0);
 			
-			Alignment align = new Alignment (0f, 0f, 1f, 1f);
-			align.LeftPadding = 9;
-			align.TopPadding = 9;
-			align.RightPadding = 9;
-			align.BottomPadding = 9;
-			align.Add (topBar);
+			topBar.MarginStart = 9;
+			topBar.MarginTop = 9;
+			topBar.MarginEnd = 9;
+			topBar.MarginBottom = 9;
 			
 			HeaderBox ebox = new HeaderBox ();
 			ebox.GradientBackground = true;
 			ebox.SetMargins (0, 1, 0, 0);
-			ebox.Add (align);
+			ebox.Child = topBar;
 			
-			ebox.ShowAll ();
-			
-			VBox.PackStart (ebox, false, false, 0);
-			VBox.BorderWidth = 0;
-			Box.BoxChild c = (Box.BoxChild) VBox [ebox];
-			c.Position = 0;
+			ContentArea.Prepend (ebox);
 			
 			foreach (PolicySet ps in PolicyService.GetUserPolicySets ()) {
 				PolicySet copy = ps.Clone ();
@@ -299,7 +298,7 @@ namespace MonoDevelop.Ide.Projects
 			loading = true;
 			int current = policiesCombo.Active;
 			
-			((ListStore)policiesCombo.Model).Clear ();
+			policiesCombo.RemoveAll ();
 			policiesCombo.WidthRequest = -1;
 			
 			sets.Sort ((p1, p2) => string.Compare (p1.Name, p2.Name, StringComparison.CurrentCulture));
@@ -314,7 +313,8 @@ namespace MonoDevelop.Ide.Projects
 			else
 				policiesCombo.Active = current;
 			
-			if (policiesCombo.SizeRequest ().Width < 200)
+			policiesCombo.Measure (Orientation.Horizontal, -1, out int minWidth, out _, out _, out _);
+			if (minWidth < 200)
 				policiesCombo.WidthRequest = 200;
 			
 			loading = false;
@@ -333,7 +333,7 @@ namespace MonoDevelop.Ide.Projects
 			if (sets.Count == 0) {
 				deleteButton.Sensitive = exportButton.Sensitive = false;
 				mainBox.Sensitive = false;
-				((ListStore)policiesCombo.Model).Clear ();
+				policiesCombo.RemoveAll ();
 				policiesCombo.Sensitive = false;
 				policiesCombo.AppendText (GettextCatalog.GetString ("No Selection"));
 				policiesCombo.Active = 0;

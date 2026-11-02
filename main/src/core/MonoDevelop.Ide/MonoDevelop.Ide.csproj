@@ -5411,6 +5411,8 @@
     <Compile Include="MonoDevelop.Ide.Gui.Content\IClipboardHandler.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Content\IPrintable.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\CommonAboutDialog.cs" />
+    <Compile Include="MonoDevelop.Ide.Gui.Dialogs\TreeModelValueExtensions.cs" />
+    <Compile Include="MonoDevelop.Ide.Gui.Dialogs\DialogButtonBar.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\DirtyFilesDialog.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\NewLayoutDialog.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\AboutMonoDevelopTabPage.cs" />
@@ -5612,7 +5614,6 @@
     <Compile Include="MonoDevelop.Components.Commands\ActionType.cs" />
     <Compile Include="MonoDevelop.Components.Commands\Command.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandArrayInfo.cs" />
-    <Compile Include="MonoDevelop.Components.Commands\CommandCheckMenuItem.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandEntry.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandEntrySet.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandErrorHandler.cs" />
@@ -5624,13 +5625,11 @@
     <Compile Include="MonoDevelop.Components.Commands\CommandManager.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandMenu.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandMenuBar.cs" />
-    <Compile Include="MonoDevelop.Components.Commands\CommandMenuItem.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandSystemCommands.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandToggleToolButton.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CommandToolButton.cs" />
     <Compile Include="MonoDevelop.Components.Commands\CustomCommand.cs" />
-    <Compile Include="MonoDevelop.Components.Commands\CustomMenuItem.cs" />
-    <Compile Include="MonoDevelop.Components.Commands\ICommandMenuItem.cs" />
+    <Compile Include="MonoDevelop.Components.Commands\CommandMenuContext.cs" />
     <Compile Include="MonoDevelop.Components.Commands\ICommandRouter.cs" />
     <Compile Include="MonoDevelop.Components.Commands\ICommandUserItem.cs" />
     <Compile Include="MonoDevelop.Components.Commands\LinkCommandEntry.cs" />
@@ -5727,6 +5726,7 @@
     <Compile Include="MonoDevelop.Ide.CodeCompletion\ICompletionWidget.cs" />
     <Compile Include="MonoDevelop.Ide.CodeCompletion\ParameterInformationWindowManager.cs" />
     <Compile Include="MonoDevelop.Ide.CodeCompletion\ParameterInformationWindow.cs" />
+    <Compile Include="MonoDevelop.Ide.CodeCompletion\CompletionWidgetStyle.cs" />
     <Compile Include="MonoDevelop.Ide.CodeCompletion\CompletionData.cs" />
     <Compile Include="MonoDevelop.Ide.CodeCompletion\CompletionDataList.cs" />
     <Compile Include="MonoDevelop.Ide.CodeCompletion\MutableCompletionDataList.cs" />
@@ -5765,6 +5765,7 @@
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\MimeTypePolicyOptionsSection.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\MultiConfigItemOptionsDialog.cs" />
     <Compile Include="MonoDevelop.Ide.Gui.Dialogs\MultiConfigItemOptionsPanel.cs" />
+    <Compile Include="MonoDevelop.Ide.Projects\CellRendererDrawing.cs" />
     <Compile Include="MonoDevelop.Ide.Projects\ProjectOptionsDialog.cs" />
     <Compile Include="MonoDevelop.Ide.Projects\RenameConfigDialog.cs" />
     <Compile Include="MonoDevelop.Ide.Projects\NewFileDialog.cs" />
@@ -5907,6 +5908,7 @@
     <Compile Include="MonoDevelop.Ide.TypeSystem\TypeSystemParserNode.cs" />
     <Compile Include="MonoDevelop.Ide.TypeSystem\MonoDocDocumentationProvider.cs" />
     <Compile Include="MonoDevelop.Ide.Projects.OptionPanels\PortableRuntimeOptionsPanel.cs" />
+    <Compile Include="MonoDevelop.Ide.Gui\GtkStock.cs" />
     <Compile Include="MonoDevelop.Ide.Gui\Styles.cs" />
     <Compile Include="MonoDevelop.Ide.Gui\StylesStringTagModel.cs" />
     <Compile Include="MonoDevelop.Components.MainToolbar\MainToolbar.cs" />
@@ -6229,6 +6231,7 @@
     <Compile Include="MonoDevelop.Ide.Templates\FileTemplateTagsModifier.cs" />
     <Compile Include="MonoDevelop.Ide.Templates\CombinedTagModel.cs" />
     <Compile Include="MonoDevelop.Components.Docking\DockPositionType.cs" />
+    <Compile Include="MonoDevelop.Components.Docking\DockUtil.cs" />
     <Compile Include="MonoDevelop.Components\ButtonEvent.cs" />
     <Compile Include="MonoDevelop.Components\Window.cs" />
     <Compile Include="MonoDevelop.Components\Dialog.cs" />
@@ -6383,6 +6386,7 @@
     <Compile Include="MonoDevelop.Ide.Templates\ItemTemplatePackageInstaller.cs" />
     <Compile Include="MonoDevelop.Ide.Templates\TemplatePackageReference.cs" />
     <Compile Include="Gui\generated.cs" />
+    <Compile Include="Gui\MonoDevelop.Ide.Gui.DesignerLayout.cs" />
     <Compile Include="Gui\MonoDevelop.Components.FolderListSelector.cs" />
     <Compile Include="Gui\MonoDevelop.Ide.CodeTemplates.CodeTemplatePanelWidget.cs" />
     <Compile Include="Gui\MonoDevelop.Ide.CodeTemplates.EditTemplateDialog.cs" />

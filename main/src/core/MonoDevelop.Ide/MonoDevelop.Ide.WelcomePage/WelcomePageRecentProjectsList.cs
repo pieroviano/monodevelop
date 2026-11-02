@@ -40,7 +40,7 @@ namespace MonoDevelop.Ide.WelcomePage
 	public class WelcomePageRecentProjectsList : WelcomePageSection
 	{
 		bool destroyed;
-		readonly VBox box;
+		readonly Gtk.Box box;
 		int itemCount = 10;
 		readonly Xwt.Drawing.Image openProjectIcon;
 		readonly Xwt.Drawing.Image newProjectIcon;
@@ -49,7 +49,7 @@ namespace MonoDevelop.Ide.WelcomePage
 		{
 			openProjectIcon = Xwt.Drawing.Image.FromResource ("welcome-open-solution-16.png");
 			newProjectIcon = Xwt.Drawing.Image.FromResource ("welcome-new-solution-16.png");
-			box = new VBox ();
+			box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
 
 			itemCount = count;
 			
@@ -58,15 +58,15 @@ namespace MonoDevelop.Ide.WelcomePage
 			SetContent (box);
 			RecentFilesChanged (null, null);
 
-			TitleAlignment.BottomPadding = Styles.WelcomeScreen.Pad.Solutions.LargeTitleMarginBottom;
-			ContentAlignment.LeftPadding = 0;
-			ContentAlignment.RightPadding = 0;
+			TitleBox.MarginBottom = Styles.WelcomeScreen.Pad.Solutions.LargeTitleMarginBottom;
+			ContentBox.MarginStart = 0;
+			ContentBox.MarginEnd = 0;
 		}
 		
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			destroyed = true;
-			base.OnDestroyed ();
+			base.Destroy ();
 			IdeServices.DesktopService.RecentFiles.Changed -= RecentFilesChanged;
 		}
 
@@ -76,36 +76,36 @@ namespace MonoDevelop.Ide.WelcomePage
 			if (destroyed)
 				return;
 			
-			foreach (var c in box.Children) {
+			foreach (var c in box.GetChildren ().ToList ()) {
 				RemoveAccessibiltyTitledWidget (c);
 				box.Remove (c);
 				c.Destroy ();
 			}
 
-			Gtk.HBox hbox = new HBox ();
-			hbox.Accessible.SetShouldIgnore (true);
+			var hbox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			hbox.SetShouldIgnore (true);
 
 			var btn = new WelcomePageListButton (GettextCatalog.GetString ("New..."), null, newProjectIcon, "monodevelop://MonoDevelop.Ide.Commands.FileCommands.NewProject");
-			btn.Accessible.Description = "Create a new solution";
-			btn.Accessible.Name = "WelcomePage.RecentSolutions.NewButton";
+			btn.SetCommonAttributes (null, null, "Create a new solution");
+			btn.Name = "WelcomePage.RecentSolutions.NewButton";
 			btn.WidthRequest = (int) (Styles.WelcomeScreen.Pad.Solutions.SolutionTile.Width / 2.3);
 			btn.BorderPadding = 6;
 			btn.LeftTextPadding = 24;
-			hbox.PackStart (btn, false, false, 0);
+			hbox.Append (btn);
 
 			SetTitledWidget (btn);
 
 			btn = new WelcomePageListButton (GettextCatalog.GetString ("Open..."), null, openProjectIcon, "monodevelop://MonoDevelop.Ide.Commands.FileCommands.OpenFile");
-			btn.Accessible.Description = "Open an existing solution";
-			btn.Accessible.Name = "WelcomePage.RecentSolutions.OpenButton";
+			btn.SetCommonAttributes (null, null, "Open an existing solution");
+			btn.Name = "WelcomePage.RecentSolutions.OpenButton";
 			btn.WidthRequest = (int) (Styles.WelcomeScreen.Pad.Solutions.SolutionTile.Width / 2.3);
 			btn.BorderPadding = 6;
 			btn.LeftTextPadding = 24;
-			hbox.PackStart (btn, false, false, 0);
+			hbox.Append (btn);
 
 			SetTitledWidget (btn);
 
-			box.PackStart (hbox, false, false, 0);
+			box.Append (hbox);
 
 			//TODO: pinned files
 			int idx = 1;
@@ -113,11 +113,11 @@ namespace MonoDevelop.Ide.WelcomePage
 				var filename = recent.FileName;
 
 				var accessed = recent.TimeStamp;
-				var pixbuf = ImageService.GetIcon (GetIcon (filename), IconSize.Dnd);
+				var pixbuf = ImageService.GetIcon (GetIcon (filename), StockIconSize.Dnd);
 				var button = new WelcomePageListButton (recent.DisplayName, System.IO.Path.GetDirectoryName (filename), pixbuf, "project://" + filename);
 
-				button.Accessible.SetUrl ("file://" + filename);
-				button.Accessible.Name = string.Format ("WelcomePage.RecentSolutions.RecentFile{0}", idx);
+				button.SetUrl ("file://" + filename);
+				button.Name = string.Format ("WelcomePage.RecentSolutions.RecentFile{0}", idx);
 				idx++;
 
 				button.BorderPadding = 2;
@@ -130,14 +130,13 @@ namespace MonoDevelop.Ide.WelcomePage
 				//};
 				//button.HasTooltip = true;
 				button.TooltipText = filename + "\n" + TimeSinceEdited (accessed);
-				box.PackStart (button, false, false, 0);
+				box.Append (button);
 				var pinClickHandler = new PinClickHandler (filename);
 				pinClickHandler.Register (button);
 
 				SetTitledWidget (button);
 			}
 
-			this.ShowAll ();
 		}
 
 		class PinClickHandler : IDisposable
@@ -155,7 +154,7 @@ namespace MonoDevelop.Ide.WelcomePage
 				if (button == null)
 					return;
 				button.PinClicked -= Button_PinClicked;
-				button.Destroyed -= Button_Destroyed;
+				
 				button = null;
 			}
 
@@ -163,7 +162,7 @@ namespace MonoDevelop.Ide.WelcomePage
 			{
 				this.button = button;
 				button.PinClicked += Button_PinClicked;
-				button.Destroyed += Button_Destroyed;
+				
 			}
 
 			void Button_PinClicked (object sender, EventArgs e)
@@ -171,10 +170,6 @@ namespace MonoDevelop.Ide.WelcomePage
 				IdeServices.DesktopService.RecentFiles.SetFavoriteFile (filename, button.Pinned);
 			}
 
-			void Button_Destroyed (object sender, EventArgs e)
-			{
-				Dispose ();
-			}
 		}
 
 

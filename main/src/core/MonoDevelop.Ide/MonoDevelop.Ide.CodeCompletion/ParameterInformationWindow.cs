@@ -63,8 +63,8 @@ namespace MonoDevelop.Ide.CodeCompletion
 			}
 		}
 
-		VBox descriptionBox = new VBox (false, 0);
-		VBox vb2 = new VBox (false, 0);
+		Gtk.Box descriptionBox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+		Gtk.Box vb2 = new Gtk.Box (Gtk.Orientation.Vertical, 0);
 		Cairo.Color foreColor;
 		MonoDevelop.Components.FixedWidthWrapLabel headlabel;
 
@@ -79,22 +79,25 @@ namespace MonoDevelop.Ide.CodeCompletion
 			headlabel.BreakOnCamelCasing = false;
 			headlabel.BreakOnPunctuation = false;
 			descriptionBox.Spacing = 4;
-			VBox vb = new VBox (false, 0);
-			vb.PackStart (headlabel, true, true, 0);
-			vb.PackStart (descriptionBox, true, true, 0);
+			var vb = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			headlabel.Hexpand = headlabel.Vexpand = true;
+			descriptionBox.Hexpand = descriptionBox.Vexpand = true;
+			vb.Append (headlabel);
+			vb.Append (descriptionBox);
 			
-			HBox hb = new HBox (false, 0);
-			hb.PackStart (vb, true, true, 0);
+			var hb = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			vb.Hexpand = vb.Vexpand = true;
+			hb.Append (vb);
 			
 			vb2.Spacing = 4;
-			vb2.PackStart (hb, true, true, 0);
+			hb.Hexpand = hb.Vexpand = true;
+			vb2.Append (hb);
 			Content = BackendHost.ToolkitEngine.WrapWidget (vb2, Xwt.NativeWidgetSizing.DefaultPreferredSize);
 
 			UpdateStyle ();
 			Styles.Changed += HandleThemeChanged;
 			IdeApp.Preferences.ColorScheme.Changed += HandleThemeChanged;
 
-			vb2.ShowAll ();
 			//IdeServices.DesktopService.RemoveWindowShadow (this);
 			Content.BoundsChanged += Content_BoundsChanged;
 		}
@@ -165,7 +168,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 			Theme.ShadowColor = Styles.PopoverWindow.ShadowColor;
 			foreColor = Styles.PopoverWindow.DefaultTextColor.ToCairoColor ();
 
-			headlabel.ModifyFg (StateType.Normal, foreColor.ToGdkColor ());
+			CompletionWidgetStyle.SetForeground (headlabel, foreColor);
 			headlabel.FontDescription = IdeServices.FontService.GetFontDescription ("Editor").CopyModified (Styles.FontScale11);
 
 			//if (this.Visible)
@@ -247,13 +250,12 @@ namespace MonoDevelop.Ide.CodeCompletion
 				headlabel.WidthRequest = headlabel.RealWidth + 70;
 			
 			foreach (var cat in currentTooltipInformation.Categories) {
-				descriptionBox.PackStart (CreateCategory (TooltipInformationWindow.GetHeaderMarkup (cat.Item1), cat.Item2), true, true, 4);
+				AppendCategory (CreateCategory (TooltipInformationWindow.GetHeaderMarkup (cat.Item1), cat.Item2));
 			}
 			
 			if (!string.IsNullOrEmpty (currentTooltipInformation.SummaryMarkup)) {
-				descriptionBox.PackStart (CreateCategory (TooltipInformationWindow.GetHeaderMarkup (GettextCatalog.GetString ("Summary")), currentTooltipInformation.SummaryMarkup), true, true, 4);
+				AppendCategory (CreateCategory (TooltipInformationWindow.GetHeaderMarkup (GettextCatalog.GetString ("Summary")), currentTooltipInformation.SummaryMarkup));
 			}
-			descriptionBox.ShowAll ();
 			Content.QueueForReallocate ();
 			Show ();
 		}
@@ -265,11 +267,9 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		void ClearDescriptions ()
 		{
-			while (descriptionBox.Children.Length > 0) {
-				var child = descriptionBox.Children [0];
+			Gtk.Widget child;
+			while ((child = descriptionBox.FirstChild) != null)
 				descriptionBox.Remove (child);
-				child.Destroy ();
-			}
 		}
 
 		void ResetTooltipInformation ()
@@ -281,7 +281,14 @@ namespace MonoDevelop.Ide.CodeCompletion
 			currentTooltipInformation = null;
 		}
 
-		VBox CreateCategory (string categoryName, string categoryContentMarkup)
+		void AppendCategory (Gtk.Box category)
+		{
+			category.Hexpand = category.Vexpand = true;
+			category.MarginTop = category.MarginBottom = 4;
+			descriptionBox.Append (category);
+		}
+
+		Gtk.Box CreateCategory (string categoryName, string categoryContentMarkup)
 		{
 			return TooltipInformationWindow.CreateCategory (categoryName, categoryContentMarkup, foreColor, Theme.Font.ToPangoFont ());
 		}

@@ -49,7 +49,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		PolicyContainer policyContainer;
 		PolicyContainer defaultPolicyContainer;
 		bool loading = true;
-		HBox warningMessage;
+		Gtk.Box warningMessage;
 		bool isGlobalPolicy;
 		Widget policyPanel;
 		bool policyUndefined;
@@ -61,55 +61,53 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		Control IOptionsPanel.CreatePanelWidget ()
 		{
-			HBox hbox = new HBox (false, 6);
+			var hbox = DesignerLayout.HBox (6);
 			Label label = new Label ();
 			string displayName = polSet != null? GettextCatalog.GetString ("_Policy") : PolicyTitleWithMnemonic;
 			label.MarkupWithMnemonic = "<b>" + displayName + ":</b>";
-			hbox.PackStart (label, false, false, 0);
+			DesignerLayout.Pack (hbox, label);
 			
 			store = new ListStore (typeof (string), typeof (PolicySet));
 			policyCombo = new ComboBox (store);
 			CellRenderer renderer = new CellRendererText ();
 			policyCombo.PackStart (renderer, true);
 			policyCombo.AddAttribute (renderer, "text", 0);
-			policyCombo.Accessible.SetTitleUIElement (label.Accessible);
+			policyCombo.SetAccessibilityLabelRelationship (label);
 
 			label.MnemonicWidget = policyCombo;
-			policyCombo.RowSeparatorFunc = (TreeModel model, TreeIter iter) =>
-				((string) model.GetValue (iter, 0)) == "--";
-			hbox.PackStart (policyCombo, false, false, 0);
+			policyCombo.RowSeparatorFunc = (ITreeModel model, TreeIter iter) =>
+				((string) model.GetModelValue (iter, 0)) == "--";
+			DesignerLayout.Pack (hbox, policyCombo);
 			
-			VBox vbox = new VBox (false, 6);
-			vbox.PackStart (hbox, false, false, 0);
-			vbox.ShowAll ();
+			var vbox = DesignerLayout.VBox (6);
+			DesignerLayout.Pack (vbox, hbox);
 			
 			FillPolicies ();
 			policyCombo.Active = 0;
 
 			// Message to be shown when the user changes default policies
 			
-			warningMessage = new HBox ();
-			warningMessage.Spacing = 6;
-			var img = new ImageView (Stock.Warning, IconSize.LargeToolbar);
+			warningMessage = DesignerLayout.HBox (6);
+			var img = new ImageView ("gtk-dialog-warning", StockIconSize.LargeToolbar);
 			img.SetCommonAccessibilityAttributes ("PolicyOptionsPanel.Warning",
 			                                      GettextCatalog.GetString ("Warning"),
 			                                      null);
-			warningMessage.PackStart (img, false, false, 0);
+			DesignerLayout.Pack (warningMessage, img);
 			Label wl = new Label (GettextCatalog.GetString ("Changes made in this section will only be applied to new projects. " +
 				"Settings for existing projects can be modified in the project (or solution) options dialog."));
 			wl.Xalign = 0;
 			wl.Wrap = true;
-			wl.WidthRequest = 450;
-			warningMessage.PackStart (wl, true, true, 0);
-			warningMessage.ShowAll ();
+			wl.SetSizeRequest (450, -1);
+			DesignerLayout.Pack (warningMessage, wl, true);
 			warningMessage.Visible = false;
-			vbox.PackEnd (warningMessage, false, false, 0);
+			DesignerLayout.Pack (vbox, warningMessage);
 			
 			policyPanel = CreatePanelWidget ();
 			//HACK: work around bug 469427 - broken themes match on widget names
 			if (policyPanel.Name.IndexOf ("Panel") > 0)
 				policyPanel.Name = policyPanel.Name.Replace ("Panel", "_");
-			vbox.PackEnd (policyPanel, true, true, 0);
+			policyPanel.Vexpand = true;
+			vbox.Prepend (policyPanel);
 			
 			InitializePolicy ();
 
@@ -348,14 +346,11 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		/// This is needed since using just a VBox causes Voice Over on the Mac to
 		/// read out the UI widgets multiple times with using the arrow keys.
 		/// </summary>
-		class PolicyOptionsWidgetContainer : Bin
+		class PolicyOptionsWidgetContainer : BinWidget
 		{
-			public PolicyOptionsWidgetContainer (VBox child)
+			public PolicyOptionsWidgetContainer (Gtk.Box child)
 			{
-				BinContainer.Attach (this);
-
-				Add (child);
-				ShowAll ();
+				Child = child;
 			}
 		}
 	}

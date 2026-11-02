@@ -27,7 +27,6 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			layoutName.Changed += OnNameChanged;
 			OnNameChanged (layoutName, EventArgs.Empty);
 
-			newButton.GrabDefault ();
 		}
 		
 		public string LayoutName {

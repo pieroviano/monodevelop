@@ -25,6 +25,8 @@
 // THE SOFTWARE.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using MonoDevelop.Components.Extensions;
 using MonoDevelop.Ide.Extensions;
 using MonoDevelop.Components;
@@ -65,24 +67,18 @@ namespace MonoDevelop.Ide.Projects
 		{
 			FileSelector fdiag  = new FileSelector (data.Title);
 
-			fdiag.ShowHidden = data.ShowHidden;
+			// TODO GTK4: GtkFileChooser has no show-hidden property (data.ShowHidden is not applied)
 			
-			//add a combo that can be used to override the default build action
-			ComboBox combo = new ComboBox (data.BuildActions ?? new string[0]);
-			combo.Sensitive = false;
-			combo.Active = 0;
-			combo.RowSeparatorFunc = delegate (TreeModel model, TreeIter iter) {
-				return "--" == ((string) model.GetValue (iter, 0));
-			};
-			
-			CheckButton check = new CheckButton (GettextCatalog.GetString ("Override default build action"));
-			check.Toggled += delegate { combo.Sensitive = check.Active; };
-			
-			HBox box = new HBox ();
-			fdiag.ExtraWidget = box;
-			box.PackStart (check, false, false, 4);
-			box.PackStart (combo, false, false, 4);
-			box.ShowAll ();
+			// add a choice that can be used to override the default build action (GTK 4 file choosers have no extra widget)
+			const string buildActionChoice = "build-action";
+			const string defaultActionId = "";
+			var actions = (data.BuildActions ?? new string[0]).Where (a => a != "--").ToList ();
+			var optionIds = new List<string> { defaultActionId };
+			var optionLabels = new List<string> { GettextCatalog.GetString ("Default build action") };
+			optionIds.AddRange (actions);
+			optionLabels.AddRange (actions);
+			fdiag.AddChoice (buildActionChoice, GettextCatalog.GetString ("Override default build action"), optionIds.ToArray (), optionLabels.ToArray ());
+			fdiag.SetChoice (buildActionChoice, defaultActionId);
 			
 			SetDefaultProperties (fdiag);
 			
@@ -91,10 +87,8 @@ namespace MonoDevelop.Ide.Projects
 			try {
 				result = MessageService.RunCustomDialog (fdiag, data.TransientFor ?? MessageService.RootWindow);
 				GetDefaultProperties (fdiag);
-				if (check.Active)
-					data.OverrideAction = combo.ActiveText;
-				else
-					data.OverrideAction = null;
+				var chosen = fdiag.GetChoice (buildActionChoice);
+				data.OverrideAction = string.IsNullOrEmpty (chosen) ? null : chosen;
 				return result == (int) Gtk.ResponseType.Ok;
 			} finally {
 				fdiag.Destroy ();

@@ -59,7 +59,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 
-	class PortableRuntimeOptionsPanelWidget : Gtk.VBox
+	class PortableRuntimeOptionsPanelWidget : Gtk.Box
 	{
 		const string netstandardDocsUrl = "https://docs.microsoft.com/en-us/dotnet/articles/standard/library";
 		const string pcldDocsUrl = "https://developer.xamarin.com/guides/cross-platform/application_fundamentals/pcl/introduction_to_portable_class_libraries/";
@@ -89,14 +89,14 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		const string NetStandardPclCompatPackageName = "Microsoft.NETCore.Portable.Compatibility";
 		const string NetStandardPclCompatPackageVersion = "1.0.1";
 
-		ComboBox netStandardCombo;
+		ComboBoxText netStandardCombo;
 		Entry targetFrameworkEntry;
-		RadioButton netstandardRadio;
-		RadioButton pclRadio;
+		CheckButton netstandardRadio;
+		CheckButton pclRadio;
 		Button frameworkPickerButton;
 
 		//TODO: better error handling
-		public PortableRuntimeOptionsPanelWidget (DotNetProject project, IEnumerable<ItemConfiguration> configurations)
+		public PortableRuntimeOptionsPanelWidget (DotNetProject project, IEnumerable<ItemConfiguration> configurations) : base (Orientation.Vertical, 6)
 		{
 			Build ();
 
@@ -131,36 +131,36 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		void Build ()
 		{
-			Spacing = 6;
+			Append (new Label { Markup = string.Format ("<b>{0}</b>", GettextCatalog.GetString ("Target Framework")), Xalign = 0f, Halign = Align.Start });
 
-			PackStart (new Label { Markup = string.Format ("<b>{0}</b>", GettextCatalog.GetString ("Target Framework")), Xalign = 0f });
+			var radioBox = new Box (Orientation.Vertical, 10) { MarginStart = 12 };
+			Append (radioBox);
 
-			var fxAlignment = new Alignment (0f, 0f, 1f, 1f) { LeftPadding = 12 };
-			PackStart (fxAlignment);
-			var radioBox = new VBox { Spacing = 10 };
-			fxAlignment.Add (radioBox);
-
-			var netstandardPickerHbox = new HBox { Spacing = 10 };
-			radioBox.PackStart (netstandardPickerHbox);
-			netstandardRadio = new RadioButton (GettextCatalog.GetString (".NET Standard Platform:"));
-			netstandardPickerHbox.PackStart (netstandardRadio, false, false, 0);
-			netstandardPickerHbox.PackStart (netStandardCombo = ComboBox.NewText (), false, false, 0);
+			var netstandardPickerHbox = new Box (Orientation.Horizontal, 10);
+			radioBox.Append (netstandardPickerHbox);
+			netstandardRadio = new CheckButton { Label = GettextCatalog.GetString (".NET Standard Platform:"), UseUnderline = true };
+			netstandardPickerHbox.Append (netstandardRadio);
+			netstandardPickerHbox.Append (netStandardCombo = new ComboBoxText ());
 
 			var netstandardDesc = new Label { Markup = GettextCatalog.GetString ("Your library will be compatible with all frameworks that support the selected <a href='{0}'>.NET Standard</a> version.", netstandardDocsUrl), Xalign = 0f };
 			GtkWorkarounds.SetLinkHandler (netstandardDesc, HandleLink);
-			radioBox.PackStart (new Alignment (0f, 0f, 1f, 1f) { Child = netstandardDesc, LeftPadding = 24 });
+			netstandardDesc.Halign = Align.Start;
+			netstandardDesc.MarginStart = 24;
+			radioBox.Append (netstandardDesc);
 
-			var pclPickerHbox = new HBox { Spacing = 10 };
-			radioBox.PackStart (pclPickerHbox);
-			pclRadio = new RadioButton (netstandardRadio, GettextCatalog.GetString (".NET Portable:"));
-			pclPickerHbox.PackStart (pclRadio, false, false, 0);
-			pclPickerHbox.PackStart (targetFrameworkEntry = new Entry { IsEditable = false, WidthChars = 20, Name = "targetFrameworkEntry" }, false, false, 0);
-			frameworkPickerButton = new Button (GettextCatalog.GetString ("Change..."));
-			pclPickerHbox.PackStart (frameworkPickerButton, false, false, 0);
+			var pclPickerHbox = new Box (Orientation.Horizontal, 10);
+			radioBox.Append (pclPickerHbox);
+			pclRadio = new CheckButton { Label = GettextCatalog.GetString (".NET Portable:"), UseUnderline = true, Group = netstandardRadio };
+			pclPickerHbox.Append (pclRadio);
+			pclPickerHbox.Append (targetFrameworkEntry = new Entry { Editable = false, WidthChars = 20, Name = "targetFrameworkEntry" });
+			frameworkPickerButton = new Button { Label = GettextCatalog.GetString ("Change...") };
+			pclPickerHbox.Append (frameworkPickerButton);
 
 			var pclDesc = new Label { Markup = GettextCatalog.GetString ("Your library will be compatible with the frameworks supported by the selected <a href='{0}'>PCL profile</a>.", pcldDocsUrl), Xalign = 0f };
 			GtkWorkarounds.SetLinkHandler (pclDesc, HandleLink);
-			radioBox.PackStart (new Alignment (0f, 0f, 1f, 1f) { Child = pclDesc, LeftPadding = 24 });
+			pclDesc.Halign = Align.Start;
+			pclDesc.MarginStart = 24;
+			radioBox.Append (pclDesc);
 
 			frameworkPickerButton.Clicked += PickFramework;
 
@@ -168,8 +168,6 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			netstandardRadio.Toggled += RadioToggled;
 			
 			netStandardCombo.Name = "netStandardCombo";
-
-			ShowAll ();
 		}
 
 		string NetStandardVersion {
@@ -177,7 +175,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 				return netStandardCombo.ActiveText;
 			}
 			set {
-				((ListStore)netStandardCombo.Model).Clear ();
+				netStandardCombo.RemoveAll ();
 
 				int selected = -1;
 
@@ -234,7 +232,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		{
 			var dlg = new PortableRuntimeSelectorDialog (target);
 			try {
-				var result = MessageService.RunCustomDialog (dlg, (Gtk.Window)Toplevel);
+				var result = MessageService.RunCustomDialog (dlg, Root as Gtk.Window);
 				if (result == (int)Gtk.ResponseType.Ok) {
 					TargetFramework = dlg.TargetFramework;
 				}

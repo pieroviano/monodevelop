@@ -190,9 +190,9 @@ namespace MonoDevelop.Ide.Editor.Extension
 				m |= ModifierKeys.Shift;
 			if ((s & Gdk.ModifierType.ControlMask) != 0)
 				m |= ModifierKeys.Control;
-			if ((s & Gdk.ModifierType.Mod1Mask) != 0)
+			if ((s & Gdk.ModifierType.AltMask) != 0)
 				m |= ModifierKeys.Alt;
-			if ((s & Gdk.ModifierType.Mod2Mask) != 0)
+			if ((s & Gdk.ModifierType.SuperMask) != 0)
 				m |= ModifierKeys.Command;
 			if ((s & Gdk.ModifierType.MetaMask) != 0)
 				m |= ModifierKeys.Command;

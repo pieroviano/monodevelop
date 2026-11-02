@@ -26,17 +26,21 @@
 //
 
 using System;
-using Gtk;
 
 namespace MonoDevelop.Components.Commands
 {
-	public class CustomItem: HBox
+	/// <summary>Base class of custom command widgets that adapt to the bar (toolbar or menu bar) hosting them.</summary>
+	public class CustomItem: Gtk.Box
 	{
-		public virtual void SetToolbarStyle (Gtk.Toolbar toolbar)
+		public CustomItem (): base (Gtk.Orientation.Horizontal, 0)
+		{
+		}
+
+		public virtual void SetToolbarStyle (Gtk.Widget toolbar)
 		{
 		}
 		
-		public virtual void SetMenuStyle (Gtk.MenuShell menu)
+		public virtual void SetMenuStyle (Gtk.Widget menu)
 		{
 		}
 	}

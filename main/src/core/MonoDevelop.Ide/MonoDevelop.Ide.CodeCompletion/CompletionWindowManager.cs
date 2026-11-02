@@ -69,8 +69,13 @@ namespace MonoDevelop.Ide.CodeCompletion
 		static CompletionWindowManager ()
 		{
 			if (IdeApp.Workbench != null) {
-				IdeApp.Workbench.RootWindow.Destroyed += (sender, e) => DestroyWindow ();
-				IdeApp.Workbench.RootWindow.WindowStateEvent += (o, args) => HideWindow ();
+				IdeApp.Workbench.RootWindow.CloseRequest += (sender, e) => {
+					DestroyWindow ();
+					e.RetVal = false;
+				};
+				// GTK 4 has no window-state-event: the window state changes are property notifications
+				IdeApp.Workbench.RootWindow.AddNotification ("maximized", (o, args) => HideWindow ());
+				IdeApp.Workbench.RootWindow.AddNotification ("fullscreened", (o, args) => HideWindow ());
 			}
 			
 			IdeApp.Preferences.ForceSuggestionMode.Changed += (s,a) => {
@@ -106,11 +111,11 @@ namespace MonoDevelop.Ide.CodeCompletion
 			}
 			if (ext != null) {
 				var widget = ext.Editor.GetNativeWidget<Gtk.Widget> ();
-				wnd.TransientFor = widget?.Parent?.Toplevel as Gtk.Window;
+				wnd.TransientFor = widget?.Root as Gtk.Window;
 			} else {
 				var widget = completionWidget as Gtk.Widget;
 				if (widget != null) {
-					var window = widget.Toplevel as Gtk.Window;
+					var window = widget.Root as Gtk.Window;
 					if (window != null)
 						wnd.TransientFor = window;
 				}

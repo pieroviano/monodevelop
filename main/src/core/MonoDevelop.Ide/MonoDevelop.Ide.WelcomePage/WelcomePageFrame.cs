@@ -42,38 +42,35 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	class WelcomePageFrame: EventBox
+	class WelcomePageFrame: BinWidget
 	{
 		WelcomePageProjectBar projectBar;
 		Gtk.Widget welcomePage;
 
 		public WelcomePageFrame (Gtk.Widget w)
 		{
-			Accessible.Name = "WelcomePageFrame";
+			Name = "WelcomePageFrame";
 			welcomePage = w;
-			VBox box = new VBox ();
-			box.Accessible.SetShouldIgnore (true);
+			var box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			box.SetShouldIgnore (true);
 
-			box.Show ();
 			projectBar = new WelcomePageProjectBar ();
-			box.PackStart (projectBar, false, false, 0);
+			box.Append (projectBar);
 
-			box.PackStart (welcomePage, true, true, 0);
+			welcomePage.Vexpand = true;
+			welcomePage.Hexpand = true;
+			box.Append (welcomePage);
 			CanFocus = true;
+			Focusable = true;
 
-			Add (box);
-			Show ();
+			Child = box;
 			UpdateProjectBar ();
 
-			IdeApp.Workbench.GuiLocked += HandleGuiLocked;
-			IdeApp.Workbench.GuiUnlocked += HandleGuiUnlocked;
-		}
-
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
-			IdeApp.Workbench.GuiLocked -= HandleGuiLocked;
-			IdeApp.Workbench.GuiUnlocked -= HandleGuiUnlocked;
+			this.AddKeyPressHandler ((keyval, keycode, state) => {
+				if ((Gdk.Key)keyval == Gdk.Key.Escape && IdeApp.Workspace.IsOpen)
+					WelcomePageService.HideWelcomePage (true);
+				return false;
+			});
 		}
 
 		void HandleGuiUnlocked (object sender, EventArgs e)
@@ -90,22 +87,15 @@ namespace MonoDevelop.Ide.WelcomePage
 		{
 			if (IdeApp.Workspace.IsOpen || IdeApp.Workbench.Documents.Count > 0) {
 				projectBar.UpdateContent ();
-				projectBar.ShowAll ();
+				projectBar.Visible = true;
 			}
 			else
-				projectBar.Hide ();
+				projectBar.Visible = false;
 		}
 
-		protected override void OnFocusGrabbed ()
+		protected override bool OnGrabFocus ()
 		{
-			welcomePage.GrabFocus ();
-		}
-
-		protected override bool OnKeyPressEvent (EventKey evnt)
-		{
-			if (evnt.Key == Gdk.Key.Escape && IdeApp.Workspace.IsOpen)
-				WelcomePageService.HideWelcomePage (true);
-			return base.OnKeyPressEvent (evnt);
+			return welcomePage.GrabFocus ();
 		}
 
 		void HandleLastWorkspaceItemClosed (object sender, EventArgs e)
@@ -118,16 +108,22 @@ namespace MonoDevelop.Ide.WelcomePage
 			UpdateProjectBar ();
 		}
 
-		protected override void OnParentSet (Widget previous_parent)
+		protected override void OnRoot ()
 		{
-			base.OnParentSet (previous_parent);
-			if (Parent == null) {
-				IdeApp.Workspace.LastWorkspaceItemClosed -= HandleLastWorkspaceItemClosed;
-				IdeApp.Workbench.DocumentClosed -= HandleDocumentClosed;
-			} else {
-				IdeApp.Workspace.LastWorkspaceItemClosed += HandleLastWorkspaceItemClosed;
-				IdeApp.Workbench.DocumentClosed += HandleDocumentClosed;
-			}
+			base.OnRoot ();
+			IdeApp.Workbench.GuiLocked += HandleGuiLocked;
+			IdeApp.Workbench.GuiUnlocked += HandleGuiUnlocked;
+			IdeApp.Workspace.LastWorkspaceItemClosed += HandleLastWorkspaceItemClosed;
+			IdeApp.Workbench.DocumentClosed += HandleDocumentClosed;
+		}
+
+		protected override void OnUnroot ()
+		{
+			IdeApp.Workbench.GuiLocked -= HandleGuiLocked;
+			IdeApp.Workbench.GuiUnlocked -= HandleGuiUnlocked;
+			IdeApp.Workspace.LastWorkspaceItemClosed -= HandleLastWorkspaceItemClosed;
+			IdeApp.Workbench.DocumentClosed -= HandleDocumentClosed;
+			base.OnUnroot ();
 		}
 	}
 
@@ -138,21 +134,22 @@ namespace MonoDevelop.Ide.WelcomePage
 
 		public WelcomePageProjectBar ()
 		{
-			Accessible.Name = "WelcomePageProjectBar";
+			Name = "WelcomePageProjectBar";
 			SetPadding (3, 3, 12, 12);
 			GradientBackground = false;
 			BackgroundColor = MonoDevelop.Ide.Gui.Styles.BaseBackgroundColor.ToGdkColor ();
 
-			HBox box = new HBox (false, 6);
-			box.PackStart (messageLabel = new Gtk.Label () { Xalign = 0 }, true, true, 0);
+			var box = new Gtk.Box (Gtk.Orientation.Horizontal, 6);
+			messageLabel = new Gtk.Label () { Xalign = 0, Hexpand = true };
+			box.Append (messageLabel);
 			backButton = new Gtk.Button ();
-			backButton.Accessible.Name = "WelcomePageProjectBar.BackButton";
-			box.PackEnd (backButton, false, false, 0);
+			backButton.Name = "WelcomePageProjectBar.BackButton";
+			box.Append (backButton);
 
 			backButton.Clicked += delegate {
 				WelcomePageService.HideWelcomePage (true);
 			};
-			Add (box);
+			Child = box;
 			UpdateContent ();
 		}
 
@@ -186,24 +183,8 @@ namespace MonoDevelop.Ide.WelcomePage
 				}
 			}
 		}
-		
-		//this is used to style like a tooltip
-		bool changeStyle = false;
-		
-		protected override void OnStyleSet (Gtk.Style previous_style)
-		{
-			if (changeStyle)
-				return;
-			changeStyle = true;
-			var surrogate = new TooltipStyleSurrogate ();
-			surrogate.EnsureStyle ();
-			this.Style = surrogate.Style;
-			surrogate.Destroy ();
 
-			base.OnStyleSet (previous_style);
-			changeStyle = false;
-		}
-		
-		class TooltipStyleSurrogate : TooltipWindow {}
+		// GTK 2 styled this bar like a tooltip (OnStyleSet with a TooltipWindow surrogate style). In GTK 4 the
+		// bar keeps the base background colour set above; a theme-dependent tooltip style is not reproduced.
 	}
 }

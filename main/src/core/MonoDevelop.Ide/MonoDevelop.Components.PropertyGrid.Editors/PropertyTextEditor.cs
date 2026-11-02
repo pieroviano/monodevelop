@@ -31,12 +31,11 @@ using System;
 using System.ComponentModel;
 
 using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 {
 	[PropertyEditorType (typeof (string))]
-	public class PropertyTextEditor: Gtk.HBox, IPropertyEditor
+	public class PropertyTextEditor: Gtk.Box, IPropertyEditor
 	{
 		EditSession session;
 		bool disposed;
@@ -46,6 +45,10 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		ComboBox combo;
 		ListStore store;
 		bool changed;
+
+		public PropertyTextEditor () : base (Orientation.Horizontal, 3)
+		{
+		}
 
 		public void Initialize (EditSession session)
 		{
@@ -64,12 +67,13 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 					combo.PackStart (crt, true);
 					combo.AddAttribute (crt, "text", 0);
 				} else {
-					combo = new ComboBoxEntry (store, 0);
-					entry = ((ComboBoxEntry)combo).Entry;
-					entry.HeightRequest = combo.SizeRequest ().Height;
+					combo = ComboBox.NewWithModelAndEntry (store);
+					combo.EntryTextColumn = 0;
+					entry = (Entry) combo.Child;
 				}
 
-				PackStart (combo, true, true, 0);
+				combo.Hexpand = true;
+				Append (combo);
 				combo.Changed += TextChanged;
 				combo.CanFocus = true;
 
@@ -90,7 +94,8 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			else {
 				entry = new Entry ();
 				entry.IsEditable = !session.Property.IsReadOnly;
-				PackStart (entry, true, true, 0);
+				entry.Hexpand = true;
+				Append (entry);
 				entry.CanFocus = true;
 			}
 
@@ -98,27 +103,26 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			if (entry != null) {
 				entry.HasFrame = false;
 				entry.Changed += TextChanged;
-				entry.FocusOutEvent += FirePendingChangeEvent;
+				entry.AddFocusHandler (null, () => FirePendingChangeEvent (null, null));
 				if (!entry.IsEditable)
-					entry.ModifyText (StateType.Normal, entry.Style.Text (Gtk.StateType.Insensitive));
+					entry.AddCssClass ("dim-label");
 			}
 
 			if (entry != null && ShouldShowDialogButton () && entry.IsEditable) {
 				var button = new Button ("...");
-				PackStart (button, false, false, 0);
+				Append (button);
 				button.Clicked += ButtonClicked;
 			}
 			
-			Spacing = 3;
-			ShowAll ();
 		}
-		protected override void OnFocusGrabbed ()
+
+		protected override bool OnGrabFocus ()
 		{
-			if (combo != null) {
-				combo.GrabFocus ();
-			} else if (entry != null) {
-				entry.GrabFocus ();
-			}
+			if (combo != null)
+				return combo.GrabFocus ();
+			if (entry != null)
+				return entry.GrabFocus ();
+			return base.OnGrabFocus ();
 		}
 
 		protected virtual bool ShouldShowDialogButton ()
@@ -131,7 +135,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		void ButtonClicked (object s, EventArgs a)
 		{
 			using (var dlg = new TextEditorDialog ()) {
-				dlg.TransientFor = Toplevel as Gtk.Window;
+				dlg.TransientFor = Root as Gtk.Window;
 				dlg.Text = entry.Text;
 				if (dlg.Run () == (int) ResponseType.Ok) {
 					entry.Text = dlg.Text;
@@ -198,9 +202,9 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			if (GetValue (out val, out isStandard)) {
 				currentValue = val;
 				if (entry != null)
-					entry.ModifyFg (StateType.Normal);
+					entry.RemoveCssClass ("error");
 			} else {
-				entry.ModifyFg (StateType.Normal, new Color (255, 0, 0));
+				entry?.AddCssClass ("error");
 			}
 
 			//if it's a standard value, fire the event immediately
@@ -232,7 +236,9 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 					int index;
 					if (FindComboValue (value, out index)) {
 						combo.Active = index;
-						initialText = combo.ActiveText;
+						TreeIter activeIter;
+						if (combo.GetActiveIter (out activeIter))
+							initialText = (string) store.GetValue (activeIter, 0);
 						return;
 					}
 				}
@@ -260,12 +266,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			return false;
 		}
 		
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
-			((IDisposable)this).Dispose ();
-		}
-
 		void IDisposable.Dispose ()
 		{
 			if (disposed)
@@ -276,6 +276,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 				FirePendingChangeEvent (null, null);
 			}
 			disposed = true;
+			base.Dispose ();
 		}
 
 		// To be fired when the edited value changes.

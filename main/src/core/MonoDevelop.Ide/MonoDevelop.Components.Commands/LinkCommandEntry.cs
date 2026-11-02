@@ -38,7 +38,7 @@ namespace MonoDevelop.Components.Commands
 		static object Id = new object ();
 		string text;
 		string url;
-		IconId icon = Gtk.Stock.JumpTo;
+		IconId icon = "gtk-jump-to";
 		
 		public LinkCommandEntry (string text, string url): base (Id)
 		{
@@ -63,40 +63,27 @@ namespace MonoDevelop.Components.Commands
 			set { url = value; }
 		}
 		
-		internal void HandleActivation (object sender, EventArgs e)
+		internal void HandleActivation (Gtk.Widget parent)
 		{
 			try {
-				System.Diagnostics.Process.Start (url);
+				System.Diagnostics.Process.Start (new ProcessStartInfo (url) { UseShellExecute = true });
 			} catch (Exception) {
 				string msg = AddinManager.CurrentLocalizer.GetString ("Could not open the url {0}", url);
-				MonoDevelop.Ide.MessageService.ShowError (((Gtk.Widget)sender).Toplevel as Gtk.Window, msg);
+				MonoDevelop.Ide.MessageService.ShowError (parent?.Root as Gtk.Window, msg);
 			}
 		}
 		
-		internal override Gtk.MenuItem CreateMenuItem (CommandManager manager)
+		internal override void AddToMenu (CommandMenuContext context)
 		{
-			Gtk.ImageMenuItem item = new Gtk.ImageMenuItem (text != null ? text : url);
-			item.Image = new ImageView (icon, Gtk.IconSize.Menu);
-			item.Activated += new EventHandler (HandleActivation);
-			item.Selected += delegate {
-				CommandInfo ci = new CommandInfo (Text);
-				ci.Icon = icon;
-				ci.Description = AddinManager.CurrentLocalizer.GetString ("Open {0}", Url);
-				manager.NotifySelected (ci);
-			};
-			item.Deselected += delegate {
-				manager.NotifyDeselected ();
-			};
-			return item;
+			// TODO GTK4: GMenu items have no hover event, so CommandManager.NotifySelected (open url description) is not raised.
+			context.AddActionItem (text != null ? text : url, icon, () => HandleActivation (null));
 		}
 
-		internal override Gtk.ToolItem CreateToolItem (CommandManager manager)
+		internal override Gtk.Widget CreateToolItem (CommandManager manager)
 		{
-			Gtk.ToolButton item = new Gtk.ToolButton (text);
-			item.StockId = icon;
-			item.Clicked += new EventHandler (HandleActivation);
+			var item = new Gtk.Button { Label = text, IconName = null };
+			item.Clicked += (s, e) => HandleActivation (item);
 			return item;
 		}
 	}
 }
-

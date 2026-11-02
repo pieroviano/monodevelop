@@ -25,7 +25,7 @@
 // THE SOFTWARE.
 using System;
 using System.Linq;
-using Gdk;
+
 using Gtk;
 using MonoDevelop.Components;
 using MonoDevelop.Ide.Gui;
@@ -35,7 +35,7 @@ namespace MonoDevelop.Ide.Projects
 {
 	class LanguageCellRenderer : CellRendererText
 	{
-		Rectangle languageRect;
+		Gdk.Rectangle languageRect;
 		int dropdownTriangleWidth = 8;
 		int dropdownTriangleHeight = 5;
 		const int dropdownTriangleRightHandPadding = 8;
@@ -94,15 +94,25 @@ namespace MonoDevelop.Ide.Projects
 				languageRightHandPadding + 10;
 		}
 
-		public Rectangle GetLanguageRect ()
+		public Gdk.Rectangle GetLanguageRect ()
 		{
 			return languageRect;
 		}
 
-		public override void GetSize (Widget widget, ref Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+		protected override void OnGetPreferredWidth (Widget widget, out int minimum_size, out int natural_size)
 		{
-			base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
+			base.OnGetPreferredWidth (widget, out minimum_size, out natural_size);
+			minimum_size = natural_size = GetCellWidth (widget);
+		}
 
+		protected override void OnGetPreferredWidthForHeight (Widget widget, int height, out int minimum_width, out int natural_width)
+		{
+			base.OnGetPreferredWidthForHeight (widget, height, out minimum_width, out natural_width);
+			minimum_width = natural_width = GetCellWidth (widget);
+		}
+
+		int GetCellWidth (Widget widget)
+		{
 			textWidth = GetTextWidth (widget);
 			int languageRectangleWidth = textWidth + languageLeftHandPadding;
 			if (TemplateHasMultipleLanguages ()) {
@@ -112,7 +122,7 @@ namespace MonoDevelop.Ide.Projects
 				languageRectangleWidth = Math.Max (languageRectangleWidth, minLanguageRectWidth);
 			}
 
-			width = languageRectangleWidth + rightHandCellPadding;
+			return languageRectangleWidth + rightHandCellPadding;
 		}
 
 		int GetTextWidth (Widget widget)
@@ -136,46 +146,43 @@ namespace MonoDevelop.Ide.Projects
 			}
 		}
 
-		protected override void Render (Gdk.Drawable window, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, CellRendererState flags)
+		protected override void OnSnapshot (Snapshot snapshot, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
 		{
 			if (Template == null) {
 				return;
 			}
 
-			if (!RenderRecentTemplate && (!Template.AvailableLanguages.Any () || !IsTemplateRowSelected (widget, flags))) {
+			if (!RenderRecentTemplate && (!Template.AvailableLanguages.Any () || !IsTemplateRowSelected (flags))) {
 				return;
 			}
 
-			using (var ctx = CairoHelper.Create (window)) {
-				using (var layout = new Pango.Layout (widget.PangoContext)) {
-					int textHeight = 0;
+			using (var layout = new Pango.Layout (widget.PangoContext)) {
+				int textHeight = 0;
 
-					SetMarkup (layout, GetSelectedLanguage ());
-					layout.GetPixelSize (out textWidth, out textHeight);
+				SetMarkup (layout, GetSelectedLanguage ());
+				layout.GetPixelSize (out textWidth, out textHeight);
 
-					languageRect = GetLanguageButtonRectangle (window, widget, cell_area, textHeight, textWidth);
+				languageRect = GetLanguageButtonRectangle (cell_area, textHeight, textWidth);
 
-					StateType state = StateType.Normal;
+				snapshot.DrawCairo (cell_area, ctx => {
 					if (!RenderRecentTemplate) {
 						RoundBorder (ctx, languageRect.X, languageRect.Y, languageRect.Width, languageRect.Height);
 						SetSourceColor (ctx, Styles.NewProjectDialog.TemplateLanguageButtonBackground.ToCairoColor ());
 						ctx.Fill ();
-					} else {
-						state = GetState (widget, flags);
 					}
 
 					int tw = TemplateHasMultipleLanguages () ? textWidth + dropdownTriangleWidth + 2 : textWidth;
 					int languageTextX = languageRect.X + ((languageRect.Width - tw) / 2);
 					int languageTextY = languageRect.Y + (languageRect.Height - textHeight) / 2;
 
-					window.DrawLayout (widget.Style.TextGC (state), languageTextX, languageTextY, layout);
+					CellRendererDrawing.DrawLayout (ctx, CellRendererDrawing.GetTextColor (widget, RenderRecentTemplate ? flags : (CellRendererState)0), languageTextX, languageTextY, layout);
 
 					if (TemplateHasMultipleLanguages ()) {
 						int triangleX = languageTextX + textWidth + languageRightHandPadding;
 						int triangleY = languageRect.Y + (languageRect.Height - dropdownTriangleHeight) / 2;
 						DrawTriangle (ctx, triangleX, triangleY);
 					}
-				}
+				});
 			}
 		}
 
@@ -192,7 +199,7 @@ namespace MonoDevelop.Ide.Projects
 			ctx.Fill ();
 		}
 
-		Rectangle GetLanguageButtonRectangle (Drawable window, Widget widget, Rectangle cell_area, int textHeight, int textWidth)
+		Gdk.Rectangle GetLanguageButtonRectangle (Gdk.Rectangle cell_area, int textHeight, int textWidth)
 		{
 			int languageRectangleHeight = cell_area.Height - 8;
 			int languageRectangleWidth = textWidth + languageLeftHandPadding;
@@ -207,12 +214,13 @@ namespace MonoDevelop.Ide.Projects
 			var y = cell_area.Y + dy;
 			var x = cell_area.X + cell_area.Width - languageRectangleWidth - rightHandCellPadding;
 
-			return new Rectangle (x, y, languageRectangleWidth, languageRectangleHeight);
+			return new Gdk.Rectangle (x, y, languageRectangleWidth, languageRectangleHeight);
 		}
 
-		internal bool IsLanguageButtonPressed (EventButton button)
+		/// <summary>Whether the point (in tree view bin coordinates, as the cell area) is over the language button.</summary>
+		internal bool IsLanguageButtonPressed (double x, double y)
 		{
-			return !RenderRecentTemplate && languageRect.Contains ((int)button.X, (int)button.Y);
+			return !RenderRecentTemplate && languageRect.Contains ((int)x, (int)y);
 		}
 
 		void SetMarkup (Pango.Layout layout, string text)
@@ -221,29 +229,14 @@ namespace MonoDevelop.Ide.Projects
 			layout.SetMarkup (markup);
 		}
 
-		static bool IsTemplateRowSelected (Widget widget, CellRendererState flags)
+		static bool IsTemplateRowSelected (CellRendererState flags)
 		{
-			StateType stateType = GetState (widget, flags);
-			return (stateType == StateType.Selected) || (stateType == StateType.Active);
+			return CellRendererDrawing.IsSelected (flags);
 		}
 
 		bool TemplateHasMultipleLanguages ()
 		{
 			return !RenderRecentTemplate && Template != null && Template.AvailableLanguages.Count > 1;
-		}
-
-		static StateType GetState (Widget widget, CellRendererState flags)
-		{
-			StateType stateType = StateType.Normal;
-			if ((flags & CellRendererState.Prelit) != 0)
-				stateType = StateType.Prelight;
-			if ((flags & CellRendererState.Focused) != 0)
-				stateType = StateType.Normal;
-			if ((flags & CellRendererState.Insensitive) != 0)
-				stateType = StateType.Insensitive;
-			if ((flags & CellRendererState.Selected) != 0)
-				stateType = widget.HasFocus ? StateType.Selected : StateType.Active;
-			return stateType;
 		}
 
 		string GetSelectedLanguage ()

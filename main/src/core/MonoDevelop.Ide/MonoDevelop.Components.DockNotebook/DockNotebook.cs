@@ -34,20 +34,20 @@ using System.Linq;
 using System.IO;
 using MonoDevelop.Ide;
 using MonoDevelop.Components.AtkCocoaHelper;
+using MonoDevelop.Components.Docking;
 using MonoDevelop.Core;
 using MonoDevelop.Ide.Gui.Shell;
-using System.Linq;
 
 namespace MonoDevelop.Components.DockNotebook
 {
 	delegate void TabsReorderedHandler (DockNotebookTab tab, int oldPlacement, int newPlacement);
 
-	class DockNotebook : Gtk.VBox, IShellNotebook
+	class DockNotebook : Gtk.Box, IShellNotebook
 	{
 		List<DockNotebookTab> pages = new List<DockNotebookTab> ();
 		List<DockNotebookTab> pagesHistory = new List<DockNotebookTab> ();
 		TabStrip tabStrip;
-		Gtk.EventBox contentBox;
+		BinWidget contentBox;
 		ReadOnlyCollection<DockNotebookTab> pagesCol;
 		const int MAX_LASTACTIVEWINDOWS = 10;
 
@@ -59,30 +59,19 @@ namespace MonoDevelop.Components.DockNotebook
 		public static event EventHandler ActiveNotebookChanged;
 		public static event EventHandler NotebookChanged;
 
-		enum TargetList {
-			UriList = 100
-		}
-
-		static Gtk.TargetEntry[] targetEntryTypes = new Gtk.TargetEntry[] {
-			new Gtk.TargetEntry ("text/uri-list", 0, (uint)TargetList.UriList)
-		};
-
-		public DockNotebook ()
+		public DockNotebook () : base (Gtk.Orientation.Vertical, 0)
 		{
 			pagesCol = new ReadOnlyCollection<DockNotebookTab> (pages);
-			AddEvents ((Int32)(EventMask.AllEventsMask));
 
 			tabStrip = new TabStrip (this);
 
-			PackStart (tabStrip, false, false, 0);
+			Append (tabStrip);
 
-			contentBox = new EventBox ();
-			contentBox.Accessible.SetShouldIgnore (true);
-			PackStart (contentBox, true, true, 0);
-
-			ShowAll ();
-
-			contentBox.NoShowAll = true;
+			contentBox = new BinWidget ();
+			contentBox.SetShouldIgnore (true);
+			contentBox.Hexpand = true;
+			contentBox.Vexpand = true;
+			Append (contentBox);
 
 			tabStrip.DropDownButton.Sensitive = false;
 
@@ -99,17 +88,22 @@ namespace MonoDevelop.Components.DockNotebook
 				return menu;
 			};
 
-			Gtk.Drag.DestSet (this, Gtk.DestDefaults.Motion | Gtk.DestDefaults.Highlight | Gtk.DestDefaults.Drop, targetEntryTypes, Gdk.DragAction.Copy);
-			DragDataReceived += new Gtk.DragDataReceivedHandler (OnDragDataReceived);
-
-			DragMotion += delegate {
+			// Files dropped on the notebook are opened
+			var dropTarget = new Gtk.DropTarget (Gdk.FileList.GType, Gdk.DragAction.Copy);
+			dropTarget.Dropped += OnFilesDropped;
+			dropTarget.Enter += (o, args) => {
 				// Bring this window to the front. Otherwise, the drop may end being done in another window that overlaps this one
 				if (!Platform.IsWindows) {
-					var window = ((Gtk.Window)Toplevel);
+					var window = this.GetToplevelWindow ();
 					if (window is DockWindow)
 						window.Present ();
 				}
+				args.RetVal = Gdk.DragAction.Copy;
 			};
+			AddController (dropTarget);
+
+			// A press anywhere in the notebook (even inside the content) activates it
+			this.AddClickHandler (c => ActiveNotebook = this, phase: PropagationPhase.Capture);
 
 			allNotebooks.Add (this);
 		}
@@ -132,8 +126,6 @@ namespace MonoDevelop.Components.DockNotebook
 		public static IEnumerable<DockNotebook> AllNotebooks {
 			get { return allNotebooks; }
 		}
-
-		Cursor fleurCursor = new Cursor (CursorType.Fleur);
 
 		public event TabsReorderedHandler TabsReordered;
 		public event EventHandler<TabEventArgs> TabClosed;
@@ -178,12 +170,11 @@ namespace MonoDevelop.Components.DockNotebook
 			set {
 				if (currentTab != value) {
 					currentTab = value;
-					if (contentBox.Child != null)
-						contentBox.Remove (contentBox.Child);
+					contentBox.Child = null;
 
 					if (currentTab != null) {
 						if (currentTab.Content != null) {
-							contentBox.Add (currentTab.Content);
+							contentBox.Child = currentTab.Content;
 							// Focus the last child, as some editors like the JSON one have a dropdown at the top.
 							contentBox.ChildFocus (DirectionType.Up);
 						}
@@ -203,11 +194,11 @@ namespace MonoDevelop.Components.DockNotebook
 
 		public int CurrentTabIndex {
 			get { return currentTab != null ? currentTab.Index : -1; }
-			set { 
+			set {
 				if (value > pages.Count - 1)
 					CurrentTab = null;
 				else
-					CurrentTab = pages [value]; 
+					CurrentTab = pages [value];
 			}
 		}
 
@@ -244,28 +235,34 @@ namespace MonoDevelop.Components.DockNotebook
 			tabStrip.InitSize ();
 		}
 
-		async void OnDragDataReceived (object o, Gtk.DragDataReceivedArgs args)
+		async void OnFilesDropped (object o, Gtk.DroppedArgs args)
 		{
-			if (args.Info != (uint) TargetList.UriList)
+			var fileList = args.Value.Val as Gdk.FileList;
+			if (fileList == null) {
+				args.RetVal = false;
 				return;
-			string fullData = System.Text.Encoding.UTF8.GetString (args.SelectionData.Data);
+			}
 
 			var loadWorkspaceItems = !IsInsideTabStrip (args.X, args.Y);
 			var files = new List<Ide.Gui.FileOpenInformation> ();
 
-			foreach (string individualFile in fullData.Split ('\n')) {
-				string file = individualFile.Trim ();
-				if (file.StartsWith ("file://")) {
-					var filePath = new FilePath (file);
-					if (filePath.IsDirectory) {
-						if (!loadWorkspaceItems) // skip directories when not loading solutions
-							continue;
-						filePath = Directory.EnumerateFiles (filePath).FirstOrDefault (p => Services.ProjectService.IsWorkspaceItemFile (p));
-					}
-					if (!filePath.IsNullOrEmpty) // skip empty paths
-						files.Add (new Ide.Gui.FileOpenInformation (filePath, null, 0, 0, Ide.Gui.OpenDocumentOptions.DefaultInternal) { DockNotebook = this });
+			var droppedFiles = new GLib.SList (fileList.Files.Handle, typeof (GLib.IFile), false, false);
+			foreach (GLib.IFile droppedFile in droppedFiles) {
+				string path = droppedFile.Path;
+				if (string.IsNullOrEmpty (path))
+					continue;
+
+				var filePath = new FilePath (path);
+				if (filePath.IsDirectory) {
+					if (!loadWorkspaceItems) // skip directories when not loading solutions
+						continue;
+					filePath = Directory.EnumerateFiles (filePath).FirstOrDefault (p => Services.ProjectService.IsWorkspaceItemFile (p));
 				}
+				if (!filePath.IsNullOrEmpty) // skip empty paths
+					files.Add (new Ide.Gui.FileOpenInformation (filePath, null, 0, 0, Ide.Gui.OpenDocumentOptions.DefaultInternal) { DockNotebook = this });
 			}
+
+			args.RetVal = files.Count > 0;
 
 			if (files.Count > 0) {
 				if (loadWorkspaceItems) {
@@ -286,13 +283,13 @@ namespace MonoDevelop.Components.DockNotebook
 			}
 		}
 
-		bool IsInsideTabStrip (int pointerX, int pointerY)
+		bool IsInsideTabStrip (double pointerX, double pointerY)
 		{
 			if (tabStrip?.IsRealized != true)
 				return false;
-			int tabX, tabY;
-			TranslateCoordinates (tabStrip, pointerX, pointerY, out tabX, out tabY);
-			return tabStrip.Allocation.Contains (new Point (tabX, tabY));
+			if (!TranslateCoordinates (tabStrip, pointerX, pointerY, out double tabX, out double tabY))
+				return false;
+			return tabX >= 0 && tabY >= 0 && tabX < tabStrip.Width && tabY < tabStrip.Height;
 		}
 
 		public DockNotebookContainer Container {
@@ -318,7 +315,8 @@ namespace MonoDevelop.Components.DockNotebook
 			return Container.GetPreviousNotebook (this);
 		}
 
-		public Action<DockNotebook, int,Gdk.EventButton> DoPopupMenu { get; set; }
+		/// <summary>Shows the context menu of a tab: (notebook, tab index, click that requested the menu).</summary>
+		public Action<DockNotebook, int, ClickInfo> DoPopupMenu { get; set; }
 
 		public DockNotebookTab AddTab (Gtk.Widget content = null)
 		{
@@ -373,9 +371,9 @@ namespace MonoDevelop.Components.DockNotebook
 			var normalPages = pages.Where (p => !p.IsPinned);
 
 			if (value) {
-				if (stickedPages.Any ()) 
+				if (stickedPages.Any ())
 					ReorderTab (sender, normalPages.MinValueOrDefault (s => s.Index) ?? stickedPages.MaxValueOrDefault (s => s.Index), false);
-				 else 
+				 else
 					ReorderTab (sender, pages.FirstOrDefault (), false);
 			} else {
 				ReorderTab (sender, stickedPages.MaxValueOrDefault (s => s.Index) ?? normalPages.MinValueOrDefault (s => s.Index), false);
@@ -414,7 +412,7 @@ namespace MonoDevelop.Components.DockNotebook
 		{
 			if (pinCheck && tab.IsPinned != targetTab.IsPinned)
 				return;
-			
+
 			if (tab == targetTab)
 				return;
 			int targetPos = targetTab.Index;
@@ -448,30 +446,68 @@ namespace MonoDevelop.Components.DockNotebook
 			if (TabActivated != null)
 				TabActivated (this, new TabEventArgs () { Tab = tab });
 		}
-		
+
 		internal void ShowContent (DockNotebookTab tab)
 		{
 			if (tab == currentTab)
 				contentBox.Child = tab.Content;
 		}
 
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		Gdk.Rectangle? dropPlaceholder;
+
+		/// <summary>
+		/// Shows (or hides, when null) the outline of the place where a dragged tab would be dropped.
+		/// The rectangle is in the coordinates of this notebook.
+		/// </summary>
+		internal void ShowDropPlaceholder (Gdk.Rectangle? rect)
 		{
-			ActiveNotebook = this;
-			return base.OnButtonPressEvent (evnt);
+			if (dropPlaceholder == rect)
+				return;
+			dropPlaceholder = rect;
+			QueueDraw ();
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			base.OnSnapshot (snapshot);
+			if (dropPlaceholder != null) {
+				var r = dropPlaceholder.Value;
+				snapshot.DrawCairo (new Gdk.Rectangle (0, 0, Width, Height), ctx => {
+					ctx.SetSourceColor (new Cairo.Color (0.17, 0.55, 0.79, 0.4));
+					ctx.Rectangle (r.X, r.Y, r.Width, r.Height);
+					ctx.Fill ();
+				});
+			}
+		}
+
+		protected override void OnRoot ()
+		{
+			base.OnRoot ();
+			if (!allNotebooks.Contains (this))
+				allNotebooks.Add (this);
+		}
+
+		protected override void OnUnroot ()
 		{
 			allNotebooks.Remove (this);
+			base.OnUnroot ();
+		}
 
-			if (ActiveNotebook == this)
-				ActiveNotebook = null;
-			if (fleurCursor != null) {
-				fleurCursor.Dispose ();
-				fleurCursor = null;
+		/// <summary>Called when the notebook is destroyed.</summary>
+		protected virtual void OnDestroyed ()
+		{
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing) {
+				allNotebooks.Remove (this);
+
+				if (ActiveNotebook == this)
+					ActiveNotebook = null;
+				OnDestroyed ();
 			}
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 	}
 

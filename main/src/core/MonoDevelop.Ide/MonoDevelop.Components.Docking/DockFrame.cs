@@ -44,9 +44,12 @@ using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components.Docking
 {
-	class DockFrame: HBox, IAnimatable
+	class DockFrame: ContainerWidget, IAnimatable
 	{
 		public event EventHandler<EventArgs> LayoutChanged;
+
+		/// <summary>Raised after the frame has been allocated (GTK 4 has no size-allocate signal).</summary>
+		internal event EventHandler FrameSizeAllocated;
 
 		internal const double ItemDockCenterArea = 0.4;
 		internal const int GroupDockSeparatorSize = 40;
@@ -68,46 +71,48 @@ namespace MonoDevelop.Components.Docking
 		int compactGuiLevel = 3;
 		
 		DockBar dockBarTop, dockBarBottom, dockBarLeft, dockBarRight;
-		VBox mainBox;
+		Box mainBox;
 		DockVisualStyle defaultStyle;
 		Gtk.Widget overlayWidget;
 
 		public DockFrame ()
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-
-			Accessible.Name = "DockFrame";
+			this.SetCommonAttributes ("DockFrame", null, null);
 
 			dockBarTop = new DockBar (this, Gtk.PositionType.Top);
-			dockBarTop.Accessible.Name = "DockFrame.TopBar";
+			dockBarTop.SetCommonAttributes ("DockFrame.TopBar", null, null);
 
 			dockBarBottom = new DockBar (this, Gtk.PositionType.Bottom);
-			dockBarBottom.Accessible.Name = "DockFrame.BottomBar";
+			dockBarBottom.SetCommonAttributes ("DockFrame.BottomBar", null, null);
 
 			dockBarLeft = new DockBar (this, Gtk.PositionType.Left);
-			dockBarLeft.Accessible.Name = "DockFrame.LeftBar";
+			dockBarLeft.SetCommonAttributes ("DockFrame.LeftBar", null, null);
 
 			dockBarRight = new DockBar (this, Gtk.PositionType.Right);
-			dockBarRight.Accessible.Name = "DockFrame.RightBar";
+			dockBarRight.SetCommonAttributes ("DockFrame.RightBar", null, null);
 
 			container = new DockContainer (this);
-			container.Accessible.Name = "DockFrame.Main";
+			container.SetCommonAttributes ("DockFrame.Main", null, null);
+			container.Hexpand = container.Vexpand = true;
 
-			HBox hbox = new HBox ();
-			hbox.Accessible.SetShouldIgnore (true);
+			var hbox = new Box (Orientation.Horizontal, 0);
+			hbox.SetShouldIgnore (true);
+			hbox.Vexpand = true;
 
-			hbox.PackStart (dockBarLeft, false, false, 0);
-			hbox.PackStart (container, true, true, 0);
-			hbox.PackStart (dockBarRight, false, false, 0);
-			mainBox = new VBox ();
-			mainBox.Accessible.SetShouldIgnore (true);
+			hbox.Append (dockBarLeft);
+			hbox.Append (container);
+			hbox.Append (dockBarRight);
+			mainBox = new Box (Orientation.Vertical, 0);
+			mainBox.SetShouldIgnore (true);
 
-			mainBox.PackStart (dockBarTop, false, false, 0);
-			mainBox.PackStart (hbox, true, true, 0);
-			mainBox.PackStart (dockBarBottom, false, false, 0);
-			Add (mainBox);
-			mainBox.ShowAll ();
-			mainBox.NoShowAll = true;
+			mainBox.Append (dockBarTop);
+			mainBox.Append (hbox);
+			mainBox.Append (dockBarBottom);
+			AddChild (mainBox);
+
+			// A press anywhere in the frame (not handled by a child) minimizes the auto-hidden pads
+			this.AddClickHandler (c => MinimizeAllAutohidden ());
+
 			CompactGuiLevel = 2;
 			UpdateDockbarsVisibility ();
 
@@ -120,9 +125,7 @@ namespace MonoDevelop.Components.Docking
 			}
 		}
 
-		internal bool UseWindowsForTopLevelFrames {
-			get { return Platform.IsMac; }
-		}
+
 		
 		/// <summary>
 		/// Compactness level of the gui, from 1 (not compact) to 5 (very compact).
@@ -149,11 +152,13 @@ namespace MonoDevelop.Components.Docking
 
 		internal bool OverlayWidgetVisible { get; set; }
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			this.AbortAnimation ("ShowOverlayWidget");
-			this.AbortAnimation ("HideOverlayWidget");
-			base.OnDestroyed ();
+			if (disposing) {
+				this.AbortAnimation ("ShowOverlayWidget");
+				this.AbortAnimation ("HideOverlayWidget");
+			}
+			base.Dispose (disposing);
 		}
 
 		public void AddOverlayWidget (Widget widget, bool animate = false)
@@ -161,25 +166,21 @@ namespace MonoDevelop.Components.Docking
 			RemoveOverlayWidget (false);
 
 			this.overlayWidget = widget;
-			widget.Parent = this;
-
-			// Emit the add signal so that the A11y system will pick up that a widget has been added to the box
-			// but the box won't handle it because widget.Parent has already been set.
-			GtkWorkarounds.EmitAddSignal(this, widget);
+			AddChild (widget);
 
 			OverlayWidgetVisible = true;
 			MinimizeAllAutohidden ();
 			if (animate) {
-				currentOverlayPosition = Math.Max (0, Allocation.Y + Allocation.Height);
+				currentOverlayPosition = Math.Max (0, Height);
 				this.Animate (
-					"ShowOverlayWidget", 
+					"ShowOverlayWidget",
 					ShowOverlayWidgetAnimation,
 					finished: (a, b) => {
 						mainBox.Hide ();
 					},
 					easing: Easing.CubicOut);
 			} else {
-				currentOverlayPosition = Math.Max (0, Allocation.Y);
+				currentOverlayPosition = 0;
 				mainBox.Hide ();
 				QueueResize ();
 			}
@@ -197,25 +198,19 @@ namespace MonoDevelop.Components.Docking
 
 			if (overlayWidget != null) {
 				if (animate) {
-					currentOverlayPosition = Allocation.Y;
+					currentOverlayPosition = 0;
 					this.Animate (
-						"HideOverlayWidget", 
+						"HideOverlayWidget",
 						HideOverlayWidgetAnimation,
 						finished: (a,b) => {
 							if (overlayWidget != null) {
-								overlayWidget.Unparent ();
-
-								// After we've unparented the widget, we call remove so the A11y system can clean up as well.
-								GLib.Signal.Emit (this, "remove", overlayWidget);
+								RemoveChild (overlayWidget);
 								overlayWidget = null;
 							}
 						},
 						easing: Easing.SinOut);
 				} else {
-					overlayWidget.Unparent ();
-					// After we've unparented the widget, we call remove so the A11y system can clean up as well.
-					GtkWorkarounds.EmitRemoveSignal(this, overlayWidget);
-
+					RemoveChild (overlayWidget);
 					overlayWidget = null;
 					QueueResize ();
 				}
@@ -236,14 +231,14 @@ namespace MonoDevelop.Components.Docking
 
 		void ShowOverlayWidgetAnimation (double value)
 		{
-			currentOverlayPosition = Allocation.Y + (int)((double)Allocation.Height * (1f - value));
-			overlayWidget.SizeAllocate (new Rectangle (Allocation.X, currentOverlayPosition, Allocation.Width, Allocation.Height));
+			currentOverlayPosition = (int)((double)Height * (1f - value));
+			QueueAllocate ();
 		}
 
 		void HideOverlayWidgetAnimation (double value)
 		{
-			currentOverlayPosition = Allocation.Y + (int)((double)Allocation.Height * value);
-			overlayWidget.SizeAllocate (new Rectangle (Allocation.X, currentOverlayPosition, Allocation.Width, Allocation.Height));
+			currentOverlayPosition = (int)((double)Height * value);
+			QueueAllocate ();
 		}
 
 		void IAnimatable.BatchBegin ()
@@ -592,13 +587,8 @@ namespace MonoDevelop.Components.Docking
 		Gtk.Widget GetActiveWidget ()
 		{
 			Gtk.Widget widget = this;
-			while (widget is Gtk.Container) {
-				Gtk.Widget child = ((Gtk.Container)widget).FocusChild;
-				if (child != null)
-					widget = child;
-				else
-					break;
-			}
+			while (widget.FocusChild != null)
+				widget = widget.FocusChild;
 			return widget;
 		}
 
@@ -915,71 +905,35 @@ namespace MonoDevelop.Components.Docking
 		{
 			ValidateWindowBounds (ref x, ref y, ref width, ref height);
 
+			// GTK 4 cannot position top level windows: auto-hide pads are always laid out inside the frame
 			w.X = x;
 			w.Y = y;
-
-			if (UseWindowsForTopLevelFrames) {
-				var win = new IdeWindow (Gtk.WindowType.Toplevel);
-				win.SkipTaskbarHint = true;
-				win.Decorated = false;
-				win.TypeHint = Gdk.WindowTypeHint.Toolbar;
-				w.ContainerWindow = win;
-				w.Size = new Size (width, height);
-				win.Add (w);
-				w.Show ();
-				var p = this.GetScreenCoordinates (new Gdk.Point (x, y));
-				win.Opacity = 0.0;
-				win.Move (p.X, p.Y);
-				win.Resize (width, height);
-				win.Show ();
-				Ide.IdeServices.DesktopService.AddChildWindow ((Gtk.Window)Toplevel, win);
-				win.AcceptFocus = true;
-				win.Opacity = 1.0;
-
-				/* When we use real windows for frames, it's possible for pads to be over other
-				 * windows. For some reason simply presenting or raising those dialogs doesn't
-				 * seem to work, so we hide/show them in order to force them above the pad. */
-				var toplevels = Gtk.Window.ListToplevels ().Where (t => t.IsRealized && t.Visible && t.TypeHint == WindowTypeHint.Dialog); // && t.TransientFor != null);
-				foreach (var t in toplevels) {
-					t.Hide ();
-					t.Show ();
-				}
-
-				MonoDevelop.Ide.IdeApp.CommandService.RegisterTopWindow (win);
-			} else {
-				w.Parent = this;
-				w.Size = new Size (width, height);
-				Requisition r = w.SizeRequest ();
-				w.Allocation = new Gdk.Rectangle (Allocation.X + x, Allocation.Y + y, r.Width, r.Height);
-				topLevels.Add (w);
-			}
+			AddChild (w);
+			w.Size = new Size (width, height);
+			topLevels.Add (w);
 		}
 
 		void ValidateWindowBounds (ref int x, ref int y, ref int w, ref int h)
 		{
 			x = Math.Max (0, x);
 			y = Math.Max (0, y);
-			w = Math.Min (mainBox.Allocation.Width - x, w);
-			h = Math.Min (mainBox.Allocation.Height - y, h);
+			w = Math.Min (mainBox.Width - x, w);
+			h = Math.Min (mainBox.Height - y, h);
 		}
 
 		internal void RemoveTopLevel (DockFrameTopLevel w)
 		{
-			w.Unparent ();
+			RemoveChild (w);
 			topLevels.Remove (w);
 			QueueResize ();
 		}
-		
+
 		public Gdk.Rectangle GetCoordinates (Gtk.Widget w)
 		{
-			int px, py;
-			if (!w.TranslateCoordinates (this, 0, 0, out px, out py))
+			if (!w.TranslateCoordinates (this, 0, 0, out double px, out double py))
 				return new Gdk.Rectangle (0,0,0,0);
 
-			Gdk.Rectangle rect = w.Allocation;
-			rect.X = px - Allocation.X;
-			rect.Y = py - Allocation.Y;
-			return rect;
+			return new Gdk.Rectangle ((int)px, (int)py, w.Width, w.Height);
 		}
 		
 		internal void ShowPlaceholder (DockItem draggedItem)
@@ -997,9 +951,11 @@ namespace MonoDevelop.Components.Docking
 			container.HidePlaceholder ();
 		}
 		
-		internal void UpdatePlaceholder (DockItem item, Gdk.Size size, bool allowDocking)
+		/// <param name="pointerX">Pointer X in <see cref="DockContainer"/> coordinates.</param>
+		/// <param name="pointerY">Pointer Y in <see cref="DockContainer"/> coordinates.</param>
+		internal void UpdatePlaceholder (DockItem item, Gdk.Size size, bool allowDocking, int pointerX, int pointerY)
 		{
-			container.UpdatePlaceholder (item, size, allowDocking);
+			container.UpdatePlaceholder (item, size, allowDocking, pointerX, pointerY);
 		}
 		
 		internal DockBarItem BarDock (Gtk.PositionType pos, DockItem item, int size)
@@ -1017,21 +973,21 @@ namespace MonoDevelop.Components.Docking
 
 			int x,y,w,h;
 			if (bar == dockBarLeft || bar == dockBarRight) {
-				h = Allocation.Height - sTop.Height - sBot.Height;
+				h = Height - sTop.Height - sBot.Height;
 				w = size;
 				y = sTop.Height;
 				if (bar == dockBarLeft)
 					x = sLeft.Width;
 				else
-					x = Allocation.Width - size - sRgt.Width;
+					x = Width - size - sRgt.Width;
 			} else {
-				w = Allocation.Width - sLeft.Width - sRgt.Width;
+				w = Width - sLeft.Width - sRgt.Width;
 				h = size;
 				x = sLeft.Width;
 				if (bar == dockBarTop)
 					y = sTop.Height;
 				else
-					y = Allocation.Height - size - sBot.Height;
+					y = Height - size - sBot.Height;
 			}
 
 			AddTopLevel (aframe, x, y, w, h);
@@ -1048,13 +1004,13 @@ namespace MonoDevelop.Components.Docking
 			Gdk.Size sRgt = GetBarFrameSize (dockBarRight);
 			
 			if (bar == dockBarLeft || bar == dockBarRight) {
-				aframe.HeightRequest = Allocation.Height - sTop.Height - sBot.Height;
+				aframe.Size = new Gdk.Size (aframe.RequestedWidth, Height - sTop.Height - sBot.Height);
 				if (bar == dockBarRight)
-					aframe.X = Allocation.Width - aframe.Allocation.Width - sRgt.Width;
+					aframe.X = Width - aframe.Width - sRgt.Width;
 			} else {
-				aframe.WidthRequest = Allocation.Width - sLeft.Width - sRgt.Width;
+				aframe.Size = new Gdk.Size (Width - sLeft.Width - sRgt.Width, aframe.RequestedHeight);
 				if (bar == dockBarBottom)
-					aframe.Y = Allocation.Height - aframe.Allocation.Height - sBot.Height;
+					aframe.Y = Height - aframe.Height - sBot.Height;
 			}
 		}
 		
@@ -1064,7 +1020,7 @@ namespace MonoDevelop.Components.Docking
 				bar = bar.OriginalBar;
 			if (!bar.Visible)
 				return new Gdk.Size (0,0);
-			Gtk.Requisition req = bar.SizeRequest ();
+			Gtk.Requisition req = bar.GetRequisition ();
 			return new Gdk.Size (req.Width, req.Height);
 		}
 		
@@ -1078,69 +1034,37 @@ namespace MonoDevelop.Components.Docking
 				widget.AnimateHide ();
 			}
 			else {
-				// The widget may already be removed from the parent
-				// so 'parent' can be null
-				Gtk.Container parent = (Gtk.Container) item.Widget.Parent;
-				if (parent != null) {
-					//removing the widget from its parent causes it to unrealize without unmapping
-					//so make sure it's unmapped
-					if (item.Widget.IsMapped) {
-						item.Widget.Unmap ();
-					}
-					parent.Remove (item.Widget);
-				}
-				parent = (Gtk.Container) item.TitleTab.Parent;
-				if (parent != null) {
-					//removing the widget from its parent causes it to unrealize without unmapping
-					//so make sure it's unmapped
-					if (item.TitleTab.IsMapped) {
-						item.TitleTab.Unmap ();
-					}
-					parent.Remove (item.TitleTab);
-				}
-				if (widget.ContainerWindow != null) {
-					widget.ContainerWindow.Destroy ();
-				} else
-					RemoveTopLevel (widget);
+				// The widget may already be removed from the parent. RemoveFromParent unmaps the widget first
+				// (removing it from its parent causes it to unrealize without unmapping).
+				DockUtil.RemoveFromParent (item.Widget);
+				DockUtil.RemoveFromParent (item.TitleTab);
+				RemoveTopLevel (widget);
 
 				widget.Disposed = true;
 				widget.Destroy ();
 			}
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		// Only the main box defines the size of the frame: auto-hide pads and the overlay widget are laid out on top of it.
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			if (overlayWidget != null)
-				overlayWidget.SizeRequest ();
-			base.OnSizeRequested (ref requisition);
+			mainBox.Measure (orientation, for_size, out minimum, out natural, out _, out _);
+			minimum_baseline = natural_baseline = -1;
 		}
-		
-		protected override void OnSizeAllocated (Rectangle allocation)
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
-			
+			if (mainBox.Visible)
+				mainBox.SizeAllocate (new Gdk.Rectangle (0, 0, width, height), -1);
+
 			foreach (DockFrameTopLevel tl in topLevels) {
-				Requisition r = tl.SizeRequest ();
-				tl.SizeAllocate (new Gdk.Rectangle (allocation.X + tl.X, allocation.Y + tl.Y, r.Width, r.Height));
+				Requisition r = tl.GetRequisition ();
+				tl.SizeAllocate (new Gdk.Rectangle (tl.X, tl.Y, r.Width, r.Height), -1);
 			}
 			if (overlayWidget != null)
-				overlayWidget.SizeAllocate (new Rectangle (Allocation.X, currentOverlayPosition, allocation.Width, allocation.Height));
-		}
-		
-		protected override void ForAll (bool include_internals, Callback callback)
-		{
-			base.ForAll (include_internals, callback);
-			List<DockFrameTopLevel> clone = new List<DockFrameTopLevel> (topLevels);
-			foreach (DockFrameTopLevel child in clone)
-				callback (child);
-			if (overlayWidget != null)
-				callback (overlayWidget);
-		}
-		
-		protected override bool OnButtonPressEvent (EventButton evnt)
-		{
-			MinimizeAllAutohidden ();
-			return base.OnButtonPressEvent (evnt);
+				overlayWidget.SizeAllocate (new Gdk.Rectangle (0, currentOverlayPosition, width, height), -1);
+
+			FrameSizeAllocated?.Invoke (this, EventArgs.Empty);
 		}
 
 		internal void MinimizeAllAutohidden ()
@@ -1155,12 +1079,12 @@ namespace MonoDevelop.Components.Docking
 			get { return System.IO.Path.DirectorySeparatorChar == '\\'; }
 		}
 
-		internal static Cairo.Color ToCairoColor (Gdk.Color color)
+		internal static Cairo.Color ToCairoColor (Gdk.RGBA color)
 		{
-			return new Cairo.Color (color.Red / (double) ushort.MaxValue, color.Green / (double) ushort.MaxValue, color.Blue / (double) ushort.MaxValue);
+			return new Cairo.Color (color.Red, color.Green, color.Blue, color.Alpha);
 		}
 
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (DirectionType direction)
 		{
 			// If there's an overlay widget, that's all we can focus
 			if (overlayWidget != null && overlayWidget.Visible) {
@@ -1168,7 +1092,7 @@ namespace MonoDevelop.Components.Docking
 				return true;
 			}
 
-			return base.OnFocused (direction);
+			return base.OnFocus (direction);
 		}
 	}
 

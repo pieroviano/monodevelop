@@ -36,14 +36,14 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 	
 	[System.ComponentModel.Category("MonoDevelop.Projects.Gui")]
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class BaseDirectoryPanelWidget : Gtk.Bin
+	partial class BaseDirectoryPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		public BaseDirectoryPanelWidget()
 		{
 			this.Build();
 
-			label2.Accessible.SetShouldIgnore (true);
-			label3.Accessible.SetTitleFor (folderentry.EntryAccessible);
+			label2.SetShouldIgnore (true);
+			label3.SetTitleFor (folderentry.EntryAccessible);
 			SetupAccessibility ();
 		}
 

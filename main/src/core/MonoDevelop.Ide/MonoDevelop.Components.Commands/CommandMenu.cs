@@ -24,140 +24,99 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
 
 using System;
 
 namespace MonoDevelop.Components.Commands
 {
-	class CommandMenu: Gtk.Menu
+	/// <summary>
+	/// A menu of commands (GTK 4: a <see cref="Gtk.PopoverMenu"/> built on demand from a menu model).
+	/// The command state is evaluated every time the menu is popped up.
+	/// </summary>
+	public class CommandMenu
 	{
-		CommandEntrySet commandEntrySet;
-		CommandManager manager;
+		readonly CommandEntrySet commandEntrySet;
+		readonly CommandManager manager;
 		object initialCommandTarget;
 
-		public CommandMenu (CommandManager manager)
+		internal CommandMenu (CommandManager manager, CommandEntrySet commandEntrySet)
 		{
 			this.manager = manager;
-			this.AccelGroup = manager.AccelGroup;
-		}
-		
-		public CommandMenu (CommandManager manager, CommandEntrySet commandEntrySet) : this (manager)
-		{
 			this.commandEntrySet = commandEntrySet;
 		}
-		
-		
+
+		/// <summary>Object where the command handler lookup starts.</summary>
 		public object InitialCommandTarget {
 			get { return initialCommandTarget; }
 			set { initialCommandTarget = value; }
 		}
-		
-		internal CommandManager CommandManager {
+
+		/// <summary>Raised when the popped up menu is closed.</summary>
+		public event EventHandler Closed;
+
+		/// <summary>True if no command is currently visible in the menu.</summary>
+		public bool IsEmpty {
 			get {
-				if (manager == null) {
-					Gtk.Widget w = Parent;
-					while (w != null && !(w is CommandMenu) && !(w is CommandMenuBar)) {
-						w = w.Parent;
-					}
-					if (w is CommandMenu)
-						manager = ((CommandMenu)w).CommandManager;
-					else if (w is CommandMenuBar)
-						manager = ((CommandMenuBar)w).CommandManager;
-					else
-						throw new InvalidOperationException ("Menu not bound to a CommandManager.");
-				}
-				return manager;
+				var context = CreateContext (CommandSource.ContextMenu);
+				return CommandMenuContext.IsEmpty (context.Build (commandEntrySet));
 			}
 		}
-		
-		bool populated;
-		void EnsurePopulated ()
-		{
-			if (populated)
-				return;
-			populated = true;
-			if (commandEntrySet != null) {
-				manager.CreateMenu (commandEntrySet, this);
-				Update ();
-				commandEntrySet = null;
-			}
+
+		internal CommandManager CommandManager {
+			get { return manager; }
 		}
-		
-		protected CommandMenu (IntPtr ptr): base (ptr)
+
+		/// <summary>Builds the model of this menu into an existing context (so its actions share the context action group).</summary>
+		internal GLib.Menu Build (CommandMenuContext context)
 		{
+			return context.Build (commandEntrySet);
 		}
-		
-		protected override void OnShown ()
+
+		internal CommandMenuContext CreateContext (CommandSource source)
 		{
-			base.OnShown ();
+			return new CommandMenuContext (manager, initialCommandTarget, source);
+		}
+
+		/// <summary>Creates, without showing it, a popover menu for the current command state. It has to be parented to a widget.</summary>
+		internal Gtk.PopoverMenu CreatePopover ()
+		{
 			manager.RegisterUserInteraction ();
-			Update ();
-		}
-		
-		protected override void OnRealized ()
-		{
-			base.OnRealized ();
-			EnsurePopulated ();
-		}
-		
-		protected override void OnSizeRequested (ref Gtk.Requisition requisition)
-		{
-			EnsurePopulated ();
-			base.OnSizeRequested (ref requisition);
+			var context = CreateContext (CommandSource.ContextMenu);
+			var model = context.Build (commandEntrySet);
+			var popover = new Gtk.PopoverMenu (model, Gtk.PopoverMenuFlags.Nested);
+			popover.InsertActionGroup (CommandMenuContext.ActionPrefix, context.Actions);
+			foreach (var custom in context.CustomWidgets)
+				popover.AddChild (custom.Value, custom.Key);
+			popover.Closed += (s, e) => Closed?.Invoke (this, EventArgs.Empty);
+			return popover;
 		}
 
-		internal void Update ()
+		/// <summary>Pops up the menu at (<paramref name="x"/>, <paramref name="y"/>) in <paramref name="parent"/> coordinates.</summary>
+		public void Popup (Gtk.Widget parent, int x, int y)
 		{
-			CommandTargetRoute targetRoute = new CommandTargetRoute (initialCommandTarget);
-			foreach (Gtk.Widget item in Children) {
-				if (item is ICommandUserItem)
-					((ICommandUserItem)item).Update (targetRoute);
-				else if (item is Gtk.MenuItem) {
-					Gtk.MenuItem mitem = (Gtk.MenuItem) item;
-					CommandMenu men = mitem.Submenu as CommandMenu;
-					if (men != null)
-						men.InitialCommandTarget = initialCommandTarget;
-					item.Show ();
-					if (item is AutoHideMenuItem) {
-						men.Update ();
-						if (!((AutoHideMenuItem)item).HasVisibleChildren)
-							item.Hide ();
-					}
-				}
-				else
-					item.Show ();
-			}
-			
-			// After updating the menu, hide the separators which don't actually
-			// separate items.
-			bool prevWasItem = false;
-			Gtk.Widget lastSeparator = null;
-			foreach (Gtk.Widget item in Children) {
-				if (item is Gtk.SeparatorMenuItem) {
-					if (!prevWasItem)
-						item.Hide ();
-					else {
-						prevWasItem = false;
-						lastSeparator = item;
-					}
-				} else if (item.Visible)
-					prevWasItem = true;
-			}
-			if (!prevWasItem && lastSeparator != null)
-				lastSeparator.Hide ();
+			if (parent == null)
+				throw new ArgumentNullException (nameof (parent));
+			if (initialCommandTarget == null)
+				initialCommandTarget = parent;
+			GtkWorkarounds.ShowContextMenu (CreatePopover (), parent, x, y);
 		}
-		
-		protected override void OnHidden ()
-		{
-			base.OnHidden ();
 
-			// Make sure the accelerators allways work for this item
-			// while the menu is hidden
-			foreach (Gtk.MenuItem item in Children) {
-				item.Sensitive = true;
-				item.Visible = true;
+		/// <summary>Pops up the menu at the position of the click, or at the origin of the parent if <paramref name="evt"/> is null.</summary>
+		public void Popup (Gtk.Widget parent, ClickInfo evt)
+		{
+			if (parent == null)
+				throw new ArgumentNullException (nameof (parent));
+			int x = 0, y = 0;
+			if (evt != null) {
+				// ClickInfo coordinates are relative to the widget owning the gesture.
+				var owner = evt.Gesture?.Widget;
+				var r = new Gdk.Rectangle ((int)evt.X, (int)evt.Y, 1, 1);
+				if (owner != null)
+					r = owner.TranslateRectangle (parent, r);
+				x = r.X;
+				y = r.Y;
 			}
+			Popup (parent, x, y);
 		}
 	}
 }

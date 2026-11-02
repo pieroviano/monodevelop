@@ -29,7 +29,7 @@ using System;
 namespace MonoDevelop.Ide.CodeFormatting
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class OverrideTextSettingsPolicyWidget : Gtk.Bin
+	public partial class OverrideTextSettingsPolicyWidget : MonoDevelop.Components.BinWidget
 	{
 		public OverrideTextSettingsPolicyWidget ()
 		{

@@ -64,7 +64,7 @@ namespace MonoDevelop.Ide.StandardHeader
 		}
 	}
 	
-	partial class StandardHeaderPolicyPanelWidget : Gtk.Bin
+	partial class StandardHeaderPolicyPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		StandardHeaderPolicyPanel parent;
 		Gtk.TreeStore store = new Gtk.TreeStore (typeof (string));
@@ -100,8 +100,7 @@ namespace MonoDevelop.Ide.StandardHeader
 			this.treeviewTemplates.Model = store;
 			this.treeviewTemplates.SearchColumn = -1; // disable the interactive search
 			treeviewTemplates.RowActivated += TreeviewTemplates_RowActivated;
-			var w4 = ((global::Gtk.Box.BoxChild)(this.hbox2 [this.GtkScrolledWindow1]));
-			w4.Expand = false;
+			GtkScrolledWindow1.Hexpand = false;
 			treeviewTemplates.WidthRequest = 200;
 			treeviewTemplates.QueueResize ();
 

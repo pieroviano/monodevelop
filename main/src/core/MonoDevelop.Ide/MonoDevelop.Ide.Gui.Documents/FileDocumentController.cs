@@ -25,6 +25,7 @@
 // THE SOFTWARE.
 
 using System;
+using MonoDevelop.Components;
 using System.IO;
 using System.Threading.Tasks;
 using MonoDevelop.Core;
@@ -189,10 +190,10 @@ namespace MonoDevelop.Ide.Gui.Documents
 					DocumentIcon = desktopService.GetIconForFile (FilePath);
 				} catch (Exception ex) {
 					LoggingService.LogError ("Icon retrieval failed", ex);
-					DocumentIcon = desktopService.GetIconForType ("gnome-fs-regular", Gtk.IconSize.Menu);
+					DocumentIcon = desktopService.GetIconForType ("gnome-fs-regular", StockIconSize.Menu);
 				}
 			} else
-				DocumentIcon = desktopService.GetIconForType ("gnome-fs-regular", Gtk.IconSize.Menu);
+				DocumentIcon = desktopService.GetIconForType ("gnome-fs-regular", StockIconSize.Menu);
 		}
 
 		public async Task SaveAs (FilePath filePath, Encoding encoding)

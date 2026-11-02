@@ -355,8 +355,9 @@ namespace MonoDevelop.Ide.Desktop
 
 		public virtual Xwt.Rectangle GetUsableMonitorGeometry (int screenNumber, int monitorNumber)
 		{
-			var screen = Gdk.Display.Default.GetScreen (screenNumber);
-			var rect = screen.GetMonitorGeometry (monitorNumber);
+			// GTK 4 has no screens: screenNumber is ignored, monitors come from the default display.
+			var monitor = (Gdk.Monitor) Gdk.Display.Default.Monitors.GetObject ((uint) monitorNumber);
+			var rect = monitor.Geometry;
 
 			return new Xwt.Rectangle {
 				X = rect.X,
@@ -371,13 +372,7 @@ namespace MonoDevelop.Ide.Desktop
 		/// </summary>
 		internal virtual void GrabDesktopFocus (Gtk.Window window)
 		{
-			if (Platform.IsWindows && window.IsRealized) {
-				/* On Windows calling Present() will break out of window edge snapping mode. */
-				window.GdkWindow.Focus (0);
-				window.GdkWindow.Raise ();
-			} else {
-				window.Present ();
-			}
+			window.Present ();
 		}
 
 		internal virtual void RemoveWindowShadow (Gtk.Window window)
@@ -391,7 +386,7 @@ namespace MonoDevelop.Ide.Desktop
 		public virtual Window GetParentForModalWindow ()
 		{
 			foreach (var w in Gtk.Window.ListToplevels ())
-				if (w.Visible && w.HasToplevelFocus && w.Modal)
+				if (w.Visible && w.IsActive && w.Modal)
 					return w;
 
 			return GetFocusedTopLevelWindow ();
@@ -399,11 +394,9 @@ namespace MonoDevelop.Ide.Desktop
 
 		public virtual Window GetFocusedTopLevelWindow ()
 		{
+			// GTK 4 has no window type hints, popups are popovers and not toplevels
 			// use the first "normal" toplevel window (skipping docks, popups, etc.) or the main IDE window
-			Window gtkToplevel = Gtk.Window.ListToplevels ().FirstOrDefault (w => w.Visible && w.HasToplevelFocus &&
-																(w.TypeHint == Gdk.WindowTypeHint.Dialog ||
-																 w.TypeHint == Gdk.WindowTypeHint.Normal ||
-																 w.TypeHint == Gdk.WindowTypeHint.Utility));
+			Window gtkToplevel = Gtk.Window.ListToplevels ().FirstOrDefault (w => w.Visible && w.IsActive);
 			return gtkToplevel ?? IdeApp.Workbench.RootWindow;
 		}
 
@@ -422,12 +415,14 @@ namespace MonoDevelop.Ide.Desktop
 #endif
 		}
 
-		internal virtual void AttachMainToolbar (Gtk.VBox parent, IMainToolbarView toolbar)
+		internal virtual void AttachMainToolbar (Gtk.Box parent, IMainToolbarView toolbar)
 		{
 #if !MAC
-			var toolbarBox = new Gtk.HBox ();
-			parent.PackStart (toolbarBox, false, false, 0);
-			toolbarBox.PackStart ((MainToolbar)toolbar, true, true, 0);
+			var toolbarBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+			var mainToolbar = (MainToolbar)toolbar;
+			mainToolbar.Hexpand = true;
+			toolbarBox.Append (mainToolbar);
+			parent.Append (toolbarBox);
 #endif
 		}
 
@@ -464,8 +459,8 @@ namespace MonoDevelop.Ide.Desktop
 
 		internal virtual void PlaceWindow (Gtk.Window window, int x, int y, int width, int height)
 		{
-			window.Move (x, y);
-			window.Resize (width, height);
+			// GTK 4 has no window positioning: only the size can be applied
+			window.SetDefaultSize (width, height);
 		}
 
 		/// <summary>

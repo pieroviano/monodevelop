@@ -71,7 +71,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 
-	partial class LoadSavePanelWidget : Gtk.Bin
+	partial class LoadSavePanelWidget : MonoDevelop.Components.BinWidget
 	{
 		public LoadSavePanelWidget ()
 		{
@@ -92,8 +92,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		{
 			folderEntry.EntryAccessible.SetCommonAttributes ("LoadSavePanel.folderEntry", "",
 			                                                 GettextCatalog.GetString ("Enter the default path for the solution"));
-			folderEntry.EntryAccessible.SetTitleUIElement (locationLabel.Accessible);
-			locationLabel.Accessible.SetTitleFor (folderEntry.EntryAccessible);
+			GtkAccessibleHelper.SetRelation (folderEntry.EntryAccessible, Gtk.AccessibleRelation.LabelledBy, locationLabel);
 
 			loadUserDataCheckButton.SetCommonAccessibilityAttributes ("LoadSavePanel.loadUserData", "",
 			                                                          GettextCatalog.GetString ("Check to load the user specific settings with the solution"));

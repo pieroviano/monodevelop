@@ -109,7 +109,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			win.ShowViewerSelector = ShowViewerSelector;
 			bool pathAlreadySet = false;
 			win.CurrentFolderChanged += (s, e) => {
-				var selectedPath = data.OnDirectoryChanged (this, win.CurrentFolder);
+				var selectedPath = data.OnDirectoryChanged (this, win.CurrentFolderPath);
 				if (selectedPath.IsNull)
 					return;
 				data.SelectedFiles = new FilePath [] { selectedPath };

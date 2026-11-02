@@ -69,24 +69,24 @@ namespace MonoDevelop.Ide
 
 	public class AlertButton 
 	{
-		public static AlertButton Ok      = new AlertButton (Gtk.Stock.Ok, true);
-		public static AlertButton Yes     = new AlertButton (Gtk.Stock.Yes, true);
-		public static AlertButton No      = new AlertButton (Gtk.Stock.No, true);
-		public static AlertButton Close   = new AlertButton (Gtk.Stock.Close, true);
-		public static AlertButton Cancel  = new AlertButton (Gtk.Stock.Cancel, true);
-		public static AlertButton Delete  = new AlertButton (Gtk.Stock.Delete, true);
-		public static AlertButton Remove  = new AlertButton (Gtk.Stock.Remove, true);
-		public static AlertButton Clear   = new AlertButton (Gtk.Stock.Clear, true);
-		public static AlertButton Reload  = new AlertButton (GettextCatalog.GetString ("_Reload"), Gtk.Stock.Refresh);
-		public static AlertButton Revert  = new AlertButton (Gtk.Stock.RevertToSaved, true );
-		public static AlertButton Copy    = new AlertButton (Gtk.Stock.Copy, true);
+		public static AlertButton Ok      = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Ok, true);
+		public static AlertButton Yes     = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Yes, true);
+		public static AlertButton No      = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.No, true);
+		public static AlertButton Close   = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Close, true);
+		public static AlertButton Cancel  = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Cancel, true);
+		public static AlertButton Delete  = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Delete, true);
+		public static AlertButton Remove  = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Remove, true);
+		public static AlertButton Clear   = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Clear, true);
+		public static AlertButton Reload  = new AlertButton (GettextCatalog.GetString ("_Reload"), MonoDevelop.Ide.Gui.GtkStock.Refresh);
+		public static AlertButton Revert  = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.RevertToSaved, true );
+		public static AlertButton Copy    = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Copy, true);
 		public static AlertButton Move    = new AlertButton (GettextCatalog.GetString ("_Move"));
-		public static AlertButton Save    = new AlertButton (Gtk.Stock.Save, true);
-		public static AlertButton SaveAs  = new AlertButton (Gtk.Stock.SaveAs, true);
+		public static AlertButton Save    = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Save, true);
+		public static AlertButton SaveAs  = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.SaveAs, true);
 		public static AlertButton CloseWithoutSave = new AlertButton (GettextCatalog.GetString ("Close _without Saving"));
 		public static AlertButton BuildWithoutSave = new AlertButton (GettextCatalog.GetString ("Build _without Saving"));
 		public static AlertButton Discard = new AlertButton (GettextCatalog.GetString ("D_iscard"));
-		public static AlertButton Stop    = new AlertButton (Gtk.Stock.Stop, true);
+		public static AlertButton Stop    = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Stop, true);
 		public static AlertButton Proceed = new AlertButton (GettextCatalog.GetString ("_Proceed"));
 		public static AlertButton Replace = new AlertButton (GettextCatalog.GetString ("_Replace"));
 
@@ -481,37 +481,25 @@ namespace MonoDevelop.Ide
 			}
 #endif
 			if (gtkChild != null) {
-				gtkChild.Show ();
-				int x, y;
-				gtkChild.GetSize (out var w, out var h);
-				if (gtkParent != null) {
-					gtkParent.GetSize (out var winw, out var winh);
-					gtkParent.GetPosition (out var winx, out var winy);
-					x = Math.Max (0, (winw - w) / 2) + winx;
-					y = Math.Max (0, (winh - h) / 2) + winy;
-					gtkChild.Move (x, y);
+				// GTK 4 can not position windows: transient windows are centered on their parent by the window manager,
+				// so only the native Mac windows are placed here.
+				gtkChild.Visible = true;
 #if MAC
-				} else if (nsParent != null) {
+				int x, y;
+				int w = gtkChild.Width, h = gtkChild.Height;
+				if (gtkParent == null && nsParent != null) {
 					x = (int) (nsParent.Frame.Left + (nsParent.Frame.Width - w) / 2);
 					y = (int) (nsParent.Frame.Top + (nsParent.Frame.Height - h) / 2);
 					nsChild = GtkMacInterop.GetNSWindow (gtkChild);
-					if (nsChild != null) {
+					if (nsChild != null)
 						nsChild.SetFrameOrigin (new CoreGraphics.CGPoint (x, y));
-					} else {
-						gtkChild.Move (x, y);
-					}
-#endif
-				} else {
-#if MAC
+				} else if (gtkParent == null) {
 					// There is no parent, so just center the dialog
 					nsChild = GtkMacInterop.GetNSWindow (gtkChild);
-					if (nsChild != null) {
+					if (nsChild != null)
 						nsChild.Center ();
-					}
-#else
-					gtkChild.SetPosition (Gtk.WindowPosition.Center);
-#endif
 				}
+#endif
 			}
 		}
 		

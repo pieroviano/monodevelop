@@ -260,7 +260,7 @@ namespace MonoDevelop.Ide
 			return PlatformService.GetIconForFile (filename);
 		}
 
-		public Xwt.Drawing.Image GetIconForFile (string filename, Gtk.IconSize size)
+		public Xwt.Drawing.Image GetIconForFile (string filename, StockIconSize size)
 		{
 			return PlatformService.GetIconForFile (filename).WithSize (size);
 		}
@@ -270,7 +270,7 @@ namespace MonoDevelop.Ide
 			return PlatformService.GetIconForType (mimeType);
 		}
 
-		public Xwt.Drawing.Image GetIconForType (string mimeType, Gtk.IconSize size)
+		public Xwt.Drawing.Image GetIconForType (string mimeType, StockIconSize size)
 		{
 			return PlatformService.GetIconForType (mimeType).WithSize (size);
 		}
@@ -401,7 +401,7 @@ namespace MonoDevelop.Ide
 			return new MainToolbarController (PlatformService.CreateMainToolbar (window));
 		}
 
-		internal void AttachMainToolbar (Gtk.VBox parent, MainToolbarController toolbar)
+		internal void AttachMainToolbar (Gtk.Box parent, MainToolbarController toolbar)
 		{
 			PlatformService.AttachMainToolbar (parent, toolbar.ToolbarView);
 			toolbar.Initialize ();

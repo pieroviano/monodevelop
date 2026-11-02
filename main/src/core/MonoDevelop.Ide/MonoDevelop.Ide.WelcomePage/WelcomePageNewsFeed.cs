@@ -44,15 +44,15 @@ namespace MonoDevelop.Ide.WelcomePage
 		string id;
 		int limit;
 		bool destroyed;
-		Gtk.VBox box;
+		Gtk.Box box;
 		
 		public WelcomePageNewsFeed (string title, string newsUrl, string id, int limit = 5, int spacing = Styles.WelcomeScreen.Pad.News.Item.MarginBottom): base (title)
 		{
-			Accessible.Name = "WelcomePage.NewsFeed";
-			Accessible.Description = "A list of new items";
+			Name = "WelcomePage.NewsFeed";
+			this.SetCommonAttributes (null, null, "A list of new items");
 
-			box = new VBox (false, spacing);
-			box.Accessible.SetShouldIgnore (true);
+			box = new Gtk.Box (Gtk.Orientation.Vertical, spacing);
+			box.SetShouldIgnore (true);
 
 			if (string.IsNullOrEmpty (newsUrl))
 				throw new Exception ("News feed is missing src attribute");
@@ -66,14 +66,14 @@ namespace MonoDevelop.Ide.WelcomePage
 			UpdateNews ();
 			LoadNews ();
 			SetContent (box);
-			ContentAlignment.TopPadding += 10;
+			ContentBox.MarginTop += 10;
 			WidthRequest = Styles.WelcomeScreen.Pad.News.Width;
 		}
 		
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			destroyed = true;
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
 		protected virtual IEnumerable<Gtk.Widget> OnLoadNews (XElement news)
@@ -85,9 +85,10 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 		}
 
-		protected virtual void AddNewsItem (VBox box, Gtk.Widget newsItem)
+		protected virtual void AddNewsItem (Gtk.Box box, Gtk.Widget newsItem)
 		{
-			box.PackStart (newsItem, true, false, 0);
+			newsItem.Vexpand = true;
+			box.Append (newsItem);
 
 			SetTitledWidget (newsItem);
 		}
@@ -98,7 +99,7 @@ namespace MonoDevelop.Ide.WelcomePage
 			if (destroyed)
 				return;
 
-			foreach (var c in box.Children) {
+			foreach (var c in box.GetChildren ().ToList ()) {
 				RemoveAccessibiltyTitledWidget (c);
 				box.Remove (c);
 				c.Destroy ();
@@ -107,27 +108,29 @@ namespace MonoDevelop.Ide.WelcomePage
 			try {
 				var news = GetNewsXml ();
 				if (news.FirstNode == null) {
-					var label = new Label (GettextCatalog.GetString ("No news found.")) { Xalign = 0, Xpad = 6 };
-					label.Accessible.Name = "WelcomePage.NewsFeed.NoNews";
+					var label = new Label (GettextCatalog.GetString ("No news found.")) { Xalign = 0, MarginStart = 6 };
+					label.Name = "WelcomePage.NewsFeed.NoNews";
 
-					box.PackStart (label, true, false, 0);
+					label.Vexpand = true;
+					box.Append (label);
 				} else {
 					int idx = 1;
 					foreach (var child in OnLoadNews (news).Take (limit)) {
-						child.Accessible.Name = string.Format ("WelcomePage.NewsFeed.NewsItem-{0}", idx);
+						child.Name = string.Format ("WelcomePage.NewsFeed.NewsItem-{0}", idx);
 						AddNewsItem (box, child);
 						idx++;
 					}
 				}
 
 				var spacerLabel = new Label ();
-				spacerLabel.Accessible.SetShouldIgnore (true);
-				box.PackStart (spacerLabel, true, false, 4);
+				spacerLabel.SetShouldIgnore (true);
+				spacerLabel.Vexpand = true;
+				spacerLabel.MarginTop = 4;
+				box.Append (spacerLabel);
 
 			} catch (Exception ex) {
 				LoggingService.LogWarning ("Error loading news feed.", ex);
 			}
-			this.ShowAll ();
 		}
 		
 		void UpdateNews ()
@@ -190,7 +193,7 @@ namespace MonoDevelop.Ide.WelcomePage
 					}
 
 					LoggingService.LogInfo ("Welcome Page updated.");
-					Application.Invoke ((o, args) => { LoadNews (); });
+					Runtime.RunInMainThread (() => LoadNews ());
 				} finally {
 					lock (updateLock)
 						isUpdating = false;

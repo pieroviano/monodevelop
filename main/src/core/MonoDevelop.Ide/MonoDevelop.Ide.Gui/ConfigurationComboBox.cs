@@ -40,7 +40,6 @@ namespace MonoDevelop.Ide.Gui
 {
 	internal class ConfigurationComboBox: CustomItem
 	{
-		Gtk.Alignment align;
 		DropDownBox combo;
 		DropDownBox.ComboItemSet configs = new DropDownBox.ComboItemSet ();
 		DropDownBox.ComboItemSet runtimes = new DropDownBox.ComboItemSet ();
@@ -49,18 +48,15 @@ namespace MonoDevelop.Ide.Gui
 		
 		public ConfigurationComboBox () 
 		{
-			align = new Gtk.Alignment (0.5f, 0.5f, 1.0f, 0f);
-			Add (align);
-			
-			align.LeftPadding = 3;
-			align.RightPadding = 3;
-			
 			combo = new DropDownBox ();
 			combo.AddItemSet (configs);
 			combo.AddItemSet (runtimes);
 			
-			align.Add (combo);
-			ShowAll ();
+			combo.Hexpand = true;
+			combo.Valign = Gtk.Align.Center;
+			combo.MarginStart = 3;
+			combo.MarginEnd = 3;
+			Append (combo);
 			
 			Combo.Changed += OnChanged;
 			IdeApp.Workspace.ConfigurationsChanged += OnConfigurationsChanged;
@@ -76,18 +72,15 @@ namespace MonoDevelop.Ide.Gui
 		
 		Pango.FontDescription fd;
 		
-		public override void SetToolbarStyle (Gtk.Toolbar toolbar)
+		public override void SetToolbarStyle (Gtk.Widget toolbar)
 		{
-			if (Style != null) {
-				if (fd != null) {
-					fd.Dispose ();
-					fd = null;
-				}
-				if (toolbar.IconSize == Gtk.IconSize.Menu || toolbar.IconSize == Gtk.IconSize.SmallToolbar) {
-					fd = IdeServices.FontService.SansFont.CopyModified (Styles.FontScale11);
-				}
-				combo.ModifyLabelFont (fd);
+			if (fd != null) {
+				fd.Dispose ();
+				fd = null;
 			}
+			// the main toolbar uses small icons, so it uses the small font
+			fd = IdeServices.FontService.SansFont.CopyModified (Styles.FontScale11);
+			combo.ModifyLabelFont (fd);
 		}
 		
 		void Reset ()
@@ -131,7 +124,6 @@ namespace MonoDevelop.Ide.Gui
 			}
 			
 			UpdateLabel ();
-			Combo.ShowAll ();
 			
 			if (configs.CurrentItem == null && configs.Count > 0)
 				IdeApp.Workspace.ActiveConfigurationId = (string) configs [0].Item;
@@ -226,6 +218,7 @@ namespace MonoDevelop.Ide.Gui
 	{
 		Gtk.Label label;
 		List<ComboItemSet> items = new List<ComboItemSet> ();
+		Gtk.Popover popover;
 		
 		public event EventHandler<ChangedEventArgs> Changed;
 		
@@ -258,23 +251,40 @@ namespace MonoDevelop.Ide.Gui
 		
 		public DropDownBox ()
 		{
-			Gtk.HBox hbox = new Gtk.HBox ();
+			var hbox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
 			
 			label = new Gtk.Label ();
 			label.Xalign = 0;
 			label.WidthRequest = 125;
+			label.Hexpand = true;
+			label.MarginStart = 3;
+			label.MarginEnd = 3;
 			label.Ellipsize = Pango.EllipsizeMode.End;
 			
-			hbox.PackStart (label, true, true, 3);
+			hbox.Append (label);
 			
-			hbox.PackEnd (new Gtk.Arrow (Gtk.ArrowType.Down, Gtk.ShadowType.None), false, false, 1);
-			hbox.PackEnd (new Gtk.VSeparator (), false, false, 1);
+			var separator = new Gtk.Separator (Gtk.Orientation.Vertical);
+			separator.MarginStart = 1;
+			separator.MarginEnd = 1;
+			hbox.Append (separator);
+			var arrow = Gtk.Image.NewFromIconName ("pan-down-symbolic");
+			arrow.MarginStart = 1;
+			arrow.MarginEnd = 1;
+			hbox.Append (arrow);
 			Child = hbox;
+
+			Clicked += (o, args) => ShowMenu ();
 		}
 		
 		public void ModifyLabelFont (Pango.FontDescription font)
 		{
-			label.ModifyFont (font);
+			if (font == null) {
+				label.Attributes = null;
+				return;
+			}
+			var attributes = new Pango.AttrList ();
+			attributes.Insert (new Pango.AttrFontDesc (font));
+			label.Attributes = attributes;
 		}
 		
 		public string ActiveText {
@@ -307,55 +317,61 @@ namespace MonoDevelop.Ide.Gui
 			}
 		}
 
-		protected override void OnPressed ()
+		void ShowMenu ()
 		{
-			base.OnPressed ();
-			Gtk.Menu menu = new Gtk.Menu ();
+			// The item sets are shown as groups of radio items separated by lines, in a popover below the button
+			var menuBox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			bool first = true;
 			foreach (ComboItemSet iset in items) {
 				if (iset.Count == 0)
 					continue;
 				
-				if (menu.Children.Length > 0) {
-					Gtk.SeparatorMenuItem sep = new Gtk.SeparatorMenuItem ();
-					sep.Show ();
-					menu.Insert (sep, -1);
-				}
+				if (!first)
+					menuBox.Append (new Gtk.Separator (Gtk.Orientation.Horizontal));
+				first = false;
 				
-				Gtk.RadioMenuItem grp = new Gtk.RadioMenuItem ("");
+				Gtk.CheckButton grp = null;
 				foreach (ComboItem ci in iset) {
-					Gtk.RadioMenuItem mi = new Gtk.RadioMenuItem (grp, ci.Label.Replace ("_","__"));
+					var mi = new Gtk.CheckButton ();
+					mi.Label = ci.Label;
+					if (grp == null)
+						grp = mi;
+					else
+						mi.Group = grp;
 					if (ci.Item == iset.CurrentItem || ci.Item.Equals (iset.CurrentItem))
 						mi.Active = true;
 					
 					ComboItemSet isetLocal = iset;
 					ComboItem ciLocal = ci;
-					mi.Activated += delegate {
+					mi.Toggled += delegate {
+						if (!mi.Active)
+							return;
+						popover?.Popdown ();
 						SelectItem (isetLocal, ciLocal);
 					};
-					mi.ShowAll ();
-					menu.Insert (mi, -1);
+					menuBox.Append (mi);
 				}
 			}
-			menu.Popup (null, null, PositionFunc, 0, Gtk.Global.CurrentEventTime);
+
+			if (popover == null) {
+				popover = new Gtk.Popover ();
+				popover.HasArrow = false;
+				popover.Position = Gtk.PositionType.Bottom;
+				popover.Parent = this;
+			}
+			popover.Child = menuBox;
+			// let the list be at least as wide as the button
+			menuBox.WidthRequest = Width;
+			popover.Popup ();
 		}
 
-		void PositionFunc (Gtk.Menu mn, out int x, out int y, out bool push_in)
+		protected override void Dispose (bool disposing)
 		{
-			this.GdkWindow.GetOrigin (out x, out y);
-			Gdk.Rectangle rect = this.Allocation;
-			x += rect.X;
-			y += rect.Y + rect.Height;
-			
-			//if the menu would be off the bottom of the screen, "drop" it upwards
-			if (y + mn.Requisition.Height > this.Screen.Height) {
-				y -= mn.Requisition.Height;
-				y -= rect.Height;
+			if (disposing && popover != null) {
+				popover.Unparent ();
+				popover = null;
 			}
-			if (mn.SizeRequest ().Width < rect.Width)
-				mn.WidthRequest = rect.Width;
-			
-			//let GTK reposition the button if it still doesn't fit on the screen
-			push_in = true;
+			base.Dispose (disposing);
 		}
 	}
 	

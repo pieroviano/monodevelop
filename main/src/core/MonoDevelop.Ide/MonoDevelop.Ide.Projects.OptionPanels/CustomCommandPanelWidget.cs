@@ -34,7 +34,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 {
 	[System.ComponentModel.Category("widget")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class CustomCommandPanelWidget : Gtk.Bin
+	internal partial class CustomCommandPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		CustomCommandCollection commands;
 		CustomCommandWidget lastSlot;
@@ -59,7 +59,8 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			this.supportedTypes = supportedTypes;
 			
 			// Clean the list
-			foreach (CustomCommandWidget ccw in vboxCommands.Children) {
+			for (var child = vboxCommands.FirstChild; child != null; child = vboxCommands.FirstChild) {
+				var ccw = (CustomCommandWidget) child;
 				ccw.CommandCreated -= OnCommandCreated;
 				ccw.CommandRemoved -= OnCommandRemoved;
 				vboxCommands.Remove (ccw);
@@ -77,10 +78,9 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		void AddCommandSlot (CustomCommand cmd)
 		{
 			CustomCommandWidget widget = new CustomCommandWidget (entry, cmd, configSelector, supportedTypes);
-			vboxCommands.PackStart (widget, false, false, 0);
+			vboxCommands.Append (widget);
 			widget.CommandCreated += OnCommandCreated;
 			widget.CommandRemoved += OnCommandRemoved;
-			widget.Show ();
 			lastSlot = widget;
 		}
 		

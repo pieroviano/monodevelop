@@ -46,7 +46,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			store = new ListStore (typeof(string), typeof(string), typeof(bool), typeof(string));
 			list.Model = store;
 			list.SearchColumn = -1; // disable the interactive search
-			Add (list);
+			Child = list;
 			
 			CellRendererText crt = new CellRendererText ();
 			crt.Editable = true;
@@ -64,7 +64,6 @@ namespace MonoDevelop.Ide.Gui.Components
 			createMsg = GettextCatalog.GetString ("Click here to add a new variable");
 			AppendInserter ();
 			
-			ShowAll ();
 		}
 		
 		public void LoadValues (IDictionary<string, string> values)

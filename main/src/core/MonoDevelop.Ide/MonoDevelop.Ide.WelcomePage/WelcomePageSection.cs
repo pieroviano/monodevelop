@@ -32,16 +32,15 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageSection: EventBox
+	public class WelcomePageSection: BinWidget
 	{
 		string title;
 
 		static string headerFormat;
 
 		Label label;
-		Alignment root = new Alignment (0, 0, 1f, 1f);
-		protected Gtk.Alignment ContentAlignment { get; private set; }
-		protected Gtk.Alignment TitleAlignment { get; private set; }
+		protected Gtk.Box ContentBox { get; private set; }
+		protected Gtk.Box TitleBox { get; private set; }
 
 		static WelcomePageSection ()
 		{
@@ -58,29 +57,42 @@ namespace MonoDevelop.Ide.WelcomePage
 		public WelcomePageSection (string title = null)
 		{
 			if (!string.IsNullOrEmpty (title)) {
-				Accessible.SetTitle (title);
+				this.SetTitle (title);
 			}
 
 			this.title = title;
-			VisibleWindow = false;
-			root.Accessible.SetShouldIgnore (true);
-			Add (root);
 
-			root.Show ();
+			short p = (short) (Styles.WelcomeScreen.Pad.ShadowSize * 2);
+			Padding = new Gtk.Border { Left = p, Right = p, Top = p, Bottom = p };
 
-			uint p = Styles.WelcomeScreen.Pad.ShadowSize * 2;
-			root.SetPadding (p, p, p, p);
-
-			TitleAlignment = new Alignment (0f, 0f, 1f, 1f);
-			TitleAlignment.Accessible.SetShouldIgnore (true);
 			p = Styles.WelcomeScreen.Pad.Padding;
-			TitleAlignment.SetPadding (p, Styles.WelcomeScreen.Pad.LargeTitleMarginBottom, p, p);
+			TitleBox = new Gtk.Box (Gtk.Orientation.Vertical, 0) {
+				MarginTop = p,
+				MarginBottom = Styles.WelcomeScreen.Pad.LargeTitleMarginBottom,
+				MarginStart = p,
+				MarginEnd = p,
+			};
+			TitleBox.SetShouldIgnore (true);
 
-			ContentAlignment = new Alignment (0f, 0f, 1f, 1f);
-			ContentAlignment.SetPadding (0, p, p, p);
-			ContentAlignment.Accessible.SetShouldIgnore (true);
+			ContentBox = new Gtk.Box (Gtk.Orientation.Vertical, 0) {
+				MarginBottom = p,
+				MarginStart = p,
+				MarginEnd = p,
+			};
+			ContentBox.SetShouldIgnore (true);
+		}
 
+		protected override void OnRoot ()
+		{
+			base.OnRoot ();
+			Gui.Styles.Changed -= UpdateStyle;
 			Gui.Styles.Changed += UpdateStyle;
+		}
+
+		protected override void OnUnroot ()
+		{
+			Gui.Styles.Changed -= UpdateStyle;
+			base.OnUnroot ();
 		}
 
 		void UpdateStyle (object sender, EventArgs args)
@@ -92,29 +104,29 @@ namespace MonoDevelop.Ide.WelcomePage
 
 		public void SetContent (Gtk.Widget w)
 		{
-			ContentAlignment.Add (w);
+			ContentBox.Append (w);
 
 			if (string.IsNullOrEmpty (title)) {
-				ContentAlignment.TopPadding = Styles.WelcomeScreen.Pad.Padding;
-				root.Add (ContentAlignment);
+				ContentBox.MarginTop = Styles.WelcomeScreen.Pad.Padding;
+				Child = ContentBox;
 				return;
 			}
 
-			var box = new VBox ();
-			box.Accessible.SetShouldIgnore (true);
+			var box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			box.SetShouldIgnore (true);
 
-			label = new Label () { Markup = string.Format (headerFormat, title), Xalign = (uint) 0 };
-			TitleAlignment.Add (label);
-			box.PackStart (TitleAlignment, false, false, 0);
-			box.PackStart (ContentAlignment, false, false, 0);
-			root.Add (box);
+			label = new Label () { Markup = string.Format (headerFormat, title), Xalign = 0 };
+			TitleBox.Append (label);
+			box.Append (TitleBox);
+			box.Append (ContentBox);
+			Child = box;
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			using (var ctx = Gdk.CairoHelper.Create (evnt.Window)) {
+			snapshot.DrawCairo (this, ctx => {
 				ctx.LineWidth = 1;
-				var rect = new Gdk.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
+				var rect = new Gdk.Rectangle (0, 0, Width, Height);
 
 				var shadowColor = CairoExtensions.ParseColor (Styles.WelcomeScreen.Pad.ShadowColor);
 				int inset = 2;
@@ -138,10 +150,9 @@ namespace MonoDevelop.Ide.WelcomePage
 				ctx.FillPreserve ();
 				ctx.SetSourceColor (CairoExtensions.ParseColor (Styles.WelcomeScreen.Pad.BorderColor));
 				ctx.Stroke ();
-			}
+			});
 
-			PropagateExpose (Child, evnt);
-			return true;
+			base.OnSnapshot (snapshot);
 		}
 
 		public static string FormatText (string fontFace, int fontSize, Pango.Weight weight, string color, string text)
@@ -198,8 +209,8 @@ namespace MonoDevelop.Ide.WelcomePage
 				return;
 			}
 
-			widget.Accessible.SetTitleUIElement (label.Accessible);
-			label.Accessible.AddElementToTitle (widget.Accessible);
+			widget.SetTitleUIElement (label);
+			label.AddElementToTitle (widget);
 		}
 
 		protected void RemoveAccessibiltyTitledWidget (Widget widget)
@@ -208,8 +219,7 @@ namespace MonoDevelop.Ide.WelcomePage
 				return;
 			}
 
-			label.Accessible.RemoveElementFromTitle (widget.Accessible);
+			label.RemoveElementFromTitle (widget);
 		}
 	}
 }
-

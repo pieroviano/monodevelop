@@ -38,7 +38,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 {
 	[System.ComponentModel.Category("widget")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class CustomCommandWidget : Gtk.Bin
+	internal partial class CustomCommandWidget : MonoDevelop.Components.BinWidget
 	{
 		CustomCommand cmd;
 		WorkspaceObject entry;
@@ -83,7 +83,6 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			
 			this.entry = entry;
 			UpdateControls ();
-			this.WidgetFlags |= Gtk.WidgetFlags.NoShowAll;
 			
 			StringTagModelDescription tagModel;
 			if (entry is SolutionFolderItem)
@@ -95,13 +94,13 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 			tagSelectorDirectory.TagModel = tagModel;
 			tagSelectorDirectory.TargetEntry = workingdirEntry;
-			tagSelectorDirectory.Accessible.SetCommonAttributes ("CustomCommand.TagSelectorDirectory",
+			tagSelectorDirectory.SetCommonAttributes ("CustomCommand.TagSelectorDirectory",
 																 GettextCatalog.GetString ("Tag Selector"),
 																 GettextCatalog.GetString ("Insert a custom tag into the directory entry"));
 			
 			tagSelectorCommand.TagModel = tagModel;
 			tagSelectorCommand.TargetEntry = entryCommand;
-			tagSelectorCommand.Accessible.SetCommonAttributes ("CustomCommand.TagSelector",
+			tagSelectorCommand.SetCommonAttributes ("CustomCommand.TagSelector",
                                                                GettextCatalog.GetString ("Tag Selector"),
 	                                                           GettextCatalog.GetString ("Insert a custom tag into the command entry"));
 
@@ -157,7 +156,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			var dlg = new SelectFileDialog (GettextCatalog.GetString ("Select File")) {
 				CurrentFolder = entry.BaseDirectory,
 				SelectMultiple = false,
-				TransientFor = this.Toplevel as Gtk.Window,
+				TransientFor = Root as Gtk.Window,
 			};
 			if (!dlg.Run ())
 				return;
@@ -190,7 +189,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 						cmd = new CustomCommand ();
 						cmd.Type = supportedTypes [comboType.Active - 1];
 						updating = true;
-						comboType.RemoveText (0);
+						comboType.Remove (0);
 						updating = false;
 						if (CommandCreated != null)
 							CommandCreated (this, EventArgs.Empty);

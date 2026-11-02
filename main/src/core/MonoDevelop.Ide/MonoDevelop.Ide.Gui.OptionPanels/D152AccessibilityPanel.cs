@@ -53,58 +53,55 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 
-	class D152AccessibilityPanelWidget : VBox
+	class D152AccessibilityPanelWidget : Gtk.Box
 	{
 		bool originalSetting;
 		CheckButton enabled;
 
-		HSeparator separatorRestart;
-		Table tableRestart;
+		Separator separatorRestart;
+		Grid tableRestart;
 		Button btnRestart;
 		ImageView imageRestart;
 		Label labelRestart;
 
 		static string EnabledKey = "com.monodevelop.AccessibilityEnabled";
 
-		public D152AccessibilityPanelWidget () : base (false, 6)
+		public D152AccessibilityPanelWidget () : base (Orientation.Vertical, 6)
 		{
 			NSUserDefaults defaults = NSUserDefaults.StandardUserDefaults;
 
-			enabled = new CheckButton (GettextCatalog.GetString ("Enable Accessibility"));
+			enabled = new CheckButton { Label = GettextCatalog.GetString ("Enable Accessibility") };
 			enabled.Active = originalSetting = defaults.BoolForKey (EnabledKey);
 			enabled.Visible = true;
 
 			enabled.Toggled += ShowQuitOption;
-			PackStart (enabled, false, false, 0);
+			Append (enabled);
 
-			separatorRestart = new HSeparator ();
-			PackStart (this.separatorRestart, false, false, 0);
+			separatorRestart = new Separator (Orientation.Horizontal);
+			Append (this.separatorRestart);
 
-			tableRestart = new Table (2, 3, false);
-			tableRestart.RowSpacing = 6;
-			tableRestart.ColumnSpacing = 6;
+			tableRestart = DesignerLayout.Grid (6, 6);
 
 			btnRestart = new Button ();
 			btnRestart.CanFocus = true;
 			btnRestart.UseUnderline = true;
 			btnRestart.Clicked += RestartClicked;
 
-			tableRestart.Attach (btnRestart, 1, 2, 1, 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			tableRestart.Attach (btnRestart, 1, 1, 1, 1);
 
 			imageRestart = new global::MonoDevelop.Components.ImageView ();
 			imageRestart.IconId = "md-information";
-			imageRestart.IconSize = ((global::Gtk.IconSize)(1));
+			imageRestart.IconSize = StockIconSize.Menu;
 
-			tableRestart.Attach (imageRestart, 0, 1, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			tableRestart.Attach (imageRestart, 0, 0, 1, 1);
 			labelRestart = new global::Gtk.Label ();
-			tableRestart.Attach (labelRestart, 1, 3, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			tableRestart.Attach (labelRestart, 1, 0, 2, 1);
 
-			PackStart (tableRestart, false, false, 0);
+			Append (tableRestart);
 
 			labelRestart.LabelProp = GettextCatalog.GetString ("These preferences will take effect next time you start {0}", BrandingService.ApplicationName);
 			btnRestart.Label = GettextCatalog.GetString ("Restart {0}", BrandingService.ApplicationName);
 
-			Visible = true;
 		}
 
 		public void Save ()
@@ -117,11 +114,11 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		void ShowQuitOption (object sender, EventArgs args)
 		{
 			if (enabled.Active != originalSetting) {
-				tableRestart.ShowAll ();
-				separatorRestart.Show ();
+				tableRestart.Visible = true;
+				separatorRestart.Visible = true;
 			} else {
-				tableRestart.Hide ();
-				separatorRestart.Hide ();
+				tableRestart.Visible = false;
+				separatorRestart.Visible = false;
 			}
 		}
 

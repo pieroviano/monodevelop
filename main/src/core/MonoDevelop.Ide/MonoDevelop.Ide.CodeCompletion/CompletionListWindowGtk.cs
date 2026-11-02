@@ -53,9 +53,11 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		ListWidget list;
 		Widget footer;
-		VBox vbox;
+		Gtk.Box vbox;
 
-		ScrolledWindow scrollbar;
+		Gtk.Scrollbar scrollbar;
+		Gtk.Box scrollBox;
+		Gtk.EventControllerScroll scrollController;
 
 		public bool InCategoryMode {
 			get => list.InCategoryMode;
@@ -65,21 +67,30 @@ namespace MonoDevelop.Ide.CodeCompletion
 		public int X { get; private set; }
 		public int Y { get; private set; }
 
-		public CompletionListWindowGtk (WindowType type = WindowType.Popup) : base (type)
-		{
-			vbox = new VBox ();
-			list = new ListWidget (this);
-			list.ScrollEvent += OnScrolled;
+		/// <summary>
+		/// Window the popover is anchored to. GTK 4 has no global coordinates: trigger positions passed to
+		/// <see cref="Reposition(int,int,int,bool)"/> are relative to this window (the IDE main window when null).
+		/// </summary>
+		public Gtk.Window TransientFor { get; set; }
 
-			scrollbar = new MonoDevelop.Components.CompactScrolledWindow ();
-			scrollbar.Name = "CompletionScrolledWindow"; // use a different gtkrc style for GtkScrollBar
-			scrollbar.Child = list;
-			list.ButtonPressEvent += OnButtonPressed;
-			vbox.PackEnd (scrollbar, true, true, 0);
-			var colorBox = new EventBox ();
-			colorBox.Add (vbox);
-			ContentBox.Add (colorBox);
-			this.TypeHint = Gdk.WindowTypeHint.Menu;
+		public CompletionListWindowGtk ()
+		{
+			ShowArrow = false;
+			vbox = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			list = new ListWidget (this);
+			scrollController = new Gtk.EventControllerScroll (Gtk.EventControllerScrollFlags.Vertical);
+			scrollController.Scroll += OnScrolled;
+			list.AddController (scrollController);
+
+			scrollbar = new Gtk.Scrollbar (Gtk.Orientation.Vertical, list.VAdjustment);
+			scrollbar.Name = "CompletionScrolledWindow"; // use a different CSS style for the scrollbar
+			scrollBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0) { Vexpand = true, Hexpand = true };
+			scrollBox.Append (list);
+			scrollBox.Append (scrollbar);
+			list.VAdjustment.Changed += OnAdjustmentChanged;
+			list.ButtonPressed += OnButtonPressed;
+			vbox.Append (scrollBox);
+			ContentBox.Child = vbox;
 			Theme.CornerRadius = 0;
 			Theme.Padding = 0;
 
@@ -89,11 +100,15 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 			if (IdeApp.Workbench != null)
 				this.TransientFor = IdeApp.Workbench.RootWindow;
-			TypeHint = Gdk.WindowTypeHint.Combo;
-			SizeAllocated += new SizeAllocatedHandler (ListSizeChanged);
-			Events = Gdk.EventMask.PropertyChangeMask;
-			WindowTransparencyDecorator.Attach (this);
+			Hidden += HandleHidden;
 			list.SelectionChanged += OnSelectionChanged;
+		}
+
+		void OnAdjustmentChanged (object sender, EventArgs e)
+		{
+			// the scrolled window used to hide its scrollbar when everything fits
+			var adj = list.VAdjustment;
+			scrollbar.Visible = adj.Upper > adj.PageSize;
 		}
 
 		void HandleThemeChanged (object sender, EventArgs e)
@@ -105,8 +120,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 		{
 			Theme.SetBackgroundColor (Gui.Styles.CodeCompletion.BackgroundColor.ToCairoColor ());
 			Theme.ShadowColor = Gui.Styles.PopoverWindow.ShadowColor.ToCairoColor ();
-			ContentBox.Child.ModifyBg (StateType.Normal, Gui.Styles.CodeCompletion.BackgroundColor.ToGdkColor ());
-			list.ModifyBg (StateType.Normal, Gui.Styles.CodeCompletion.BackgroundColor.ToGdkColor ());
+			list.QueueDraw ();
 		}
 
 		public void Initialize (IListDataProvider provider, ICompletionViewEventSink eventSink)
@@ -133,7 +147,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 		public void ShowFooter (Widget w)
 		{
 			HideFooter ();
-			vbox.PackStart (w, false, false, 0);
+			vbox.Append (w);
 			footer = w;
 		}
 
@@ -146,7 +160,7 @@ namespace MonoDevelop.Ide.CodeCompletion
 		}
 
 		/// <summary>
-		/// This method is used to set the completion window to it's inital state.
+		/// This method is used to set the completion window to its initial state.
 		/// This is required for re-using the window object.
 		/// </summary>
 		protected internal virtual void ResetState ()
@@ -158,20 +172,16 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		public void ResetSizes ()
 		{
-			var allocWidth = Allocation.Width;
+			var allocWidth = Width;
 			if (IsRealized && !Visible) {
 				allocWidth = list.WidthRequest = WindowWidth;
 			}
 
 			int width = Math.Max (allocWidth, list.WidthRequest + Theme.CornerRadius * 2);
-			int height = Math.Max (Allocation.Height, list.HeightRequest + 2 + (footer != null ? footer.Allocation.Height : 0) + Theme.CornerRadius * 2);
+			int height = Math.Max (Height, list.HeightRequest + 2 + (footer != null ? footer.Height : 0) + Theme.CornerRadius * 2);
 			GetSizeRequest (out var currentWidth, out var currentHeight);
-			if (currentWidth != width || currentHeight != height) {
+			if (currentWidth != width || currentHeight != height)
 				SetSizeRequest (width, height);
-				if (IsRealized) {
-					Resize (width, height);
-				}
-			}
 		}
 
 		void ReleaseObjects ()
@@ -182,8 +192,10 @@ namespace MonoDevelop.Ide.CodeCompletion
 		protected override void OnDestroyed ()
 		{
 			list.SelectionChanged -= OnSelectionChanged;
-			list.ScrollEvent -= OnScrolled;
-			list.ButtonPressEvent -= OnButtonPressed;
+			list.VAdjustment.Changed -= OnAdjustmentChanged;
+			scrollController.Scroll -= OnScrolled;
+			list.ButtonPressed -= OnButtonPressed;
+			Hidden -= HandleHidden;
 
 			ReleaseObjects ();
 
@@ -193,17 +205,10 @@ namespace MonoDevelop.Ide.CodeCompletion
 			base.OnDestroyed ();
 		}
 
-		enum WindowPositonY
-		{
-			None,
-			Top,
-			Bottom
-		}
-		WindowPositonY yPosition;
-
 		int currentTriggerX;
 		int currentTriggerY;
 		int currentTriggerHeight;
+		bool shown;
 
 		public void Reposition (int triggerX, int triggerY, int triggerHeight, bool force)
 		{
@@ -217,68 +222,44 @@ namespace MonoDevelop.Ide.CodeCompletion
 		{
 			X = currentTriggerX - TextOffset;
 			Y = currentTriggerY;
-
-			int w, h;
-			GetSize (out w, out h);
-
-			if (!force && previousHeight != h && previousWidth != w)
+			curXPos = X;
+			curYPos = Y;
+			if (!shown)
 				return;
 
-			// Note: we add back the TextOffset here in case X and X+TextOffset are on different monitors.
-			Xwt.Rectangle geometry = IdeServices.DesktopService.GetUsableMonitorGeometry (Screen.Number, Screen.GetMonitorAtPoint (X + TextOffset, Y));
-
+			int w = Width, h = Height;
+			if (!force && previousHeight != h && previousWidth != w)
+				return;
 			previousHeight = h;
 			previousWidth = w;
 
-			if (X + w > geometry.Right)
-				X = (int)geometry.Right - w;
-			else if (X < geometry.Left)
-				X = (int)geometry.Left;
-
-			if (Y + h > geometry.Bottom || yPosition == WindowPositonY.Top) {
-				// Put the completion-list window *above* the cursor
-				Y = Y - currentTriggerHeight - h;
-				yPosition = WindowPositonY.Top;
-			} else {
-				yPosition = WindowPositonY.Bottom;
-			}
-
-			curXPos = X;
-			curYPos = Y;
-			Move (X, Y);
+			// GTK places the popover below the trigger line and flips it above the line when there is no room.
+			var anchor = TransientFor ?? IdeApp.Workbench?.RootWindow;
+			if (anchor != null)
+				ShowPopup (anchor, new Gdk.Rectangle (X, Y - currentTriggerHeight, 1, Math.Max (1, currentTriggerHeight)), PopupPosition.TopLeft);
 		}
 
-		//smaller lists get size reallocated after FillList, so we have to reposition them
-		//if the window size has changed since we last positioned it
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			Reposition (true);
-			eventSink.OnAllocationChanged ();
-		}
-
-		void ListSizeChanged (object obj, SizeAllocatedArgs args)
-		{
-			eventSink.OnAllocationChanged ();
-		}
-
-		protected override void OnHidden ()
+		void HandleHidden (object sender, EventArgs e)
 		{
 			ReleaseObjects ();
-			base.OnHidden ();
 		}
 
 		void ICompletionView.ResetState ()
 		{
 			previousWidth = previousHeight = -1;
-			yPosition = WindowPositonY.None;
 			list.ResetState ();
+		}
+
+		void ICompletionView.Hide ()
+		{
+			shown = false;
+			if (Visible)
+				Popdown ();
 		}
 
 		Xwt.Rectangle ICompletionView.Allocation {
 			get {
-				var r = Allocation;
-				return new Xwt.Rectangle (r.Left, r.Top, r.Width, r.Height);
+				return new Xwt.Rectangle (X, Y, Width, Height);
 			}
 		}
 
@@ -289,13 +270,15 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		public void PageDown ()
 		{
-			scrollbar.Vadjustment.Value = Math.Max (0, Math.Min (scrollbar.Vadjustment.Upper - scrollbar.Vadjustment.PageSize, scrollbar.Vadjustment.Value + scrollbar.Vadjustment.PageSize));
+			var adj = list.VAdjustment;
+			adj.Value = Math.Max (0, Math.Min (adj.Upper - adj.PageSize, adj.Value + adj.PageSize));
 			MoveCursor (8);
 		}
 
 		public void PageUp ()
 		{
-			scrollbar.Vadjustment.Value = Math.Max (0, scrollbar.Vadjustment.Value - scrollbar.Vadjustment.PageSize);
+			var adj = list.VAdjustment;
+			adj.Value = Math.Max (0, adj.Value - adj.PageSize);
 			MoveCursor (-8);
 		}
 
@@ -307,24 +290,27 @@ namespace MonoDevelop.Ide.CodeCompletion
 		public void ShowLoadingMessage ()
 		{
 			if (parsingMessage == null) {
-				var box = new Gtk.VBox ();
-				box.PackStart (new Gtk.HSeparator (), false, false, 0);
-				var hbox = new Gtk.HBox ();
-				hbox.BorderWidth = 3;
-				hbox.PackStart (new Components.ImageView ("md-parser", Gtk.IconSize.Menu), false, false, 0);
+				var box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+				box.Append (new Gtk.Separator (Gtk.Orientation.Horizontal));
+				var hbox = new Gtk.Box (Gtk.Orientation.Horizontal, 3);
+				hbox.MarginTop = hbox.MarginBottom = hbox.MarginStart = hbox.MarginEnd = 3;
+				hbox.Append (new Components.ImageView ("md-parser", StockIconSize.Menu));
 				var lab = new Gtk.Label (GettextCatalog.GetString ("Updating..."));
 				lab.Xalign = 0;
-				hbox.PackStart (lab, true, true, 3);
-				hbox.ShowAll ();
-				parsingMessage = hbox;
+				lab.Hexpand = true;
+				hbox.Append (lab);
+				box.Append (hbox);
+				parsingMessage = box;
 			}
 			ShowFooter (parsingMessage);
 		}
 
 		void ICompletionView.Show ()
 		{
-			ShowAll ();
-			IdeServices.DesktopService.RemoveWindowShadow (this);
+			shown = true;
+			Reposition (true);
+			if (!Visible)
+				Popup ();
 		}
 
 		public void ShowPreviewCompletionEntry ()
@@ -333,14 +319,16 @@ namespace MonoDevelop.Ide.CodeCompletion
 			previewEntry.Changed += delegate (object sender, EventArgs e) {
 				eventSink.OnPreviewCompletionEntryChanged (previewEntry.Text);
 			};
-			previewEntry.KeyPressEvent += delegate (object o, KeyPressEventArgs args) {
-				args.RetVal = !eventSink.OnPreProcessPreviewCompletionEntryKey (KeyDescriptor.FromGtk (args.Event.Key, (char)args.Event.KeyValue, args.Event.State));
-			};
-			vbox.PackStart (previewEntry, false, true, 0);
+			previewEntry.AddKeyPressHandler ((keyval, keycode, state) => {
+				var key = (Gdk.Key)keyval;
+				return eventSink.OnPreProcessPreviewCompletionEntryKey (KeyDescriptor.FromGtk (key, (char)Gdk.Keyval.ToUnicode (keyval), state));
+			}, phase: Gtk.PropagationPhase.Capture);
+			vbox.Append (previewEntry);
 
 			previewEntry.Activated += (sender, e) => eventSink.OnPreviewCompletionEntryActivated ();
-			previewEntry.Show ();
-			FocusOutEvent += (o, args) => eventSink.OnPreviewCompletionEntryLostFocus ();
+			// the entry needs the keyboard focus: an autohiding popover grabs it
+			Autohide = true;
+			previewEntry.AddFocusHandler (null, () => eventSink.OnPreviewCompletionEntryLostFocus ());
 			GLib.Timeout.Add (10, delegate {
 				previewEntry.GrabFocus ();
 				return false;
@@ -349,19 +337,15 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		public bool RepositionDeclarationViewWindow (TooltipInformationWindow declarationviewwindow, int item)
 		{
-			if (base.GdkWindow == null)
+			if (!IsRealized)
 				return false;
 
 			Gdk.Rectangle rect = list.GetRowArea (item);
-			if (rect.IsEmpty || rect.Bottom < (int)list.VAdjustment.Value || rect.Y > list.Allocation.Height + (int)list.VAdjustment.Value)
+			if (rect.Width <= 0 || rect.Height <= 0 || rect.Y + rect.Height < (int)list.VAdjustment.Value || rect.Y > list.Height + (int)list.VAdjustment.Value)
 				return false;
 
-			int ox;
-			int oy;
-			base.GdkWindow.GetOrigin (out ox, out oy);
-			declarationviewwindow.MaximumYTopBound = oy;
 			int y = rect.Y + Theme.Padding - (int)list.VAdjustment.Value;
-			declarationviewwindow.ShowPopup (this, new Gdk.Rectangle (0, Math.Min (Allocation.Height, Math.Max (0, y)), Allocation.Width, rect.Height), PopupPosition.Left);
+			declarationviewwindow.ShowPopup (this, new Gdk.Rectangle (0, Math.Min (Height, Math.Max (0, y)), Width, rect.Height), PopupPosition.Left);
 			return true;
 		}
 
@@ -376,27 +360,26 @@ namespace MonoDevelop.Ide.CodeCompletion
 			eventSink.OnSelectedItemChanged ();
 		}
 
-		void OnScrolled (object o, ScrollEventArgs args)
+		void OnScrolled (object o, Gtk.ScrollArgs args)
 		{
 			if (!scrollbar.Visible)
 				return;
 
-			var adj = scrollbar.Vadjustment;
-			var alloc = Allocation;
+			var adj = list.VAdjustment;
 
 			//This widget is a special case because it's always aligned to items as it scrolls.
-			//Although this means we can't use the pixel deltas for true smooth scrolling, we 
-			//can still make use of the effective scrolling velocity by basing the calculation 
+			//Although this means we can't use the pixel deltas for true smooth scrolling, we
+			//can still make use of the effective scrolling velocity by basing the calculation
 			//on pixels and rounding to the nearest item.
 
-			double dx, dy;
-			args.Event.GetPageScrollPixelDeltas (0, alloc.Height, out dx, out dy);
+			double dy = args.Dy;
 			if (dy == 0)
 				return;
 
-			var itemDelta = dy / (alloc.Height / adj.PageSize);
-			double discreteItemDelta = System.Math.Round (itemDelta);
-			if (discreteItemDelta == 0.0 && dy != 0.0)
+			// mouse wheels report notches, touchpads report surface pixels
+			var pixelDelta = scrollController.Unit == Gdk.ScrollUnit.Wheel ? dy * adj.StepIncrement : dy;
+			double discreteItemDelta = System.Math.Round (pixelDelta);
+			if (discreteItemDelta == 0.0)
 				discreteItemDelta = dy > 0 ? 1.0 : -1.0;
 
 			adj.AddValueClamped (discreteItemDelta);
@@ -405,10 +388,17 @@ namespace MonoDevelop.Ide.CodeCompletion
 			eventSink.OnListScrolled ();
 		}
 
-		void OnButtonPressed (object o, ButtonPressEventArgs args)
+		void OnButtonPressed (ClickInfo click)
 		{
-			if (args.Event.Button == 1 && args.Event.Type == Gdk.EventType.TwoButtonPress)
+			if (click.Button == 1 && click.NPress == 2)
 				eventSink.OnDoubleClick ();
+		}
+
+		//smaller lists get size reallocated after FillList, so we have to notify when the window size has changed
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
+			base.OnSizeAllocate (width, height, baseline);
+			eventSink?.OnAllocationChanged ();
 		}
 
 		public int TextOffset {

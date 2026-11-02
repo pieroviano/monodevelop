@@ -39,7 +39,7 @@ using MonoDevelop.Ide.Fonts;
 namespace MonoDevelop.Components.Docking
 {
 
-	class DockItemTitleTab : Gtk.EventBox
+	class DockItemTitleTab : BinWidget
 	{
 		static Xwt.Drawing.Image dockTabActiveBackImage = Xwt.Drawing.Image.FromResource ("padbar-active.9.png");
 		static Xwt.Drawing.Image dockTabBackImage = Xwt.Drawing.Image.FromResource ("padbar-inactive.9.png");
@@ -51,20 +51,20 @@ namespace MonoDevelop.Components.Docking
 		int minWidth;
 		DockVisualStyle visualStyle;
 		ImageView tabIcon;
-		Gtk.HBox box;
+		Gtk.Box box;
 		DockFrame frame;
 		string label;
 		ImageButton btnDock;
 		ImageButton btnClose;
-		Gtk.Alignment al;
+		Gtk.Box btnBox;
 		DockItem item;
 		bool allowPlaceholderDocking;
 		bool mouseOver;
 		Widget currentFocus = null; // Currently focused child
+		bool placeholderActive;
+		EventControllerKey dragKeyController;
+		Gtk.Window dragKeyWindow;
 
-		IDisposable subscribedLeaveEvent;
-
-		static Gdk.Cursor fleurCursor = new Gdk.Cursor (Gdk.CursorType.Fleur);
 
 		static Xwt.Drawing.Image pixClose;
 		static Xwt.Drawing.Image pixAutoHide;
@@ -108,47 +108,54 @@ namespace MonoDevelop.Components.Docking
 			UpdateRole (false, null);
 
 			CanFocus = true;
+			Focusable = true;
 			this.item = item;
 			this.frame = frame;
-			this.VisibleWindow = false;
 			UpdateVisualStyle ();
-			NoShowAll = true;
 
-
-			Events |= Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask | Gdk.EventMask.ButtonPressMask | Gdk.EventMask.ButtonReleaseMask | Gdk.EventMask.PointerMotionMask;
-			KeyPressEvent += HeaderKeyPress;
-			KeyReleaseEvent += HeaderKeyRelease;
-
-			subscribedLeaveEvent = this.SubscribeLeaveEvent (OnLeave);
+			this.AddClickHandler (OnButtonPress, OnButtonRelease);
+			this.AddDragHandler (OnDragBegin, OnDragUpdate, OnDragEnd);
+			this.AddMotionHandler (null, (x, y) => { mouseOver = true; UpdateBehavior (); }, OnLeave);
+			this.AddFocusHandler (OnFocusIn, OnFocusOut);
+			this.AddKeyPressHandler ((keyval, keycode, state) => {
+				var key = (Gdk.Key)keyval;
+				if (key == Gdk.Key.Return || key == Gdk.Key.KP_Enter || key == Gdk.Key.space) {
+					TabPressed?.Invoke (this, EventArgs.Empty);
+					return true;
+				}
+				return false;
+			});
 		}
+
+
 
 		internal void UpdateRole (bool isTab, TabStrip strip)
 		{
-			Atk.Object fromAccessible = null, toAccessible = null;
+			Gtk.IAccessible fromAccessible = null, toAccessible = null;
 
 			if (!isTab) {
-				Accessible.SetRole (AtkCocoa.Roles.AXGroup, "pad header");
-				Accessible.SetSubRole ("XAPadHeader");
+				this.SetRole (AtkCocoa.Roles.AXGroup, "pad header");
+				this.SetSubRole ("XAPadHeader");
 
 				// Take the button accessibles back from the strip
 				if (strip != null) {
-					fromAccessible = strip.Accessible;
-					toAccessible = Accessible;
+					fromAccessible = strip;
+					toAccessible = this;
 				}
 			} else {
-				Accessible.SetRole (AtkCocoa.Roles.AXRadioButton, "tab");
-				Accessible.SetSubRole ("");
+				this.SetRole (AtkCocoa.Roles.AXRadioButton, "tab");
+				this.SetSubRole ("");
 
 				// Give the button accessibles to the strip
 				if (strip != null) {
-					fromAccessible = Accessible;
-					toAccessible = strip.Accessible;
+					fromAccessible = this;
+					toAccessible = strip;
 				}
 			}
 
 			if (fromAccessible != null && toAccessible != null) {
-				fromAccessible.TransferAccessibleChild (toAccessible, btnDock.Accessible);
-				fromAccessible.TransferAccessibleChild (toAccessible, btnClose.Accessible);
+				fromAccessible.TransferAccessibleChild (toAccessible, btnDock);
+				fromAccessible.TransferAccessibleChild (toAccessible, btnClose);
 			}
 		}
 
@@ -161,10 +168,11 @@ namespace MonoDevelop.Components.Docking
 			}
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			subscribedLeaveEvent.Dispose ();
-			base.OnDestroyed ();
+			if (disposing)
+				EndKeyTracking ();
+			base.Dispose (disposing);
 		}
 
 		void UpdateVisualStyle ()
@@ -185,7 +193,7 @@ namespace MonoDevelop.Components.Docking
 				if (visualStyle.ExpandedTabs.Value)
 					labelWidget.Xalign = 0.5f;
 
-				if (!(Parent is TabStrip.TabStripBox))
+				if (!(Parent is TabStrip))
 					labelWidget.Xalign = 0;
 			}
 
@@ -194,17 +202,14 @@ namespace MonoDevelop.Components.Docking
 				tabIcon.Visible = visualStyle.ShowPadTitleIcon.Value;
 			}
 
-			if (IsRealized && labelWidget?.Visible == true) {
+			if (labelWidget?.Visible == true) {
 				var font = IdeServices.FontService.SansFont.CopyModified (null, Pango.Weight.Bold);
-				font.AbsoluteSize = Pango.Units.FromPixels (11);
-				labelWidget.ModifyFont (font);
-				labelWidget.ModifyText (StateType.Normal, (active ? visualStyle.PadTitleLabelColor.Value : visualStyle.InactivePadTitleLabelColor.Value).ToGdkColor ());
+				var color = (active ? visualStyle.PadTitleLabelColor.Value : visualStyle.InactivePadTitleLabelColor.Value);
+				DockUtil.SetCss (labelWidget, string.Format (System.Globalization.CultureInfo.InvariantCulture,
+					"font-family: \"{0}\"; font-weight: bold; font-size: 11px; color: {1};", font.Family, DockUtil.ToCss (color)));
 			}
 
-			var r = WidthRequest;
-			WidthRequest = -1;
-			labelWidth = SizeRequest ().Width + 1;
-			WidthRequest = r;
+			labelWidth = this.GetNaturalRequisition ().Width + 1;
 
 			if (visualStyle != null)
 				HeightRequest = visualStyle.PadTitleHeight != null ? (int)(visualStyle.PadTitleHeight.Value) : -1;
@@ -220,25 +225,25 @@ namespace MonoDevelop.Components.Docking
 				icon = ImageService.GetIcon ("md-empty");
 
 			if (box == null) {
-				box = new HBox ();
-				box.Accessible.SetShouldIgnore (true);
-				box.Spacing = -2;
+				box = new Box (Gtk.Orientation.Horizontal, 0);
+				box.SetShouldIgnore (true);
 
 				tabIcon = new ImageView ();
-				tabIcon.Accessible.SetShouldIgnore (true);
-				tabIcon.Show ();
-				box.PackStart (tabIcon, false, false, 3);
+				tabIcon.SetShouldIgnore (true);
+				tabIcon.MarginStart = 3;
+				tabIcon.MarginEnd = 1;
+				box.Append (tabIcon);
 
 				labelWidget = new ExtendedLabel (label);
 				// Ignore the label because the title tab already contains its name
-				labelWidget.Accessible.SetShouldIgnore (true);
+				labelWidget.SetShouldIgnore (true);
 				labelWidget.UseMarkup = true;
-				var alignLabel = new Alignment (0.0f, 0.5f, 1, 1);
-				alignLabel.Accessible.SetShouldIgnore (true);
-				alignLabel.BottomPadding = 0;
-				alignLabel.RightPadding = 15;
-				alignLabel.Add (labelWidget);
-				box.PackStart (alignLabel, false, false, 0);
+				labelWidget.Hexpand = true;
+				labelWidget.Valign = Align.Center;
+				labelWidget.MarginEnd = 15;
+				labelWidget.Ellipsize = Pango.EllipsizeMode.End;
+				labelWidget.Overflow = Overflow.Hidden;
+				box.Append (labelWidget);
 
 				btnDock = new ImageButton ();
 				btnDock.Image = pixAutoHide;
@@ -246,8 +251,8 @@ namespace MonoDevelop.Components.Docking
 				btnDock.CanFocus = true;
 				//			btnDock.WidthRequest = btnDock.HeightRequest = 17;
 				btnDock.Clicked += OnClickDock;
-				btnDock.ButtonPressEvent += (o, args) => args.RetVal = true;
-				btnDock.WidthRequest = btnDock.SizeRequest ().Width;
+				btnDock.WidthRequest = btnDock.GetNaturalRequisition ().Width;
+				btnDock.MarginStart = btnDock.MarginEnd = 3;
 				UpdateDockButtonAccessibilityLabels ();
 
 				btnClose = new ImageButton ();
@@ -255,56 +260,47 @@ namespace MonoDevelop.Components.Docking
 				btnClose.TooltipText = GettextCatalog.GetString ("Close");
 				btnClose.CanFocus = true;
 				//			btnClose.WidthRequest = btnClose.HeightRequest = 17;
-				btnClose.WidthRequest = btnDock.SizeRequest ().Width;
+				btnClose.WidthRequest = btnDock.GetNaturalRequisition ().Width;
+				btnClose.MarginStart = btnClose.MarginEnd = 1;
 				btnClose.Clicked += delegate {
 					item.Visible = false;
 				};
-				btnClose.ButtonPressEvent += (o, args) => args.RetVal = true;
 
-				al = new Alignment (0, 0.5f, 1, 1);
-				al.Accessible.SetShouldIgnore (true);
-				HBox btnBox = new HBox (false, 0);
-				btnBox.Accessible.SetShouldIgnore (true);
-				btnBox.PackStart (btnDock, false, false, 3);
-				btnBox.PackStart (btnClose, false, false, 1);
-				al.Add (btnBox);
-				box.PackEnd (al, false, false, 3);
+				btnBox = new Box (Gtk.Orientation.Horizontal, 0);
+				btnBox.SetShouldIgnore (true);
+				btnBox.Valign = Align.Center;
+				btnBox.MarginStart = btnBox.MarginEnd = 3;
+				btnBox.Append (btnDock);
+				btnBox.Append (btnClose);
+				box.Append (btnBox);
 
-				Add (box);
+				Child = box;
 			}
 
 			tabIcon.Image = icon;
 
 			string realLabel, realHelp;
 			if (!string.IsNullOrEmpty (label)) {
-				labelWidget.Parent.Show ();
+				labelWidget.Visible = true;
 				labelWidget.Name = label;
 				btnDock.Name = string.Format ("btnDock_{0}", labelNoSpaces ?? string.Empty);
 				btnClose.Name = string.Format ("btnClose_{0}", labelNoSpaces ?? string.Empty);
 				realLabel = GettextCatalog.GetString ("Close {0}", label);
 				realHelp = GettextCatalog.GetString ("Close the {0} pad", label);
 			} else {
-				labelWidget.Parent.Hide ();
+				labelWidget.Visible = false;
 				realLabel = GettextCatalog.GetString ("Close pad");
 				realHelp = GettextCatalog.GetString ("Close the pad");
 			}
 
-			btnClose.Accessible.SetLabel (realLabel);
-			btnClose.Accessible.Description = realHelp;
+			btnClose.SetCommonAttributes (null, realLabel, realHelp);
 
 			if (label != null) {
-				Accessible.Name = $"DockTab.{labelNoSpaces}";
-				Accessible.Description = GettextCatalog.GetString ("Switch to the {0} tab", label);
-				Accessible.SetTitle (label);
-				Accessible.SetLabel (label);
+				this.SetCommonAttributes ($"DockTab.{labelNoSpaces}", label, GettextCatalog.GetString ("Switch to the {0} tab", label));
+				this.SetTitle (label);
 			}
 
-			// Get the required size before setting the ellipsize property, since ellipsized labels
-			// have a width request of 0
-			box.ShowAll ();
-			Show ();
-
-			minWidth = tabIcon.SizeRequest ().Width + al.SizeRequest ().Width + 10;
+			minWidth = tabIcon.GetNaturalRequisition ().Width + btnBox.GetNaturalRequisition ().Width + 10;
 
 			UpdateBehavior ();
 			UpdateVisualStyle ();
@@ -333,8 +329,7 @@ namespace MonoDevelop.Components.Docking
 					realHelp = GettextCatalog.GetString ("Automatically hide the {0} pad when it loses focus", label);
 				}
 			}
-			btnDock.Accessible.SetLabel (realLabel);
-			btnDock.Accessible.Description = realHelp;
+			btnDock.SetCommonAttributes (null, realLabel, realHelp);
 		}
 
 		void OnClickDock (object s, EventArgs a)
@@ -403,32 +398,32 @@ namespace MonoDevelop.Components.Docking
 		bool tabPressed, tabActivated;
 		double pressX, pressY;
 
-		protected override void OnActivate ()
+		// The dock and close buttons handle their own clicks
+		bool IsOverButton (double x, double y)
 		{
-			TabPressed?.Invoke (this, EventArgs.Empty);
-
-			base.OnActivate ();
+			return DockUtil.IsOverWidget (this, btnDock, x, y) || DockUtil.IsOverWidget (this, btnClose, x, y);
 		}
 
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+		void OnButtonPress (ClickInfo evnt)
 		{
+			if (IsOverButton (evnt.X, evnt.Y))
+				return;
+
 			if (evnt.TriggersContextMenu ()) {
 				item.ShowDockPopupMenu (this, evnt);
-				return false;
 			} else if (evnt.Button == 1) {
-				if (evnt.Type == Gdk.EventType.ButtonPress) {
+				if (evnt.NPress == 1) {
 					tabPressed = true;
 					pressX = evnt.X;
 					pressY = evnt.Y;
 					TabPressed?.Invoke (this, EventArgs.Empty);
-				} else if (evnt.Type == Gdk.EventType.TwoButtonPress) {
+				} else if (evnt.NPress == 2) {
 					tabActivated = true;
 				}
 			}
-			return base.OnButtonPressEvent (evnt);
 		}
 
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
+		void OnButtonRelease (ClickInfo evnt)
 		{
 			if (tabActivated) {
 				tabActivated = false;
@@ -438,32 +433,24 @@ namespace MonoDevelop.Components.Docking
 					else
 						item.Status = DockItemStatus.AutoHide;
 				}
-			} else if (!evnt.TriggersContextMenu () && evnt.Button == 1) {
-				frame.DockInPlaceholder (item);
-				frame.HidePlaceholder ();
-				if (GdkWindow != null)
-					GdkWindow.Cursor = null;
-				frame.Toplevel.KeyPressEvent -= HeaderKeyPress;
-				frame.Toplevel.KeyReleaseEvent -= HeaderKeyRelease;
 			}
 			tabPressed = false;
-			return base.OnButtonReleaseEvent (evnt);
 		}
 
-		protected override bool OnFocusInEvent (Gdk.EventFocus evnt)
+		void OnFocusIn ()
 		{
 			mouseOver = true;
 			UpdateBehavior ();
-			return base.OnFocusInEvent (evnt);
+			QueueDraw ();
 		}
 
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
+		void OnFocusOut ()
 		{
 			if (currentFocus == null) {
 				mouseOver = false;
 				UpdateBehavior ();
 			}
-			return base.OnFocusOutEvent (evnt);
+			QueueDraw ();
 		}
 
 		void HandlePress (object sender, EventArgs args)
@@ -474,28 +461,100 @@ namespace MonoDevelop.Components.Docking
 		void HandleShowMenu (object sender, EventArgs args)
 		{
 			// Show the menu at the middle of the widget
-			item.ShowDockPopupMenu (this, Allocation.Width / 2, Allocation.Height / 2);
+			item.ShowDockPopupMenu (this, Width / 2, Height / 2);
 		}
 
-		protected override bool OnMotionNotifyEvent (Gdk.EventMotion evnt)
+		// Drag of the tab: moves the pad using the dock placeholder
+
+		void OnDragBegin (double x, double y)
 		{
-			if (tabPressed && !item.Behavior.HasFlag (DockItemBehavior.NoGrip) && Math.Abs (evnt.X - pressX) > 3 && Math.Abs (evnt.Y - pressY) > 3) {
+			pressX = x;
+			pressY = y;
+			// Presses on the buttons or with other buttons than the first one are handled elsewhere
+			tabPressed = !IsOverButton (x, y);
+		}
+
+		void OnDragUpdate (double offsetX, double offsetY)
+		{
+			if (tabPressed && !item.Behavior.HasFlag (DockItemBehavior.NoGrip) && Math.Abs (offsetX) > 3 && Math.Abs (offsetY) > 3) {
 				frame.ShowPlaceholder (item);
-				GdkWindow.Cursor = fleurCursor;
-				frame.Toplevel.KeyPressEvent += HeaderKeyPress;
-				frame.Toplevel.KeyReleaseEvent += HeaderKeyRelease;
+				CursorFromName = "move";
+				StartKeyTracking ();
 				allowPlaceholderDocking = true;
+				placeholderActive = true;
 				tabPressed = false;
 			}
-			frame.UpdatePlaceholder (item, Allocation.Size, allowPlaceholderDocking);
-			return base.OnMotionNotifyEvent (evnt);
+			if (placeholderActive)
+				UpdatePlaceholder (pressX + offsetX, pressY + offsetY);
 		}
 
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
+		void OnDragEnd (double offsetX, double offsetY)
 		{
-			mouseOver = true;
-			UpdateBehavior ();
-			return base.OnEnterNotifyEvent (evnt);
+			if (placeholderActive) {
+				placeholderActive = false;
+				frame.DockInPlaceholder (item);
+				frame.HidePlaceholder ();
+				Cursor = null;
+				EndKeyTracking ();
+			}
+			tabPressed = false;
+		}
+
+		double lastPointerX, lastPointerY;
+
+		void UpdatePlaceholder (double x, double y)
+		{
+			lastPointerX = x;
+			lastPointerY = y;
+			var container = frame.Container;
+			if (!TranslateCoordinates (container, x, y, out double cx, out double cy))
+				return;
+			frame.UpdatePlaceholder (item, new Gdk.Size (Width, Height), allowPlaceholderDocking, (int)cx, (int)cy);
+		}
+
+		// While a pad is dragged, Ctrl disables docking and Escape cancels the drag.
+		void StartKeyTracking ()
+		{
+			EndKeyTracking ();
+			dragKeyWindow = frame.GetToplevelWindow ();
+			if (dragKeyWindow == null)
+				return;
+			dragKeyController = dragKeyWindow.AddKeyPressHandler (HeaderKeyPress, HeaderKeyRelease, PropagationPhase.Capture);
+		}
+
+		void EndKeyTracking ()
+		{
+			if (dragKeyController != null && dragKeyWindow != null)
+				dragKeyWindow.RemoveController (dragKeyController);
+			dragKeyController = null;
+			dragKeyWindow = null;
+		}
+
+		bool HeaderKeyPress (uint keyval, uint keycode, Gdk.ModifierType state)
+		{
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Control_L || key == Gdk.Key.Control_R) {
+				allowPlaceholderDocking = false;
+				UpdatePlaceholder (lastPointerX, lastPointerY);
+				return false;
+			}
+			if (key == Gdk.Key.Escape) {
+				placeholderActive = false;
+				frame.HidePlaceholder ();
+				Cursor = null;
+				EndKeyTracking ();
+				return true;
+			}
+			return false;
+		}
+
+		void HeaderKeyRelease (uint keyval, uint keycode, Gdk.ModifierType state)
+		{
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Control_L || key == Gdk.Key.Control_R) {
+				allowPlaceholderDocking = true;
+				UpdatePlaceholder (lastPointerX, lastPointerY);
+			}
 		}
 
 		void OnLeave ()
@@ -631,7 +690,7 @@ namespace MonoDevelop.Components.Docking
 			return FocusWidget.None;
 		}
 
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (DirectionType direction)
 		{
 			if (!FocusCurrentWidget (direction)) {
 				FocusWidget focus = FocusWidget.None;
@@ -650,7 +709,7 @@ namespace MonoDevelop.Components.Docking
 					}
 				}
 
-				// Clean up the icons because OnFocusOutEvent has already been called
+				// Clean up the icons because the focus-out handler has already been called
 				// so we need the icons to hide again
 				mouseOver = false;
 				UpdateBehavior ();
@@ -662,55 +721,39 @@ namespace MonoDevelop.Components.Docking
 			return true;
 		}
 
-		[GLib.ConnectBeforeAttribute]
-		void HeaderKeyPress (object ob, Gtk.KeyPressEventArgs a)
-		{
-			if (a.Event.Key == Gdk.Key.Control_L || a.Event.Key == Gdk.Key.Control_R) {
-				allowPlaceholderDocking = false;
-				frame.UpdatePlaceholder (item, Allocation.Size, false);
-			}
-			if (a.Event.Key == Gdk.Key.Escape) {
-				frame.HidePlaceholder ();
-				frame.Toplevel.KeyPressEvent -= HeaderKeyPress;
-				frame.Toplevel.KeyReleaseEvent -= HeaderKeyRelease;
-				Gdk.Pointer.Ungrab (0);
-			}
-		}
-		
-		[GLib.ConnectBeforeAttribute]
-		void HeaderKeyRelease (object ob, Gtk.KeyReleaseEventArgs a)
-		{
-			if (a.Event.Key == Gdk.Key.Control_L || a.Event.Key == Gdk.Key.Control_R) {
-				allowPlaceholderDocking = true;
-				frame.UpdatePlaceholder (item, Allocation.Size, true);
-			}
-		}
-
 		protected override void OnRealized ()
 		{
 			base.OnRealized ();
 			UpdateVisualStyle ();
 		}
-		
-		protected override void OnSizeRequested (ref Gtk.Requisition req)
+
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			if (Child != null) {
-				req = Child.SizeRequest ();
-				req.Width += (int)(TabPadding.Left + TabPadding.Right);
-				if (active)
-					req.Height += (int)(TabActivePadding.Top + TabActivePadding.Bottom);
-				else
-					req.Height += (int)(TabPadding.Top + TabPadding.Bottom);
+			minimum_baseline = natural_baseline = -1;
+			if (Child == null) {
+				minimum = natural = 0;
+				return;
+			}
+
+			int leftRight = (int)(TabPadding.Left + TabPadding.Right);
+			int topBottom = active ? (int)(TabActivePadding.Top + TabActivePadding.Bottom) : (int)(TabPadding.Top + TabPadding.Bottom);
+			if (orientation == Gtk.Orientation.Horizontal) {
+				MeasureChild (Child, orientation, -1, out minimum, out natural);
+				minimum += leftRight;
+				natural += leftRight;
+			} else {
+				MeasureChild (Child, orientation, -1, out minimum, out natural);
+				minimum += topBottom;
+				natural += topBottom;
 			}
 		}
-					
-		protected override void OnSizeAllocated (Gdk.Rectangle rect)
-		{
-			base.OnSizeAllocated (rect);
 
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
 			int leftPadding = (int)TabPadding.Left;
 			int rightPadding = (int)TabPadding.Right;
-			
+
+			var rect = new Gdk.Rectangle (0, 0, width, height);
 			rect.X += leftPadding;
 			rect.Width -= leftPadding + rightPadding;
 			if (rect.Width < 1) {
@@ -720,86 +763,60 @@ namespace MonoDevelop.Components.Docking
 			if (Child != null) {
 				var bottomPadding = active ? (int)TabActivePadding.Bottom : (int)TabPadding.Bottom;
 				var topPadding = active ? (int)TabActivePadding.Top : (int)TabPadding.Top;
-				int centerY = topPadding + ((rect.Height - bottomPadding - topPadding) / 2);
-				var height = Child.SizeRequest ().Height;
-				rect.Y += centerY - (height / 2);
-				rect.Height = height;
-				Child.SizeAllocate (rect);
+				int centerY = topPadding + ((height - bottomPadding - topPadding) / 2);
+				MeasureChild (Child, Gtk.Orientation.Vertical, -1, out int childHeight, out _);
+				rect.Y += centerY - (childHeight / 2);
+				rect.Height = childHeight;
+				AllocateChild (Child, rect);
 			}
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (VisualStyle.TabStyle == DockTabStyle.Normal)
-				DrawAsBrowser (evnt);
-			else
-				DrawNormal (evnt);
+			int width = Width, height = Height;
+			if (width > 0 && height > 0 && visualStyle != null) {
+				snapshot.DrawCairo (this, ctx => {
+					if (visualStyle.TabStyle == DockTabStyle.Normal)
+						DrawAsBrowser (ctx, width, height);
+					else
+						DrawNormal (ctx, width, height);
 
-			if (HasFocus) {
-				var alloc = labelWidget.Allocation;
-				Gtk.Style.PaintFocus (Style, GdkWindow, State, alloc, this, "label",
-				                      alloc.X, alloc.Y, alloc.Width, alloc.Height);
+					if (HasFocus && labelWidget != null && labelWidget.TranslateCoordinates (this, 0, 0, out double lx, out double ly)) {
+						DockUtil.DrawFocusRectangle (ctx, new Gdk.Rectangle ((int)lx, (int)ly, labelWidget.Width, labelWidget.Height), this.GetForegroundColor ());
+					}
+				});
 			}
-			return base.OnExposeEvent (evnt);
+			base.OnSnapshot (snapshot);
 		}
 
-		void DrawAsBrowser (Gdk.EventExpose evnt)
+		void DrawAsBrowser (Cairo.Context ctx, int width, int height)
 		{
 			bool first = true;
 			bool last = true;
 
-			if (Parent is TabStrip.TabStripBox) {
-				var tsb = (TabStrip.TabStripBox) Parent;
-				var cts = tsb.Children;
-				first = cts[0] == this;
-				last = cts[cts.Length - 1] == this;
+			if (Parent is TabStrip) {
+				var tsb = (TabStrip) Parent;
+				first = tsb.IsFirstTab (this);
+				last = tsb.IsLastTab (this);
 			}
 
-			using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-				if (first && last) {
-					ctx.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
-					ctx.SetSourceColor (VisualStyle.PadBackgroundColor.Value.ToCairoColor ());
-					ctx.Fill ();
-				} else {
-					var image = Active ? dockTabActiveBackImage : dockTabBackImage;
-					image = image.WithSize (Allocation.Width, Allocation.Height);
+			if (first && last) {
+				ctx.Rectangle (0, 0, width, height);
+				ctx.SetSourceColor (VisualStyle.PadBackgroundColor.Value.ToCairoColor ());
+				ctx.Fill ();
+			} else {
+				var image = Active ? dockTabActiveBackImage : dockTabBackImage;
+				image = image.WithSize (width, height);
 
-					ctx.DrawImage (this, image, Allocation.X, Allocation.Y);
-				}
+				ctx.DrawImage (this, image, 0, 0);
 			}
 		}
 
-		void DrawNormal (Gdk.EventExpose evnt)
+		void DrawNormal (Cairo.Context ctx, int width, int height)
 		{
-			using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-				var x = Allocation.X;
-				var y = Allocation.Y;
-
-				ctx.Rectangle (x, y + 1, Allocation.Width, Allocation.Height - 1);
-				ctx.SetSourceColor (Styles.DockBarBackground.ToCairoColor ());
-				ctx.Fill ();
-
-				/*
-				if (active) {
-					double offset = Allocation.Height * 0.25;
-					var rect = new Cairo.Rectangle (x - Allocation.Height + offset, y, Allocation.Height, Allocation.Height);
-					var cg = new Cairo.RadialGradient (rect.X + rect.Width / 2, rect.Y + rect.Height / 2, 0, rect.X, rect.Y + rect.Height / 2, rect.Height / 2);
-					cg.AddColorStop (0, Styles.DockTabBarShadowGradientStart);
-					cg.AddColorStop (1, Styles.DockTabBarShadowGradientEnd);
-					ctx.Pattern = cg;
-					ctx.Rectangle (rect);
-					ctx.Fill ();
-
-					rect = new Cairo.Rectangle (x + Allocation.Width - offset, y, Allocation.Height, Allocation.Height);
-					cg = new Cairo.RadialGradient (rect.X + rect.Width / 2, rect.Y + rect.Height / 2, 0, rect.X, rect.Y + rect.Height / 2, rect.Height / 2);
-					cg.AddColorStop (0, Styles.DockTabBarShadowGradientStart);
-					cg.AddColorStop (1, Styles.DockTabBarShadowGradientEnd);
-					ctx.Pattern = cg;
-					ctx.Rectangle (rect);
-					ctx.Fill ();
-				}
-				*/
-			}
+			ctx.Rectangle (0, 1, width, height - 1);
+			ctx.SetSourceColor (Styles.DockBarBackground.ToCairoColor ());
+			ctx.Fill ();
 		}
 	}
 }

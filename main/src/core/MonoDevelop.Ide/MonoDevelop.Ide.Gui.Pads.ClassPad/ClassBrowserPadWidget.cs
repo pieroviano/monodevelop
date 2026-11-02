@@ -45,24 +45,25 @@ using MonoDevelop.Components;
 namespace MonoDevelop.Ide.Gui.Pads.ClassBrowser
 {
 	
-	class ClassBrowserPadWidget : VBox
+	class ClassBrowserPadWidget : Box
 	{
 		ExtensibleTreeView treeView;
 
-		public ClassBrowserPadWidget (ExtensibleTreeView treeView, IPadWindow window)
+		public ClassBrowserPadWidget (ExtensibleTreeView treeView, IPadWindow window) : base (Orientation.Vertical, 0)
 		{
 			this.treeView = treeView;
-			PackStart (treeView, true, true, 0);
+			Gtk.Widget treeWidget = treeView;
+			treeWidget.Vexpand = true;
+			Append (treeWidget);
 
 			IdeApp.Workspace.WorkspaceItemOpened += OnOpenCombine;
 			IdeApp.Workspace.WorkspaceItemClosed += OnCloseCombine;
 					
-			this.ShowAll ();
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
-			base.OnDestroyed ();
+			base.Destroy ();
 
 			IdeApp.Workspace.WorkspaceItemOpened -= OnOpenCombine;
 			IdeApp.Workspace.WorkspaceItemClosed -= OnCloseCombine;

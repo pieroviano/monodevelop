@@ -24,7 +24,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using Gdk;
 using Gtk;
 using MonoDevelop.Components;
 using MonoDevelop.Ide.Templates;
@@ -44,63 +43,60 @@ namespace MonoDevelop.Ide.Projects
 		const int iconTextXPadding = 1;
 		const int iconYOffset = -1;
 
-		public override void GetSize (Widget widget, ref Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+		protected override void OnGetPreferredHeight (Widget widget, out int minimum_size, out int natural_size)
 		{
-			base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-			if (CategoryIcon != null) {
-				height = (int)CategoryIcon.Height + ((int)Ypad * 2) + topLevelTemplateHeadingTotalYPadding;
-			}
+			base.OnGetPreferredHeight (widget, out minimum_size, out natural_size);
+			if (CategoryIcon != null)
+				minimum_size = natural_size = GetIconCellHeight ();
 		}
 
-		protected override void Render (Drawable window, Widget widget, Rectangle background_area, Rectangle cell_area, Rectangle expose_area, CellRendererState flags)
+		protected override void OnGetPreferredHeightForWidth (Widget widget, int width, out int minimum_height, out int natural_height)
 		{
-			StateType state = GetState (widget, flags);
-			var isSelected = state == StateType.Selected || state == StateType.Active;
+			base.OnGetPreferredHeightForWidth (widget, width, out minimum_height, out natural_height);
+			if (CategoryIcon != null)
+				minimum_height = natural_height = GetIconCellHeight ();
+		}
+
+		int GetIconCellHeight ()
+		{
+			return (int)CategoryIcon.Height + ((int)Ypad * 2) + topLevelTemplateHeadingTotalYPadding;
+		}
+
+		protected override void OnSnapshot (Snapshot snapshot, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
+		{
+			var isSelected = CellRendererDrawing.IsSelected (flags);
 			int iconTextPadding = iconTextXPadding;
 			int textYOffset = 0;
-			Rectangle iconRect = GetIconRect (cell_area);
+			Gdk.Rectangle iconRect = GetIconRect (cell_area);
 
-			using (var ctx = CairoHelper.Create (window)) {
+			// the separator line is drawn one pixel below the cell
+			snapshot.DrawCairo (new Gdk.Rectangle (cell_area.X, cell_area.Y, cell_area.Width, cell_area.Height + 2), ctx => {
 				if (CategoryIcon != null) {
 					iconRect = DrawIcon (ctx, widget, cell_area, flags);
 					iconTextPadding = topLevelIconTextXPadding;
 					textYOffset = (Category == null ? 0 : topLevelTemplateHeadingYOffset);
 				}
 
-				DrawTemplateCategoryText (window, widget, cell_area, iconRect, iconTextPadding, textYOffset, flags);
+				DrawTemplateCategoryText (ctx, widget, cell_area, iconRect, iconTextPadding, textYOffset, flags);
 				if (Category == null && !isSelected) {
-						ctx.MoveTo (cell_area.X + (int)Xpad, cell_area.Y + cell_area.Height + 1);
-						ctx.SetSourceColor (Gui.Styles.ThinSplitterColor.ToCairoColor ());
-						ctx.LineWidth = 1;
-						ctx.LineTo (cell_area.X + cell_area.Width - (int)Xpad, cell_area.Y + cell_area.Height + 1);
-						ctx.Stroke ();
+					ctx.MoveTo (cell_area.X + (int)Xpad, cell_area.Y + cell_area.Height + 1);
+					ctx.SetSourceColor (Gui.Styles.ThinSplitterColor.ToCairoColor ());
+					ctx.LineWidth = 1;
+					ctx.LineTo (cell_area.X + cell_area.Width - (int)Xpad, cell_area.Y + cell_area.Height + 1);
+					ctx.Stroke ();
 				}
-			}
+			});
 		}
 
-		Rectangle GetIconRect (Rectangle cell_area)
+		Gdk.Rectangle GetIconRect (Gdk.Rectangle cell_area)
 		{
-			return new Rectangle (cell_area.X + (int)Xpad, cell_area.Y + (int)Ypad + iconYOffset, CategoryIconWidth, CategoryIconWidth);
+			return new Gdk.Rectangle (cell_area.X + (int)Xpad, cell_area.Y + (int)Ypad + iconYOffset, CategoryIconWidth, CategoryIconWidth);
 		}
 
-		static StateType GetState (Widget widget, CellRendererState flags)
-		{
-			StateType stateType = StateType.Normal;
-			if ((flags & CellRendererState.Prelit) != 0)
-				stateType = StateType.Prelight;
-			if ((flags & CellRendererState.Focused) != 0)
-				stateType = StateType.Normal;
-			if ((flags & CellRendererState.Insensitive) != 0)
-				stateType = StateType.Insensitive;
-			if ((flags & CellRendererState.Selected) != 0)
-				stateType = widget.HasFocus ? StateType.Selected : StateType.Active;
-			return stateType;
-		}
-
-		Rectangle DrawIcon (Cairo.Context ctx, Widget widget, Rectangle cell_area, CellRendererState flags)
+		Gdk.Rectangle DrawIcon (Cairo.Context ctx, Widget widget, Gdk.Rectangle cell_area, CellRendererState flags)
 		{
 			int iconY = cell_area.Y + ((cell_area.Height - (int)CategoryIcon.Height) / 2) + (Category == null ? 0 : topLevelTemplateHeadingYOffset);
-			var iconRect = new Rectangle (cell_area.X + (int)Xpad, iconY, (int)CategoryIcon.Width, (int)CategoryIcon.Height);
+			var iconRect = new Gdk.Rectangle (cell_area.X + (int)Xpad, iconY, (int)CategoryIcon.Width, (int)CategoryIcon.Height);
 
 			var img = CategoryIcon;
 			if ((flags & Gtk.CellRendererState.Selected) != 0)
@@ -109,14 +105,12 @@ namespace MonoDevelop.Ide.Projects
 			return iconRect;
 		}
 
-		void DrawTemplateCategoryText (Drawable window, Widget widget, Rectangle cell_area, Rectangle iconRect, int iconTextPadding, int textYOffset, CellRendererState flags)
+		void DrawTemplateCategoryText (Cairo.Context ctx, Widget widget, Gdk.Rectangle cell_area, Gdk.Rectangle iconRect, int iconTextPadding, int textYOffset, CellRendererState flags)
 		{
-			StateType state = GetState (widget, flags);
-
 			using (var layout = new Pango.Layout (widget.PangoContext)) {
 
 				layout.Ellipsize = Pango.EllipsizeMode.End;
-				int textPixelWidth = widget.Allocation.Width - ((int)Xpad * 2) - iconRect.Width - iconTextPadding;
+				int textPixelWidth = widget.Width - ((int)Xpad * 2) - iconRect.Width - iconTextPadding;
 				layout.Width = (int)(textPixelWidth * Pango.Scale.PangoScale);
 
 				layout.SetMarkup (CategoryName);
@@ -125,9 +119,8 @@ namespace MonoDevelop.Ide.Projects
 				layout.GetPixelSize (out w, out h);
 				int textY = cell_area.Y + (cell_area.Height - h) / 2 + textYOffset;
 
-				window.DrawLayout (widget.Style.TextGC (state), iconRect.Right + iconTextPadding, textY, layout);
+				CellRendererDrawing.DrawLayout (ctx, CellRendererDrawing.GetTextColor (widget, flags), iconRect.X + iconRect.Width + iconTextPadding, textY, layout);
 			}
 		}
 	}
 }
-

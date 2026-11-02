@@ -85,14 +85,16 @@ namespace MonoDevelop.Ide.CodeCompletion
 		
 		protected virtual void OnChanging ()
 		{
-			if (changing != null)
-				Gtk.Application.Invoke (changing);
+			var handler = changing;
+			if (handler != null)
+				MonoDevelop.Core.Runtime.RunInMainThread (() => handler (this, EventArgs.Empty));
 		}
 		
 		protected virtual void OnChanged ()
 		{
-			if (changed != null)
-				Gtk.Application.Invoke (changed);
+			var handler = changed;
+			if (handler != null)
+				MonoDevelop.Core.Runtime.RunInMainThread (() => handler (this, EventArgs.Empty));
 		}
 		
 		#endregion 

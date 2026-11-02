@@ -186,8 +186,8 @@ namespace MonoDevelop.Ide.Projects
 		
 		object[] GetFolderValues (string name)
 		{
-			return new object[] { ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.OpenFolder, IconSize.Menu),
-				ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.ClosedFolder, IconSize.Menu), name, null, false };
+			return new object[] { ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.OpenFolder, StockIconSize.Menu),
+				ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.ClosedFolder, StockIconSize.Menu), name, null, false };
 		}
 
 		TreeIter GetPath (string fullPath)
@@ -207,7 +207,7 @@ namespace MonoDevelop.Ide.Projects
 			TreeIter iter = GetPath (relativePath.ParentDirectory);
 			object[] values = new object[] {
 				//FIXME: look these pixbufs up lazily in the renderer
-				IdeServices.DesktopService.GetIconForFile (filePath, IconSize.Menu),
+				IdeServices.DesktopService.GetIconForFile (filePath, StockIconSize.Menu),
 				null,
 				filePath.FileName,
 				filePath.ToString (),

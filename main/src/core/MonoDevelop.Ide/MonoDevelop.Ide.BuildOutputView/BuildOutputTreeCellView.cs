@@ -91,17 +91,17 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 	static class Resources
 	{
-		public static readonly Xwt.Drawing.Image BuildIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildSolution, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image MessageIcon = ImageService.GetIcon (Ide.Gui.Stock.MessageLog, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image ErrorIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildError, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image ErrorIconSmall = ImageService.GetIcon (Ide.Gui.Stock.BuildErrorSmall, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image ProjectIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildProject, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image TargetIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTarget, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image TaskSuccessIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTaskSuccess, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image TaskFailedIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTaskFailed, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image WarningIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildWarning, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image WarningIconSmall = ImageService.GetIcon (Ide.Gui.Stock.BuildWarningSmall, Gtk.IconSize.Menu);
-		public static readonly Xwt.Drawing.Image FolderIcon = ImageService.GetIcon (Ide.Gui.Stock.OpenFolder, Gtk.IconSize.Menu);
+		public static readonly Xwt.Drawing.Image BuildIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildSolution, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image MessageIcon = ImageService.GetIcon (Ide.Gui.Stock.MessageLog, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image ErrorIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildError, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image ErrorIconSmall = ImageService.GetIcon (Ide.Gui.Stock.BuildErrorSmall, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image ProjectIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildProject, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image TargetIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTarget, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image TaskSuccessIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTaskSuccess, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image TaskFailedIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildTaskFailed, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image WarningIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildWarning, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image WarningIconSmall = ImageService.GetIcon (Ide.Gui.Stock.BuildWarningSmall, MonoDevelop.Components.StockIconSize.Menu);
+		public static readonly Xwt.Drawing.Image FolderIcon = ImageService.GetIcon (Ide.Gui.Stock.OpenFolder, MonoDevelop.Components.StockIconSize.Menu);
 		public static readonly Xwt.Drawing.Image EmptyIcon = ImageService.GetIcon (Ide.Gui.Stock.Empty);
 	}
 
@@ -164,9 +164,9 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 	class BuildOutputTreeCellView : CanvasCellView
 	{
-		static readonly Image BuildExpandIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildExpand, Gtk.IconSize.Menu)
+		static readonly Image BuildExpandIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildExpand, MonoDevelop.Components.StockIconSize.Menu)
 			.WithSize (10);
-		static readonly Image BuildCollapseIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildCollapse, Gtk.IconSize.Menu)
+		static readonly Image BuildCollapseIcon = ImageService.GetIcon (Ide.Gui.Stock.BuildCollapse, MonoDevelop.Components.StockIconSize.Menu)
 			.WithSize (10);
 
 		public EventHandler<BuildOutputNode> GoToTask;

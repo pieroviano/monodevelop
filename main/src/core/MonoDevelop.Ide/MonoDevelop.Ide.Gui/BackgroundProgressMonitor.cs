@@ -27,6 +27,7 @@
 //
 
 using System;
+using MonoDevelop.Components;
 using MonoDevelop.Core;
 using MonoDevelop.Core.ProgressMonitoring;
 using Gtk;
@@ -43,7 +44,7 @@ namespace MonoDevelop.Ide.Gui
 			this.title = title;
 			if (!iconName.IsNull) {
 				Application.Invoke ((o, args) => {
-					var img = ImageService.GetIcon (iconName, IconSize.Menu);
+					var img = ImageService.GetIcon (iconName, StockIconSize.Menu);
 					icon = IdeApp.Workbench.StatusBar.ShowStatusIcon (img);
 					icon.Title = GettextCatalog.GetString ("Background Progress");
 					icon.Help = GettextCatalog.GetString ("An operation is occuring in the background");

@@ -49,7 +49,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			return "<b>" + GLib.Markup.EscapeText (val) + "</b>";
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			if (Property.Converter.CanConvertTo (Context, typeof(string)) && Property.Converter.CanConvertFrom (Context, typeof(string)))
 				return new PropertyTextEditor ();

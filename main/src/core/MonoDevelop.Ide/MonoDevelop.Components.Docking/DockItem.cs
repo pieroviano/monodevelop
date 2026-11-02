@@ -132,10 +132,9 @@ namespace MonoDevelop.Components.Docking
 					titleTab = new DockItemTitleTab (this, frame);
 					titleTab.VisualStyle = currentVisualStyle;
 					titleTab.SetLabel (Widget, icon, label);
-					titleTab.ShowAll ();
 
 					if (widget != null) {
-						titleTab.Accessible.AddLinkedUIElement (widget.Accessible);
+						titleTab.AddLinkedUIElement (widget);
 					}
 				}
 				return titleTab;
@@ -160,7 +159,7 @@ namespace MonoDevelop.Components.Docking
 					widget.Shown += SetupContent;
 
 					if (titleTab != null) {
-						titleTab.Accessible.AddLinkedUIElement (titleTab.Accessible);
+						titleTab.AddLinkedUIElement (titleTab);
 					}
 				}
 				return widget;
@@ -211,7 +210,7 @@ namespace MonoDevelop.Components.Docking
 			widget.Hidden += delegate {
 				UpdateContentVisibleStatus ();
 			};
-			widget.ParentSet += delegate {
+			widget.ParentChanged += delegate {
 				UpdateContentVisibleStatus ();
 			};
 			UpdateContentVisibleStatus ();
@@ -361,11 +360,11 @@ namespace MonoDevelop.Components.Docking
 				if (gtkContent.HasFocus || widget.HasFocus)
 					return true;
 				
-				Gtk.Window win = gtkContent.Toplevel as Gtk.Window;
+				Gtk.Window win = gtkContent.GetToplevelWindow ();
 				if (win != null) {
 					if (Status == DockItemStatus.AutoHide)
-						return win.HasToplevelFocus;
-					return (win.HasToplevelFocus && win.Focus?.IsChildOf (widget) == true);
+						return win.IsActive;
+					return (win.IsActive && win.FocusWidget?.IsChildOf (widget) == true);
 				}
 				return false;
 			}
@@ -379,17 +378,6 @@ namespace MonoDevelop.Components.Docking
 		internal static void SetFocus (Gtk.Widget w)
 		{
 			w.ChildFocus (Gtk.DirectionType.Down);
-
-			Gtk.Window win = w.Toplevel as Gtk.Window;
-			if (win == null)
-				return;
-
-			// Make sure focus is not given to internal children
-			if (win.Focus != null) {
-				Gtk.Container c = win.Focus.Parent as Gtk.Container;
-				if (c.Children.Length == 0)
-					win.Focus = c;
-			}
 		}
 		
 		internal void UpdateVisibleStatus ()
@@ -438,15 +426,15 @@ namespace MonoDevelop.Components.Docking
 				ResetMode ();
 				SetRegionStyle (frame.GetRegionStyleForItem (this));
 
-				floatingWindow = new DockFloatingWindow ((Gtk.Window)frame.Toplevel, GetWindowTitle ());
+				floatingWindow = new DockFloatingWindow (frame.GetToplevelWindow (), GetWindowTitle ());
 				Ide.IdeApp.CommandService.RegisterTopWindow (floatingWindow);
 
-				Gtk.VBox box = new Gtk.VBox ();
-				box.Show ();
-				box.PackStart (TitleTab, false, false, 0);
-				box.PackStart (Widget, true, true, 0);
-				floatingWindow.Add (box);
-				floatingWindow.DeleteEvent += delegate (object o, Gtk.DeleteEventArgs a) {
+				var box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+				box.Append (TitleTab);
+				Widget.Vexpand = true;
+				box.Append (Widget);
+				floatingWindow.Child = box;
+				floatingWindow.CloseRequest += delegate (object o, Gtk.CloseRequestArgs a) {
 					if (behavior == DockItemBehavior.CantClose)
 						Status = DockItemStatus.Dockable;
 					else
@@ -454,8 +442,10 @@ namespace MonoDevelop.Components.Docking
 					a.RetVal = true;
 				};
 			}
-			floatingWindow.Show ();
-			Ide.IdeServices.DesktopService.PlaceWindow (floatingWindow, rect.X, rect.Y, rect.Width, rect.Height);
+			// GTK 4 windows can't be positioned by the application: only the size is applied
+			if (rect.Width > 0 && rect.Height > 0)
+				floatingWindow.SetDefaultSize (rect.Width, rect.Height);
+			floatingWindow.Visible = true;
 			if (titleTab != null)
 				titleTab.UpdateBehavior ();
 			Widget.Show ();
@@ -475,10 +465,8 @@ namespace MonoDevelop.Components.Docking
 		internal Gdk.Rectangle FloatingPosition {
 			get {
 				if (floatingWindow != null) {
-					int x,y,w,h;
-					floatingWindow.GetPosition (out x, out y);
-					floatingWindow.GetSize (out w, out h);
-					return new Gdk.Rectangle (x,y,w,h);
+					// GTK 4 doesn't expose the window position
+					return new Gdk.Rectangle (0, 0, floatingWindow.Width, floatingWindow.Height);
 				}
 				else
 					return Gdk.Rectangle.Zero;
@@ -487,10 +475,8 @@ namespace MonoDevelop.Components.Docking
 		
 		internal void ResetMode ()
 		{
-			if (Widget.Parent != null)
-				((Gtk.Container) Widget.Parent).Remove (Widget);
-			if (TitleTab.Parent != null)
-				((Gtk.Container) TitleTab.Parent).Remove (TitleTab);
+			DockUtil.RemoveFromParent (Widget);
+			DockUtil.RemoveFromParent (TitleTab);
 
 			ResetFloatMode ();
 			ResetBarUndockMode ();
@@ -501,9 +487,7 @@ namespace MonoDevelop.Components.Docking
 			ResetMode ();
 			if (widget != null) {
 				widget.Hide (); // Avoids size allocation warning
-				if (widget.Parent != null) {
-					((Gtk.Container)widget.Parent).Remove (widget);
-				}
+				DockUtil.RemoveFromParent (widget);
 			}
 			dockBarItem = frame.BarDock (pos, this, size);
 			if (titleTab != null)
@@ -560,7 +544,7 @@ namespace MonoDevelop.Components.Docking
 
 		internal bool ShowingContextMenu { get ; set; }
 
-		internal void ShowDockPopupMenu (Gtk.Widget parent, Gdk.EventButton evt)
+		internal void ShowDockPopupMenu (Gtk.Widget parent, ClickInfo evt)
 		{
 			ShowDockPopupMenu (parent, evt.X, evt.Y);
 		}
@@ -616,8 +600,9 @@ namespace MonoDevelop.Components.Docking
 	//
 	class DockFloatingWindow : Gtk.Window
 	{
-		public DockFloatingWindow (Gtk.Window dockParent, string title) : base (title)
+		public DockFloatingWindow (Gtk.Window dockParent, string title)
 		{
+			Title = title;
 			this.ApplyTheme ();
 			this.DockParent = dockParent;
 		}

@@ -71,6 +71,6 @@ namespace MonoDevelop.Ide.Desktop
 
 		bool TrySampleHostCpuLoad (out double value);
 
-		TimeSpan GetEventTime (Gdk.EventKey eventKey);
+		TimeSpan GetEventTime (Gdk.KeyEvent eventKey);
 	}
 }

@@ -24,12 +24,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
 using Cairo;
 
 namespace MonoDevelop.Components.MainToolbar
 {
-	class StyledProgressBar : EventBox
+	class StyledProgressBar : CairoWidget
 	{
 		double fraction;
 		public double Fraction {
@@ -54,31 +53,32 @@ namespace MonoDevelop.Components.MainToolbar
 		}
 		public StyledProgressBar ()
 		{
-			VisibleWindow = false;
 			HeightRequest = 1;
 		}
 
 		const int height = 14;
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
+			minimum = natural = 0;
+			minimum_baseline = natural_baseline = -1;
+		}
+
+		protected override void OnDraw (Cairo.Context ctx, int width, int height)
 		{
 			if (!showProgress)
-				return base.OnExposeEvent (evnt);
-			using (var ctx = Gdk.CairoHelper.Create (evnt.Window)) {
-				ctx.LineWidth = 1;
-				ctx.MoveTo (Allocation.X + 0.5, Allocation.Y + 0.5);
-				ctx.RelLineTo (Allocation.Width, 0);
-				ctx.SetSourceRGB (0.8, 0.8, 0.8);
-				ctx.Stroke ();
+				return;
+			ctx.LineWidth = 1;
+			ctx.MoveTo (0.5, 0.5);
+			ctx.RelLineTo (width, 0);
+			ctx.SetSourceRGB (0.8, 0.8, 0.8);
+			ctx.Stroke ();
 
-				ctx.MoveTo (Allocation.X + 0.5, Allocation.Y + 0.5);
-				ctx.RelLineTo ((double)Allocation.Width * fraction, 0);
-				ctx.SetSourceRGB (0.1, 0.1, 0.1);
-				ctx.Stroke ();
-			}
-			return base.OnExposeEvent (evnt);
+			ctx.MoveTo (0.5, 0.5);
+			ctx.RelLineTo ((double)width * fraction, 0);
+			ctx.SetSourceRGB (0.1, 0.1, 0.1);
+			ctx.Stroke ();
 		}
 
 	}
 }
-

@@ -187,10 +187,8 @@ namespace MonoDevelop.Ide.Gui.Pads.ProjectPad
 			else if (dataObject is ProjectFolder) {
 				return ((ProjectFolder)dataObject).Path != targetDirectory || operation == DragOperation.Copy;
 			}
-			else if (dataObject is Gtk.SelectionData) {
-				SelectionData data = (SelectionData) dataObject;
-				if (data.Type == "text/uri-list")
-					return true;
+			else if (dataObject is ExternalFilesDropData) {
+				return true;
 			}
 			return false;
 		}
@@ -255,21 +253,13 @@ namespace MonoDevelop.Ide.Gui.Pads.ProjectPad
 				groupedChildren = FileNestingService.GetDependentOrNestedTree (file);
 				what = null;
 			}
-			else if (dataObject is Gtk.SelectionData) {
-				SelectionData data = (SelectionData) dataObject;
-				if (data.Type != "text/uri-list")
-					return;
-				string sources = System.Text.Encoding.UTF8.GetString (data.Data);
-				Console.WriteLine ("text/uri-list:\n{0}", sources);
-				string[] files = sources.Split (new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
-				for (int n=0; n<files.Length; n++) {
-					Uri uri = new Uri (files[n]);
-					if (uri.Scheme != "file")
+			else if (dataObject is ExternalFilesDropData) {
+				var files = ((ExternalFilesDropData) dataObject).Files.ToArray ();
+				foreach (var file in files) {
+					if (Directory.Exists (file))
 						return;
-					if (Directory.Exists (uri.LocalPath))
-						return;
-					files[n] = uri.LocalPath;
 				}
+
 				
 				IdeApp.ProjectOperations.AddFilesToProject (targetProject, files, targetDirectory);
 				projectsToSave.Add (targetProject);

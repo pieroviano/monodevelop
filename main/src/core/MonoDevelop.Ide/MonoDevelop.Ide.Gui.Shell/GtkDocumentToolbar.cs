@@ -24,6 +24,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Gtk;
 using MonoDevelop.Components;
@@ -33,21 +34,41 @@ namespace MonoDevelop.Ide.Gui.Shell
 {
 	class GtkDocumentToolbar : IShellDocumentToolbar
 	{
+		const string ToolbarCssClass = "md-document-toolbar";
+		static Gtk.CssProvider textColorProvider;
+
 		Gtk.Widget frame;
 		Box box;
 		bool empty = true;
 
 		internal GtkDocumentToolbar ()
 		{
-			box = new HBox ();
-			box.Spacing = 3;
-			box.Show ();
-			var al = new ToolbarBox (0, 0, 1, 1);
-			al.LeftPadding = 5;
-			al.TopPadding = 4;
-			al.BottomPadding = 4;
-			al.Add (box);
+			box = new Box (Orientation.Horizontal, 3);
+			box.Hexpand = true;
+			var al = new ToolbarBox ();
+			al.Padding = new Border { Left = 5, Top = 4, Bottom = 4 };
+			al.Child = box;
+			al.Hexpand = true;
+			al.AddCssClass (ToolbarCssClass);
 			frame = al;
+			EnsureTextColorProvider ();
+		}
+
+		// Children of the toolbar use the breadcrumb text color (replaces the GTK 2 ModifyFg/ModifyText calls)
+		static void EnsureTextColorProvider ()
+		{
+			if (textColorProvider != null)
+				return;
+			textColorProvider = new Gtk.CssProvider ();
+			UpdateTextColor ();
+			Gtk.StyleContext.AddProviderForDisplay (Gdk.Display.Default, textColorProvider, (uint)Gtk.StyleProviderPriority.Application);
+			Styles.Changed += (o, e) => UpdateTextColor ();
+		}
+
+		static void UpdateTextColor ()
+		{
+			var color = Styles.BreadcrumbTextColor.ToGdkColor ().GetHex ();
+			textColorProvider.LoadFromString ($".{ToolbarCssClass}, .{ToolbarCssClass} * {{ color: {color}; }}");
 		}
 
 		internal Control Container {
@@ -69,59 +90,44 @@ namespace MonoDevelop.Ide.Gui.Shell
 			int defaultPadding = 3;
 
 			Gtk.Widget widget = control;
-			if (widget is Button) {
-				((Button)widget).Relief = ReliefStyle.None;
-				((Button)widget).FocusOnClick = false;
+			if (widget is Button button) {
+				button.HasFrame = false;
+				button.FocusOnClick = false;
 				defaultPadding = 0;
-				ChangeColor (widget);
-			} else if (widget is Entry) {
-				((Entry)widget).HasFrame = false;
-			} else if (widget is ComboBox) {
-				((ComboBox)widget).HasFrame = false;
-			} else if (widget is VSeparator) {
-				((VSeparator)widget).HeightRequest = 10;
-				ChangeColor (widget);
-			} else
-				ChangeColor (widget);
+			} else if (widget is Entry entry) {
+				entry.HasFrame = false;
+			} else if (widget is ComboBox combo) {
+				combo.HasFrame = false;
+			} else if (widget is Separator separator && separator.Orientation == Orientation.Vertical) {
+				separator.HeightRequest = 10;
+			}
 
 			if (padding == -1)
 				padding = defaultPadding;
 
-			box.PackStart (widget, fill, fill, (uint)padding);
+			widget.Hexpand = fill;
+			widget.MarginStart = padding;
+			widget.MarginEnd = padding;
+			box.Append (widget);
 			if (empty) {
 				empty = false;
-				frame.Show ();
+				frame.Visible = true;
 			}
 			if (index != -1) {
-				Box.BoxChild bc = (Box.BoxChild)box [widget];
-				bc.Position = index;
+				var siblings = new List<Widget> ();
+				for (var c = box.FirstChild; c != null; c = c.NextSibling) {
+					if (c != widget)
+						siblings.Add (c);
+				}
+				box.ReorderChildAfter (widget, index <= 0 || siblings.Count == 0 ? null : siblings [Math.Min (index, siblings.Count) - 1]);
 			}
 		}
 
 		public void AddSpace ()
 		{
-			var spacer = new HBox ();
-			spacer.Accessible.SetShouldIgnore (true);
+			var spacer = new Box (Orientation.Horizontal, 0);
+			spacer.SetShouldIgnore (true);
 			Add (spacer, true, 0, -1);
-		}
-
-		void ChangeColor (Gtk.Widget w)
-		{
-			w.Realized += delegate {
-				var textColor = Styles.BreadcrumbTextColor.ToGdkColor ();
-				if (Core.Platform.IsMac && w is CheckButton) {
-					// the Gtk.CheckButton Text color is the color of the check mark
-					// and the Fg color is used for the label.
-					w.ModifyFg (StateType.Prelight, textColor);
-					w.ModifyFg (StateType.Active, textColor);
-				} else
-					w.ModifyText (StateType.Normal, textColor);
-				w.ModifyFg (StateType.Normal, textColor);
-			};
-			if (w is Gtk.Container) {
-				foreach (var c in ((Gtk.Container)w).Children)
-					ChangeColor (c);
-			}
 		}
 
 		public void Remove (Control widget)
@@ -145,33 +151,37 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public void ShowAll ()
 		{
-			frame.ShowAll ();
+			frame.Visible = true;
 		}
 
 		public Control [] Children {
-			get { return box.Children.Select (w => (Control)w).ToArray (); }
+			get {
+				var children = new List<Control> ();
+				for (var child = box.FirstChild; child != null; child = child.NextSibling)
+					children.Add ((Control)child);
+				return children.ToArray ();
+			}
 		}
 
-		class ToolbarBox : Gtk.Alignment
+		class ToolbarBox : BinWidget
 		{
-			public ToolbarBox (float xa, float ya, float sx, float sy) : base (xa, ya, sx, sy)
+			protected override void OnSnapshot (Gtk.Snapshot snapshot)
 			{
-			}
+				int width = Width, height = Height;
+				if (width > 0 && height > 0) {
+					snapshot.DrawCairo (this, ctx => {
+						ctx.Rectangle (0, 0, width, height);
+						ctx.SetSourceColor (Styles.BreadcrumbBackgroundColor.ToCairoColor ());
+						ctx.Fill ();
 
-			protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-			{
-				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-					ctx.Rectangle (0, 0, Allocation.Width, Allocation.Height);
-					ctx.SetSourceColor (Styles.BreadcrumbBackgroundColor.ToCairoColor ());
-					ctx.Fill ();
-
-					ctx.MoveTo (0.5, Allocation.Height - 0.5);
-					ctx.RelLineTo (Allocation.Width, 0);
-					ctx.SetSourceColor (Styles.BreadcrumbBottomBorderColor.ToCairoColor ());
-					ctx.LineWidth = 1;
-					ctx.Stroke ();
+						ctx.MoveTo (0.5, height - 0.5);
+						ctx.RelLineTo (width, 0);
+						ctx.SetSourceColor (Styles.BreadcrumbBottomBorderColor.ToCairoColor ());
+						ctx.LineWidth = 1;
+						ctx.Stroke ();
+					});
 				}
-				return base.OnExposeEvent (evnt);
+				base.OnSnapshot (snapshot);
 			}
 		}
 	}
@@ -179,8 +189,14 @@ namespace MonoDevelop.Ide.Gui.Shell
 	public class DocumentToolButton : Control
 	{
 		public ImageView Image {
-			get { return (ImageView)button.Image; }
-			set { button.Image = value; }
+			get { return image; }
+			set {
+				if (image != null)
+					content.Remove (image);
+				image = value;
+				if (image != null)
+					content.Prepend (image);
+			}
 		}
 
 		public string TooltipText {
@@ -189,11 +205,17 @@ namespace MonoDevelop.Ide.Gui.Shell
 		}
 
 		public string Label {
-			get { return button.Label; }
-			set { button.Label = value; }
+			get { return label.LabelProp; }
+			set {
+				label.LabelProp = value ?? "";
+				label.Visible = !string.IsNullOrEmpty (value);
+			}
 		}
 
 		Gtk.Button button;
+		Gtk.Box content;
+		Gtk.Label label;
+		ImageView image;
 
 		public DocumentToolButton (string stockId) : this (stockId, null)
 		{
@@ -202,9 +224,12 @@ namespace MonoDevelop.Ide.Gui.Shell
 		public DocumentToolButton (string stockId, string label)
 		{
 			button = new Button ();
+			content = new Box (Orientation.Horizontal, 3);
+			this.label = new Gtk.Label ();
+			content.Append (this.label);
+			button.Child = content;
 			Label = label;
-			Image = new ImageView (stockId, IconSize.Menu);
-			Image.Show ();
+			Image = new ImageView (stockId, StockIconSize.Menu);
 		}
 
 		protected override object CreateNativeWidget<T> ()

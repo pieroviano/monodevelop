@@ -338,29 +338,36 @@ namespace MonoDevelop.Ide.Gui
 			LoadStyle ();
 		}
 
+		static Color LookupThemeColor (Gtk.Widget widget, string name, Color fallback)
+		{
+#pragma warning disable CS0612, CS0618 // StyleContext.LookupColor is deprecated in GTK 4 but is the only way to read named theme colors
+			if (widget.StyleContext.LookupColor (name, out Gdk.RGBA color))
+				return color.ToXwtColor ();
+#pragma warning restore CS0612, CS0618
+			return fallback;
+		}
+
 		internal static void LoadStyle ()
 		{
-			Gtk.Style defaultStyle;
 			Gtk.Widget styledWidget;
-			if (IdeApp.Workbench == null || IdeApp.Workbench.RootWindow == null) {
+			if (IdeApp.Workbench == null || IdeApp.Workbench.RootWindow == null)
 				styledWidget = new Gtk.Label (String.Empty);
-				defaultStyle = styledWidget.Style;
-			} else {
+			else
 				styledWidget = IdeApp.Workbench.RootWindow;
-				defaultStyle = Gtk.Rc.GetStyle (styledWidget);
-			}
 
-			BackgroundColor = defaultStyle.Background (Gtk.StateType.Normal).ToXwtColor ();	// must be the bg color from Gtkrc
-			BaseBackgroundColor = defaultStyle.Base (Gtk.StateType.Normal).ToXwtColor ();	// must be the base color from Gtkrc
-			BaseForegroundColor = defaultStyle.Foreground (Gtk.StateType.Normal).ToXwtColor ();	// must be the text color from Gtkrc
-			BaseSelectionBackgroundColor = defaultStyle.Base (Gtk.StateType.Selected).ToXwtColor ();
-			BaseSelectionTextColor = defaultStyle.Text (Gtk.StateType.Selected).ToXwtColor ();
+			// GTK 4 has no Gtk.Style: colors come from the named theme colors of the CSS theme (see IdeTheme)
+			BackgroundColor = LookupThemeColor (styledWidget, "theme_bg_color", Colors.White);
+			BaseBackgroundColor = LookupThemeColor (styledWidget, "theme_base_color", Colors.White);
+			BaseForegroundColor = LookupThemeColor (styledWidget, "theme_fg_color", Colors.Black);
+			BaseSelectionBackgroundColor = LookupThemeColor (styledWidget, "theme_selected_bg_color", Colors.LightBlue);
+			BaseSelectionTextColor = LookupThemeColor (styledWidget, "theme_selected_fg_color", Colors.Black);
 
-			LinkForegroundColor = ((Gdk.Color)styledWidget.StyleGetProperty ("link-color")).ToXwtColor ();
-			if (LinkForegroundColor == Colors.Black) // the style returs black when not initialized
-				LinkForegroundColor = Colors.Blue;   // set the link color to generic blue until initialization is finished
+			// the generic blue is used when the theme doesn't define a link color or it is not initialized yet
+			LinkForegroundColor = LookupThemeColor (styledWidget, "link_color", Colors.Blue);
+			if (LinkForegroundColor == Colors.Black)
+				LinkForegroundColor = Colors.Blue;
 
-			DefaultFont = defaultStyle.FontDescription.Copy ();
+			DefaultFont = styledWidget.PangoContext.FontDescription.Copy ();
 			DefaultFontName = DefaultFont.ToString ();
 
 			if (IdeApp.Preferences == null || IdeApp.Preferences.UserInterfaceTheme == Theme.Light)

@@ -36,7 +36,7 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.Ide.Projects.OptionPanels
 {
-	internal partial class CommonAssemblySigningPreferences : Gtk.Bin
+	internal partial class CommonAssemblySigningPreferences : MonoDevelop.Components.BinWidget
 	{
 		ItemConfiguration[] configurations;
 		string keyFile;
@@ -52,10 +52,9 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		{
 			signAssemblyCheckbutton.SetCommonAccessibilityAttributes ("SigningOptions.Sign", "",
 			                                                          GettextCatalog.GetString ("Check to enable assembly signing"));
-			strongNameFileEntry.EntryAccessible.Name = "SigningOptions.NameFile";
-			strongNameFileEntry.EntryAccessible.Description = GettextCatalog.GetString ("Enter the Strong Name File");
-			strongNameFileEntry.EntryAccessible.SetTitleUIElement (strongNameFileLabel.Accessible);
-			strongNameFileLabel.Accessible.SetTitleFor (strongNameFileEntry.EntryAccessible);
+			strongNameFileEntry.SetEntryAccessibilityAttributes ("SigningOptions.NameFile", "", GettextCatalog.GetString ("Enter the Strong Name File"));
+			strongNameFileEntry.EntryAccessible.SetTitleUIElement (strongNameFileLabel);
+			strongNameFileLabel.SetTitleFor (strongNameFileEntry.EntryAccessible);
 
 			delaySignCheckbutton.SetCommonAccessibilityAttributes ("SigningOptions.Delay", "",
 			                                                       GettextCatalog.GetString ("Delay signing the assembly"));

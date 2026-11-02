@@ -40,21 +40,20 @@ using Gtk;
 namespace MonoDevelop.Ide.Gui.OptionPanels
 {
 	
-	partial class TasksPanelWidget : Gtk.Bin
+	partial class TasksPanelWidget : MonoDevelop.Components.BinWidget
 	{	
 		ListStore tokensStore;
-		ComboBox comboPriority;
+		ComboBoxText comboPriority;
 
 		public TasksPanelWidget ()
 		{
 			Build ();
 			
-			comboPriority = ComboBox.NewText ();
+			comboPriority = new ComboBoxText ();
 			foreach (TaskPriority priority in Enum.GetValues (typeof (TaskPriority)))
 				comboPriority.AppendText (Enum.GetName (typeof (TaskPriority), priority));
 			comboPriority.Changed += new EventHandler (Validate);
-			comboPriority.Show ();
-			vboxPriority.PackEnd (comboPriority, false, false, 0);
+			vboxPriority.Append (comboPriority);
 			
 			tokensStore = new ListStore (typeof (string), typeof (int));
 			tokensTreeView.AppendColumn (String.Empty, new CellRendererText (), "text", 0);
@@ -132,8 +131,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			string selectedToken = String.Empty;
 			int selectedPriority = (int)TaskPriority.Normal;
 			TreeIter iter;
-			TreeModel model = (TreeModel)tokensStore;
-			if (tokensTreeView.Selection.GetSelected (out model, out iter)) {
+			if (tokensTreeView.Selection.GetSelected (out iter)) {
 
 				selectedToken = (string)tokensStore.GetValue (iter, 0);
 				selectedPriority = (int)tokensStore.GetValue (iter, 1);
@@ -156,8 +154,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			if (selection != null)
 			{
 				TreeIter iter;
-				TreeModel model = (TreeModel)tokensStore;
-				if (selection.GetSelected (out model, out iter)) {
+					if (selection.GetSelected (out iter)) {
 					entryToken.Text = (string)tokensStore.GetValue (iter, 0);
 					comboPriority.Active = (int)tokensStore.GetValue (iter, 1);
 				} else
@@ -178,8 +175,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		void ChangeToken (object sender, EventArgs args)
 		{
 			TreeIter iter;
-			TreeModel model = (TreeModel)tokensStore;
-			if (tokensTreeView.Selection.GetSelected (out model, out iter)) {
+			if (tokensTreeView.Selection.GetSelected (out iter)) {
     			tokensStore.SetValue (iter, 0, entryToken.Text);
     			tokensStore.SetValue (iter, 1, comboPriority.Active);
 			}
@@ -189,8 +185,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		void RemoveToken (object sender, EventArgs args)
 		{
 			TreeIter iter;
-			TreeModel model = (TreeModel)tokensStore;
-			if (tokensTreeView.Selection.GetSelected (out model, out iter)) {
+			if (tokensTreeView.Selection.GetSelected (out iter)) {
 			   	tokensStore.Remove (ref iter);
 			}
 			Validate (null, null);
@@ -211,9 +206,9 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 
 		public void LoadColors ()
 		{
-			colorbuttonHighPrio.Color = StringToColor (IdeApp.Preferences.UserTasksHighPrioColor);
-			colorbuttonNormalPrio.Color = StringToColor (IdeApp.Preferences.UserTasksNormalPrioColor);
-			colorbuttonLowPrio.Color = StringToColor (IdeApp.Preferences.UserTasksLowPrioColor);
+			colorbuttonHighPrio.SetRgba (StringToColor (IdeApp.Preferences.UserTasksHighPrioColor));
+			colorbuttonNormalPrio.SetRgba (StringToColor (IdeApp.Preferences.UserTasksNormalPrioColor));
+			colorbuttonLowPrio.SetRgba (StringToColor (IdeApp.Preferences.UserTasksLowPrioColor));
 		}
 		
 		public void Store ()
@@ -224,39 +219,47 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 
 			CommentTag.SpecialCommentTags = tags;
 			
-			IdeApp.Preferences.UserTasksHighPrioColor.Value = ColorToString (colorbuttonHighPrio.Color);
-			IdeApp.Preferences.UserTasksNormalPrioColor.Value = ColorToString (colorbuttonNormalPrio.Color);
-			IdeApp.Preferences.UserTasksLowPrioColor.Value = ColorToString (colorbuttonLowPrio.Color);
+			IdeApp.Preferences.UserTasksHighPrioColor.Value = ColorToString (colorbuttonHighPrio.Rgba);
+			IdeApp.Preferences.UserTasksNormalPrioColor.Value = ColorToString (colorbuttonNormalPrio.Rgba);
+			IdeApp.Preferences.UserTasksLowPrioColor.Value = ColorToString (colorbuttonLowPrio.Rgba);
 		}
 		
-		static string ColorToString (Gdk.Color color)
+		// The preferences keep the GTK 2 Gdk.Color string format: "rgb:rrrr/gggg/bbbb" with 16 bit hex channels
+		static string ColorToString (Gdk.RGBA color)
 		{
-			return color.ToString ();
+			return string.Format ("rgb:{0:x4}/{1:x4}/{2:x4}", ToChannel (color.Red), ToChannel (color.Green), ToChannel (color.Blue));
 		}
-		
-		static Gdk.Color StringToColor (string colorStr)
+
+		static ushort ToChannel (double value)
 		{
+			return (ushort) Math.Round (Math.Min (1d, Math.Max (0d, value)) * ushort.MaxValue);
+		}
+
+		static Gdk.RGBA StringToColor (string colorStr)
+		{
+			var black = new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 1 };
 			string[] rgb = colorStr.Substring (colorStr.IndexOf (':') + 1).Split ('/');
-			if (rgb.Length != 3) return new Gdk.Color (0, 0, 0);
-			Gdk.Color color = Gdk.Color.Zero;
+			if (rgb.Length != 3) return black;
 			try
 			{
-				color.Red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber);
-				color.Green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber);
-				color.Blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber);
+				return new Gdk.RGBA {
+					Red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber) / (float)ushort.MaxValue,
+					Green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber) / (float)ushort.MaxValue,
+					Blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber) / (float)ushort.MaxValue,
+					Alpha = 1,
+				};
 			}
 			catch
 			{
 				// something went wrong, then use neutral black color
-				color = new Gdk.Color (0, 0, 0);
+				return black;
 			}
-			return color;
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			Styles.Changed -= HandleUserInterfaceThemeChanged;
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 	}
 	

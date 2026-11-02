@@ -76,12 +76,12 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 
-	class CodeAnalysisPanelWidget : VBox
+	class CodeAnalysisPanelWidget : Box
 	{
 		ItemConfiguration [] configurations;
 		CheckButton enabledCheckBox;
 
-		public CodeAnalysisPanelWidget ()
+		public CodeAnalysisPanelWidget () : base (Orientation.Vertical, 0)
 		{
 			Build ();
 		}
@@ -91,11 +91,9 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			enabledCheckBox = new CheckButton ();
 			enabledCheckBox.Label = GettextCatalog.GetString ("Enable Code Analysis on Build");
 			enabledCheckBox.CanFocus = true;
-			enabledCheckBox.DrawIndicator = true;
 			enabledCheckBox.UseUnderline = true;
 			enabledCheckBox.Toggled += (s, e) => enabledCheckBox.Inconsistent = false;
-			PackStart (enabledCheckBox);
-			ShowAll ();
+			Append (enabledCheckBox);
 		}
 
 		public void Load (Project project, ItemConfiguration [] configs)

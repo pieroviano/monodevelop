@@ -141,42 +141,17 @@ namespace MonoDevelop.Components.Commands
 			get { return cmds.Count; }
 		}
 		
-		internal override Gtk.MenuItem CreateMenuItem (CommandManager manager)
+		internal override void AddToMenu (CommandMenuContext context)
 		{
-			Gtk.MenuItem mi;
-			if (autoHide)
-				mi = new AutoHideMenuItem (name != null ? name : "");
-			else
-				mi = new Gtk.MenuItem (name != null ? name : "");
-			mi.Submenu = new CommandMenu (manager, this);
-			return mi;
+			var scope = context.BeginScope ();
+			foreach (CommandEntry entry in cmds)
+				entry.AddToMenu (context);
+			context.AddSubmenu (name != null ? name : "", context.EndScope (scope), icon, autoHide);
 		}
 
-		internal override Gtk.ToolItem CreateToolItem (CommandManager manager)
+		internal override Gtk.Widget CreateToolItem (CommandManager manager)
 		{
-			Gtk.Menu menu = manager.CreateMenu (this);
-			return new MenuToolButton (menu, icon);
-		}
-	}
-	
-	class AutoHideMenuItem: Gtk.ImageMenuItem
-	{
-		public AutoHideMenuItem (string name): base (name)
-		{
-			ShowAll ();
-		}
-		
-		public bool HasVisibleChildren {
-			get {
-				if (!Submenu.IsRealized)
-					Submenu.Realize ();
-				foreach (Gtk.Widget item in ((Gtk.Menu)Submenu).Children) {
-					if (item.Visible)
-						return true;
-				}
-				return false;
-			}
+			return new MenuToolButton (new CommandMenu (manager, this), icon);
 		}
 	}
 }
-

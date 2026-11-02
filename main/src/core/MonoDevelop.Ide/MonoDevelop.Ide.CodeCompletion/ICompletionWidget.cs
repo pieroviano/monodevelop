@@ -48,7 +48,6 @@ namespace MonoDevelop.Ide.CodeCompletion
 
 		void Replace (int offset, int count, string text);
 
-		Gtk.Style GtkStyle { get; }
 		double ZoomLevel { get; }
 
 		CodeCompletionContext CreateCodeCompletionContext (int triggerOffset);

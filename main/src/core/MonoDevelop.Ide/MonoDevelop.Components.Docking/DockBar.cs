@@ -30,12 +30,14 @@
 
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Gtk;
 using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components.Docking
 {
-	class DockBar: Gtk.EventBox
+	class DockBar: BinWidget
 	{
 		Gtk.PositionType position;
 		Box box;
@@ -43,28 +45,40 @@ namespace MonoDevelop.Components.Docking
 		Label filler;
 		bool alwaysVisible;
 		bool showBorder = true;
+		readonly List<DockBarItem> items = new List<DockBarItem> ();
 
 		internal DockBar (DockFrame frame, Gtk.PositionType position)
 		{
-			VisibleWindow = false;
 			this.frame = frame;
 			this.position = position;
-			Gtk.Alignment al = new Alignment (0,0,0,0);
-			if (Orientation == Gtk.Orientation.Horizontal)
-				box = new HBox ();
-			else
-				box = new VBox ();
+			box = new Box (Orientation, 0);
+			// The items keep their natural size at the start of the bar
+			box.Halign = Align.Start;
+			box.Valign = Align.Start;
+			Child = box;
+			UpdateBorderPadding ();
 
-			al.Add (box);
-			Add (al);
-			
 			filler = new Label ();
 			filler.WidthRequest = 4;
 			filler.HeightRequest = 4;
-			box.PackEnd (filler);
-			
-			ShowAll ();
+			box.Append (filler);
+
 			UpdateVisibility ();
+		}
+
+		// Reserves the space for the separator line
+		void UpdateBorderPadding ()
+		{
+			var p = new Gtk.Border ();
+			if (showBorder) {
+				switch (position) {
+				case PositionType.Left: p.Right = 1; break;
+				case PositionType.Right: p.Left = 1; break;
+				case PositionType.Top: p.Bottom = 1; break;
+				case PositionType.Bottom: p.Top = 1; break;
+				}
+			}
+			Padding = p;
 		}
 		
 		public bool IsExtracted {
@@ -82,7 +96,7 @@ namespace MonoDevelop.Components.Docking
 
 		public bool ShowBorder {
 			get { return showBorder; }
-			set { showBorder = value; QueueResize (); }
+			set { showBorder = value; UpdateBorderPadding (); QueueResize (); }
 		}
 		
 		internal Gtk.Orientation Orientation {
@@ -121,8 +135,9 @@ namespace MonoDevelop.Components.Docking
 		{
 			DisableHoverActivation ();
 			DockBarItem it = new DockBarItem (this, item, size);
-			box.PackStart (it, false, false, 0);
-			it.ShowAll ();
+			// Items go before the filler, in insertion order
+			box.InsertChildAfter (it, items.Count > 0 ? items [items.Count - 1] : null);
+			items.Add (it);
 			UpdateVisibility ();
 			it.Shown += OnItemVisibilityShown;
 			it.Hidden += OnItemVisibilityHidden;
@@ -154,7 +169,7 @@ namespace MonoDevelop.Components.Docking
 			} else {
 				filler.Visible = (Frame.CompactGuiLevel < 3);
 				int visibleCount = 0;
-				foreach (Gtk.Widget w in box.Children) {
+				foreach (var w in items) {
 					if (w.Visible)
 						visibleCount++;
 				}
@@ -165,6 +180,7 @@ namespace MonoDevelop.Components.Docking
 		internal void RemoveItem (DockBarItem it)
 		{
 			DisableHoverActivation ();
+			items.Remove (it);
 			box.Remove (it);
 			it.Shown -= OnItemVisibilityShown;
 			it.Hidden -= OnItemVisibilityHidden;
@@ -173,9 +189,8 @@ namespace MonoDevelop.Components.Docking
 
 		internal void UpdateTitle (DockItem item)
 		{
-			foreach (Widget w in box.Children) {
-				DockBarItem it = w as DockBarItem;
-				if (it != null && it.DockItem == item) {
+			foreach (var it in items.ToArray ()) {
+				if (it.DockItem == item) {
 					it.UpdateTab ();
 					break;
 				}
@@ -186,61 +201,35 @@ namespace MonoDevelop.Components.Docking
 		{
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			base.OnSizeRequested (ref requisition);
+			int width = Width, height = Height;
+			if (width <= 0 || height <= 0)
+				return;
 
-			if (ShowBorder) {
-				// Add space for the separator
-				if (Orientation == Gtk.Orientation.Vertical)
-					requisition.Width++;
-				else
-					requisition.Height++;
-			}
-		}
-
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			if (ShowBorder && Child != null) {
-				switch (Position) {
-				case PositionType.Left: allocation.Width--; break;
-				case PositionType.Right: allocation.X++; allocation.Width--; break;
-				case PositionType.Top: allocation.Height--; break;
-				case PositionType.Bottom: allocation.Y++; allocation.Height--; break;
-				}
-				Child.SizeAllocate (allocation);
-			}
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			var alloc = Allocation;
-			using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-				ctx.Rectangle (alloc.X, alloc.Y, alloc.X + alloc.Width, alloc.Y + alloc.Height);
+			snapshot.DrawCairo (this, ctx => {
+				ctx.Rectangle (0, 0, width, height);
 				ctx.SetSourceColor (Styles.DockBarBackground.ToCairoColor ());
 				ctx.Fill ();
-			}
+			});
 
-			if (Child != null)
-				PropagateExpose (Child, evnt);
+			base.OnSnapshot (snapshot);
 
 			if (ShowBorder) {
-				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
+				snapshot.DrawCairo (this, ctx => {
 					ctx.LineWidth = 1;
 
 					// Dark separator
 					switch (Position) {
-					case PositionType.Left:ctx.MoveTo (alloc.X + alloc.Width - 0.5, alloc.Y); ctx.RelLineTo (0, Allocation.Height); break;
-					case PositionType.Right: ctx.MoveTo (alloc.X + 0.5, alloc.Y); ctx.RelLineTo (0, Allocation.Height); break;
-					case PositionType.Top: ctx.MoveTo (alloc.X, alloc.Y + alloc.Height + 0.5); ctx.RelLineTo (Allocation.Width, 0); break;
-					case PositionType.Bottom: ctx.MoveTo (alloc.X, alloc.Y + 0.5); ctx.RelLineTo (Allocation.Width, 0); break;
+					case PositionType.Left: ctx.MoveTo (width - 0.5, 0); ctx.RelLineTo (0, height); break;
+					case PositionType.Right: ctx.MoveTo (0.5, 0); ctx.RelLineTo (0, height); break;
+					case PositionType.Top: ctx.MoveTo (0, height - 0.5); ctx.RelLineTo (width, 0); break;
+					case PositionType.Bottom: ctx.MoveTo (0, 0.5); ctx.RelLineTo (width, 0); break;
 					}
 					ctx.SetSourceColor (Styles.DockSeparatorColor.ToCairoColor ());
 					ctx.Stroke ();
-				}
+				});
 			}
-			return true;
 		}
 	}
 }

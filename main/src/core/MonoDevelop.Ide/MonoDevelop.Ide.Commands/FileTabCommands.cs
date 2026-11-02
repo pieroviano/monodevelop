@@ -32,6 +32,7 @@ using System.Linq;
 
 using Gtk;
 
+using MonoDevelop.Components;
 using MonoDevelop.Components.Commands;
 using MonoDevelop.Ide.Gui;
 using MonoDevelop.Ide.Navigation;
@@ -232,10 +233,8 @@ namespace MonoDevelop.Ide.Commands
 			var fileName = document.FileName;
 			if (fileName == null)
 				return;
-			Clipboard clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-			clipboard.Text = fileName;
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-			clipboard.Text = fileName;
+			ClipboardHelper.SetText (fileName);
+			ClipboardHelper.SetText (fileName, primary: true);
 		}
 	}
 

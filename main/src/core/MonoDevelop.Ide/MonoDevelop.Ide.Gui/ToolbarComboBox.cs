@@ -36,41 +36,32 @@ namespace MonoDevelop.Ide.Gui
 {
 	public class ToolbarComboBox: CustomItem
 	{
-		Gtk.Alignment align;
 		Gtk.ComboBox combo;
 		Gtk.CellRendererText ctx;
 		
 		public ToolbarComboBox () 
 		{
-			align = new Gtk.Alignment (0.5f, 0.5f, 1.0f, 0f);
-			Add (align);
-			
-			align.LeftPadding = 3;
-			align.RightPadding = 3;
-			
 			combo = new Gtk.ComboBox ();
 			combo.Model = new Gtk.ListStore (typeof(string));
 			ctx = new Gtk.CellRendererText ();
 			combo.PackStart (ctx, true);
 			combo.AddAttribute (ctx, "text", 0);
 			
-			align.Add (combo);
-			ShowAll ();
+			combo.Hexpand = true;
+			combo.Valign = Gtk.Align.Center;
+			combo.MarginStart = 3;
+			combo.MarginEnd = 3;
+			Append (combo);
 		}
 		
 		protected Gtk.ComboBox Combo {
 			get { return combo; }
 		}
 		
-		public override void SetToolbarStyle (Gtk.Toolbar toolbar)
+		public override void SetToolbarStyle (Gtk.Widget toolbar)
 		{
-			if (Style != null) {
-				if (toolbar.IconSize == Gtk.IconSize.Menu || toolbar.IconSize == Gtk.IconSize.SmallToolbar) {
-					ctx.FontDesc = IdeServices.FontService.SansFont.CopyModified (Ide.Gui.Styles.FontScale11);
-				} else {
-					ctx.FontDesc = Style.FontDescription;
-				}
-			}
+			// the main toolbar uses small icons, so it uses the small font
+			ctx.FontDesc = IdeServices.FontService.SansFont.CopyModified (Ide.Gui.Styles.FontScale11);
 		}
 	}
 }

@@ -55,7 +55,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 		DockItemToolbar toolbar;
 		ComboBox switcherCombo;
 		ListStore switcherComboList;
-		VSeparator separator;
+		Separator separator;
 		
 		//content view
 		ScrolledWindow sw;
@@ -74,8 +74,8 @@ namespace MonoDevelop.Ide.Gui.Pads
 		{
 			Id = "MonoDevelop.Ide.Gui.Pads.TaskListPad";
 
-			VBox vbox = new VBox ();
-			vbox.Accessible.SetShouldIgnore (true);
+			var vbox = new Box (Orientation.Vertical, 0);
+			vbox.SetShouldIgnore (true);
 			
 			switcherComboList = new ListStore (typeof (string), typeof (ITaskListView), typeof (string));
 			try
@@ -100,12 +100,11 @@ namespace MonoDevelop.Ide.Gui.Pads
 			switcherCombo.AddAttribute (cr, "text", 0);
 			
 			sw = new MonoDevelop.Components.CompactScrolledWindow ();
-			sw.ShadowType = ShadowType.None;
 			
-			vbox.Add (sw);
+			sw.Vexpand = true;
+			vbox.Append (sw);
 			
 			control = vbox;
-			control.ShowAll ();
 			
 			// Load from preferences which one was used last time
 			string className =(string)PropertyService.Get ("Monodevelop.TaskList.ActiveView", "");
@@ -124,10 +123,9 @@ namespace MonoDevelop.Ide.Gui.Pads
 		
 		override protected void Initialize (IPadWindow window)
 		{
-			separator = new VSeparator ();
+			separator = new Separator (Orientation.Vertical);
 			toolbar = window.GetToolbar (DockPositionType.Top);
 			toolbar.Add (switcherCombo);
-			toolbar.ShowAll ();
 			switcherCombo.Changed += new EventHandler (OnContentSwitched);
 			OnContentSwitched (null, null);
 		}
@@ -137,10 +135,9 @@ namespace MonoDevelop.Ide.Gui.Pads
 			TreeIter iter;
 			if (switcherCombo.GetActiveIter (out iter))
 			{
-				if (sw.Children.Length > 0)
-					sw.Remove (sw.Children[0]);
+				sw.Child = null;
 				ITaskListView view = (ITaskListView)switcherCombo.Model.GetValue (iter, 1);
-				sw.Add (view.Content);
+				sw.Child = view.Content;
 				
 				if (activeView != null && activeView.ToolBarItems != null && activeView.ToolBarItems.Length > 0)
 				{
@@ -155,11 +152,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 					foreach (Widget w in view.ToolBarItems)
 						toolbar.Add (w);
 				}
-				if (toolbar != null)
-					toolbar.ShowAll ();
-				
 				activeView = view;
-				control.ShowAll ();
 				
 				string className = (string)switcherCombo.Model.GetValue (iter, 2);
 				PropertyService.Set ("Monodevelop.TaskList.ActiveView", className);

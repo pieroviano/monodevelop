@@ -383,7 +383,7 @@ namespace MonoDevelop.Ide.Commands
 				return;
 			}
 			
-			var toplevel = Window.ListToplevels ().FirstOrDefault (w => w.HasToplevelFocus)
+			var toplevel = Window.ListToplevels ().FirstOrDefault (w => w.IsActive)
 				?? IdeApp.Workbench.RootWindow;
 
 			bool hasContent;
@@ -416,7 +416,7 @@ namespace MonoDevelop.Ide.Commands
 			if (!IdeApp.Preferences.EnableDocumentSwitchDialog)
 				return;
 
-			var toplevel = Window.ListToplevels ().FirstOrDefault (w => w.HasToplevelFocus)
+			var toplevel = Window.ListToplevels ().FirstOrDefault (w => w.IsActive)
 				?? IdeApp.Workbench.RootWindow;
 
 			bool hasContent;

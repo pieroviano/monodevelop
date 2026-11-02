@@ -57,63 +57,45 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 	{
 		public CommonAboutDialog ()
 		{
-			Name = "wizard_dialog";
 			Title = string.Format (GettextCatalog.GetString ("About {0}"), BrandingService.ApplicationName);
-			AllowGrow = false;
-			HasSeparator = false;
-			BorderWidth = 0;
+			Resizable = false;
 
 			var notebook = new Notebook ();
 			notebook.ShowTabs = false;
 			notebook.ShowBorder = false;
-			notebook.BorderWidth = 0;
 			notebook.AppendPage (new AboutMonoDevelopTabPage (), new Label (Title));
 			notebook.AppendPage (new VersionInformationTabPage (), new Label (GettextCatalog.GetString ("Version Information")));
-			VBox.PackStart (notebook, true, true, 0);
+			notebook.Vexpand = true;
+			DesignerLayout.Pack (ContentArea, notebook, true);
 			
-			var copyButton = new Button () { Label = GettextCatalog.GetString ("Copy Information") };
+			var copyButton = DesignerLayout.Button (GettextCatalog.GetString ("Copy Information"));
 			copyButton.Clicked += (sender, e) => CopyBufferToClipboard ();
-			ActionArea.PackEnd (copyButton, false, false, 0);
-			copyButton.NoShowAll = true;
+			copyButton.Visible = false;
+			var buttonBar = DialogButtonBar.Add (this);
+			DesignerLayout.Pack (buttonBar, copyButton);
 
-			var backButton = new Button () { Label = GettextCatalog.GetString ("Show Details") };
-			ActionArea.PackEnd (backButton, false, false, 0);
+			var backButton = DesignerLayout.Button (GettextCatalog.GetString ("Show Details"));
+			DesignerLayout.Pack (buttonBar, backButton);
 			backButton.Clicked += (sender, e) => {
 				if (notebook.Page == 0) {
 					backButton.Label = GettextCatalog.GetString ("Hide Details");
-					copyButton.Show ();
+					copyButton.Visible = true;
 					notebook.Page = 1;
 				}
 				else {
 					backButton.Label = GettextCatalog.GetString ("Show Details");
-					copyButton.Hide ();
+					copyButton.Visible = false;
 					notebook.Page = 0;
 				}
 			};
-			backButton.HasDefault = backButton.CanDefault = true;
+			DefaultWidget = backButton;
 		}
 
 		static void CopyBufferToClipboard ()
 		{
-			var text = SystemInformation.GetTextDescription ();
-			var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-			clipboard.Text = text.ToString ();
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-			clipboard.Text = text.ToString ();
-		}
-
-		void ChangeColor (Gtk.Widget w)
-		{
-			w.ModifyBg (Gtk.StateType.Normal, new Gdk.Color (69, 69, 94));
-			w.ModifyBg (Gtk.StateType.Active, new Gdk.Color (69, 69, 94));
-			w.ModifyFg (Gtk.StateType.Normal, new Gdk.Color (255, 255, 255));
-			w.ModifyFg (Gtk.StateType.Active, new Gdk.Color (255, 255, 255));
-			w.ModifyFg (Gtk.StateType.Prelight, new Gdk.Color (255, 255, 255));
-			Gtk.Container c = w as Gtk.Container;
-			if (c != null) {
-				foreach (Widget cw in c.Children)
-					ChangeColor (cw);
-			}
+			var text = SystemInformation.GetTextDescription ().ToString ();
+			ClipboardHelper.SetText (text);
+			ClipboardHelper.SetText (text, true);
 		}
 
 		static CommonAboutDialog instance;
@@ -124,11 +106,9 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				if (instance == null) {
 					var parent = IdeServices.DesktopService.GetFocusedTopLevelWindow ();
 					instance = new CommonAboutDialog ();
-					instance.ShowAll ();
 					MessageService.PlaceDialog (instance, parent);
 					instance.Response += delegate {
 						instance.Destroy ();
-						instance.Dispose ();
 						instance = null;
 					};
 				}

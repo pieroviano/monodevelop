@@ -99,7 +99,7 @@ namespace MonoDevelop.Ide.Gui
 		static Gtk.Widget CreateWidget (CommandEntry entry)
 		{
 			if (entry.CommandId == Command.Separator)
-				return new Gtk.SeparatorToolItem ();
+				return new Gtk.Separator (Gtk.Orientation.Vertical);
 
 			Command cmd = entry.GetCommand (IdeApp.CommandService);
 			if (cmd == null)
@@ -143,6 +143,8 @@ namespace MonoDevelop.Ide.Gui
 		Button button;
 		object cmdId;
 		ImageView image;
+		Gtk.Box content;
+		Gtk.Label label;
 		CommandEntryDisplayType displayType;
 		
 		public ToolButtonStatus (object cmdId, Button button, CommandEntryDisplayType displayType = CommandEntryDisplayType.Default)
@@ -181,15 +183,22 @@ namespace MonoDevelop.Ide.Gui
 				lastDesc = desc;
 			}
 			
-			if (displayText && button.Label != cmdInfo.Text) {
-				button.Label = cmdInfo.Text;
+			if (displayText && (label == null || label.LabelProp != cmdInfo.Text)) {
+				EnsureContent ();
+				label.LabelProp = cmdInfo.Text;
+				label.UseUnderline = true;
+				label.Visible = true;
 			}
 
 			if (displayType != CommandEntryDisplayType.TextOnly && cmdInfo.Icon != stockId) {
 				stockId = cmdInfo.Icon;
-				button.Image = image = new ImageView (cmdInfo.Icon, Gtk.IconSize.Menu);
+				EnsureContent ();
+				if (image != null)
+					content.Remove (image);
+				image = new ImageView (cmdInfo.Icon, StockIconSize.Menu);
+				content.Prepend (image);
 			}
-			if (button.Image != null && cmdInfo.Enabled != button.Sensitive)
+			if (image != null && cmdInfo.Enabled != button.Sensitive)
 				image.Image = image.Image.WithStyles (cmdInfo.Enabled ? "" : "disabled").WithAlpha (cmdInfo.Enabled ? 1.0 : 0.4);
 			if (cmdInfo.Enabled != button.Sensitive)
 				button.Sensitive = cmdInfo.Enabled;
@@ -200,8 +209,18 @@ namespace MonoDevelop.Ide.Gui
 			if (toggle != null && cmdInfo.Checked != toggle.Active)
 				toggle.Active = cmdInfo.Checked;
 				
-			if (button.Image != null)
-				button.Image.Show ();
+		}
+
+		// GTK 4 buttons have a single child: it hosts the icon and the text
+		void EnsureContent ()
+		{
+			if (content != null)
+				return;
+			content = new Gtk.Box (Gtk.Orientation.Horizontal, 3);
+			label = new Gtk.Label ();
+			label.Visible = false;
+			content.Append (label);
+			button.Child = content;
 		}
 	}
 }

@@ -53,7 +53,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			}
 		}
 		
-		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			if (evtBind == null) {
 				return null;
@@ -79,23 +79,35 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		
 	}
 	
-	class EventEditor: ComboBoxEntry, IPropertyEditor
+	class EventEditor: Gtk.Box, IPropertyEditor
 	{
 		bool isNull;
 		PropertyDescriptor prop;
 		IEventBindingService evtBind;
 		object component;
+		readonly ComboBoxText combo;
 		
-		public EventEditor (IEventBindingService evtBind, string[] ops): base (ops)
+		public EventEditor (IEventBindingService evtBind, string[] ops): base (Orientation.Horizontal, 0)
 		{
 			this.evtBind = evtBind;
+			combo = ComboBoxText.NewWithEntry ();
+			combo.Hexpand = true;
+			foreach (var op in ops)
+				combo.AppendText (op);
+			combo.Changed += OnComboChanged;
+			Append (combo);
+		}
+
+		public Entry Entry {
+			get { return (Entry) combo.Child; }
 		}
 		
 		public void Initialize (EditSession session)
 		{
 			this.prop = session.Property;
 			component = session.Instance;
-			Entry.Destroyed += new EventHandler (entry_Changed);
+			// GTK 4 has no ::destroy signal: commit the typed value when the entry loses the focus
+			Entry.AddFocusHandler (null, () => entry_Changed (this, EventArgs.Empty));
 			Entry.Activated += new EventHandler (entry_Activated);
 		}
 
@@ -116,7 +128,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			}
 		}
 
-		protected override void OnChanged ()
+		void OnComboChanged (object sender, EventArgs e)
 		{
 			if (component == null)
 				return;

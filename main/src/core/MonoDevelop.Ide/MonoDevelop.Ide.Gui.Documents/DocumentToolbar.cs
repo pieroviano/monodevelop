@@ -33,9 +33,6 @@ namespace MonoDevelop.Ide.Gui.Documents
 {
 	public class DocumentToolbar
 	{
-		Gtk.Widget frame;
-		Box box;
-		bool empty = true;
 		readonly IShellDocumentToolbar shellToolbar;
 
 		internal DocumentToolbar (IShellDocumentToolbar shellToolbar)
@@ -99,8 +96,14 @@ namespace MonoDevelop.Ide.Gui.Documents
 	public class DocumentToolButton : Control
 	{
 		public ImageView Image {
-			get { return (ImageView)button.Image; }
-			set { button.Image = value; }
+			get { return image; }
+			set {
+				if (image != null)
+					content.Remove (image);
+				image = value;
+				if (image != null)
+					content.Prepend (image);
+			}
 		}
 
 		public string TooltipText {
@@ -109,11 +112,17 @@ namespace MonoDevelop.Ide.Gui.Documents
 		}
 
 		public string Label {
-			get { return button.Label; }
-			set { button.Label = value; }
+			get { return label.LabelProp; }
+			set {
+				label.LabelProp = value ?? "";
+				label.Visible = !string.IsNullOrEmpty (value);
+			}
 		}
 
 		Gtk.Button button;
+		Gtk.Box content;
+		Gtk.Label label;
+		ImageView image;
 
 		public DocumentToolButton (string stockId) : this (stockId, null)
 		{
@@ -122,9 +131,12 @@ namespace MonoDevelop.Ide.Gui.Documents
 		public DocumentToolButton (string stockId, string label)
 		{
 			button = new Button ();
+			content = new Box (Orientation.Horizontal, 3);
+			this.label = new Gtk.Label ();
+			content.Append (this.label);
+			button.Child = content;
 			Label = label;
-			Image = new ImageView (stockId, IconSize.Menu);
-			Image.Show ();
+			Image = new ImageView (stockId, StockIconSize.Menu);
 		}
 
 		protected override object CreateNativeWidget<T> ()
@@ -172,4 +184,3 @@ namespace MonoDevelop.Ide.Gui.Documents
 		Bottom
 	}
 }
-

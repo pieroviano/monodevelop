@@ -26,11 +26,9 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Gdk;
 using Gtk;
 using MonoDevelop.Ide.Gui;
 using MonoDevelop.Core;
@@ -73,14 +71,20 @@ namespace MonoDevelop.Ide
 		public DocumentList ()
 		{
 			this.CanFocus = true;
-			Events |= EventMask.KeyPressMask | EventMask.KeyReleaseMask | EventMask.PointerMotionMask | EventMask.ButtonPressMask | EventMask.LeaveNotifyMask;
+			this.Focusable = true;
+			DrawFunc = Draw;
+
+			this.AddClickHandler (HandleClick);
+			this.AddMotionHandler (HandleMotion, leave: HandleLeave);
+			this.AddKeyPressHandler (HandleKeyPressed, HandleKeyReleased);
 		}
-		
+
 		public void AddCategory (Category category)
 		{
 			categories.Add (category);
+			UpdateSize ();
 		}
-		
+
 		Item GetItemAt (double x, double y)
 		{
 			double xPos = padding, yPos = padding;
@@ -123,36 +127,38 @@ namespace MonoDevelop.Ide
 			return null;
 		}
 		
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		void HandleClick (ClickInfo click)
 		{
-			if (evnt.Type == EventType.TwoButtonPress) {
+			if (click.NPress == 2) {
 				OnRequestClose (new RequestActionEventArgs (true));
 			}
-			if (evnt.Button == 1 && hoverItem != null)
-				ActiveItem = hoverItem;
-			return base.OnButtonPressEvent (evnt);
+			if (click.Button == 1) {
+				var item = GetItemAt (click.X, click.Y);
+				if (item != null) {
+					hoverItem = item;
+					ActiveItem = item;
+				}
+			}
 		}
-		
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
+
+		void HandleMotion (double x, double y)
 		{
-			var item = GetItemAt (evnt.X, evnt.Y);
+			var item = GetItemAt (x, y);
 			if (item != hoverItem) {
 				hoverItem = item;
 				QueueDraw ();
 			}
-			return base.OnMotionNotifyEvent (evnt);
 		}
-		
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
+
+		void HandleLeave ()
 		{
 			if (hoverItem != null) {
 				hoverItem = null;
 				QueueDraw ();
 			}
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 
-		
+
 		static string Ellipsize (string str, int maxLength)
 		{
 			if (str != null && str.Length > maxLength)
@@ -161,114 +167,123 @@ namespace MonoDevelop.Ide
 		}
 		
 		const int upperGradientHeight = 16;
-		protected override bool OnExposeEvent (Gdk.EventExpose e)
+
+		static void DrawArrow (Cairo.Context cr, double x, double y, double w, double h, bool up)
 		{
-			
-			using (Cairo.Context cr = Gdk.CairoHelper.Create (e.Window)) {
-				double xPos = padding, yPos = padding;
-				var layout = PangoUtil.CreateLayout (this);
-				int w, h;
-				layout.SetText (new string ('X', maxLength));
-				layout.GetPixelSize (out w, out h);
-				
-				foreach (Category cat in categories) {
-					yPos = padding;
-					cr.MoveTo (xPos, yPos);
-					layout.SetMarkup ("<b>" + cat.Title + "</b>");
-					cr.SetSourceColor (Style.Text (StateType.Normal).ToCairoColor ());
-					cr.ShowLayout (layout);
-					
-					if (cat.Items.Count == 0)
-						continue;
-					
-					layout.SetMarkup ("");
-					int w2, h2;
-					layout.GetPixelSize (out w2, out h2);
-					yPos += h2;
-					yPos += headerDistance;
-					var startY = yPos;
-					int curItem = 0;
-					int row = 0;
-					var iconHeight = Math.Max (h, cat.Items [0].Icon.Height + 2) + itemPadding * 2;
-					if (cat.FirstVisibleItem > 0) {
-						Gtk.Style.PaintArrow (Style, e.Window, State, ShadowType.None, 
-								new Rectangle ((int)xPos, (int)yPos, w, h), 
-								this, 
-								"", 
-								ArrowType.Up, 
-								true, 
-								(int)xPos, 
-								(int)yPos, 
-								w, 
-								h);
-						yPos += iconHeight;
-						curItem++;
-					}
-					
-					for (int i = cat.FirstVisibleItem; i < cat.Items.Count; i++) {
-						var item = cat.Items [i];
-						
-						if (curItem + 1 >= maxItems && row + 1 >= maxRows && i + 1 < cat.Items.Count) {
-							Gtk.Style.PaintArrow (Style, e.Window, State, ShadowType.None, 
-								new Rectangle ((int)xPos, (int)yPos, w, h), 
-								this, 
-								"", 
-								ArrowType.Down, 
-								true, 
-								(int)xPos, 
-								(int)yPos, 
-								w, 
-								h);
-							break;
-						}
-						
-						if (item == ActiveItem) {
-							int itemWidth = w + (int)item.Icon.Width + 2 + itemPadding * 2;
-							cr.Rectangle (xPos, yPos, itemWidth, iconHeight);
-							cr.LineWidth = 1;
-							cr.SetSourceColor (Style.Base (StateType.Selected).ToCairoColor ());
-							cr.Fill ();
-						} else if (item == hoverItem) {
-							int itemWidth = w + (int)item.Icon.Width + 2 + itemPadding * 2;
-							cr.Rectangle (xPos + 0.5, yPos + 0.5, itemWidth - 1, iconHeight);
-							cr.LineWidth = 1;
-							cr.SetSourceColor (Style.Base (StateType.Selected).ToCairoColor ());
-							cr.Stroke ();
-						}
-						cr.SetSourceColor (Style.Text (item == ActiveItem? StateType.Selected : StateType.Normal).ToCairoColor ());
-						cr.MoveTo (xPos + item.Icon.Width + 2 + itemPadding, yPos + (iconHeight - h) / 2);
-						layout.SetText (Ellipsize (item.ListTitle ?? item.Title, maxLength));
-						cr.ShowLayout (layout);
-						cr.DrawImage (this, item == ActiveItem ? item.Icon.WithStyles ("sel") : item.Icon, (int)xPos + itemPadding,
-						                                 (int)(yPos + (iconHeight - item.Icon.Height) / 2));
-						yPos += iconHeight;
-						if (++curItem >= maxItems) {
-							curItem = 0;
-							yPos = startY;
-							xPos += w + cat.Items [0].Icon.Width + 2 + padding + itemPadding * 2;
-							row++;
-						}
-					}
-					
-				
-					xPos += w + cat.Items [0].Icon.Width + 2 + padding + itemPadding * 2;
-				}
-				layout.Dispose ();
+			double size = Math.Min (w, h) / 2;
+			double cx = x + w / 2, cy = y + h / 2;
+			if (up) {
+				cr.MoveTo (cx - size / 2, cy + size / 4);
+				cr.LineTo (cx + size / 2, cy + size / 4);
+				cr.LineTo (cx, cy - size / 4);
+			} else {
+				cr.MoveTo (cx - size / 2, cy - size / 4);
+				cr.LineTo (cx + size / 2, cy - size / 4);
+				cr.LineTo (cx, cy + size / 4);
 			}
-			return true;
+			cr.ClosePath ();
+			cr.Fill ();
 		}
-		
-		protected override bool OnKeyPressEvent (EventKey evnt)
+
+		void Draw (Gtk.DrawingArea area, Cairo.Context cr, int areaWidth, int areaHeight)
+		{
+			var textColor = StyleColor.ToCairoColor ();
+			var selectedColor = LookupThemeColor ("theme_selected_bg_color", new Gdk.RGBA { Red = 0.2f, Green = 0.4f, Blue = 0.8f, Alpha = 1 }).ToCairoColor ();
+			var selectedTextColor = LookupThemeColor ("theme_selected_fg_color", new Gdk.RGBA { Red = 1, Green = 1, Blue = 1, Alpha = 1 }).ToCairoColor ();
+
+			double xPos = padding, yPos = padding;
+			var layout = PangoUtil.CreateLayout (this);
+			int w, h;
+			layout.SetText (new string ('X', maxLength));
+			layout.GetPixelSize (out w, out h);
+
+			foreach (Category cat in categories) {
+				yPos = padding;
+				cr.MoveTo (xPos, yPos);
+				layout.SetMarkup ("<b>" + cat.Title + "</b>");
+				cr.SetSourceColor (textColor);
+				cr.ShowLayout (layout);
+
+				if (cat.Items.Count == 0)
+					continue;
+
+				layout.SetMarkup ("");
+				int w2, h2;
+				layout.GetPixelSize (out w2, out h2);
+				yPos += h2;
+				yPos += headerDistance;
+				var startY = yPos;
+				int curItem = 0;
+				int row = 0;
+				var iconHeight = Math.Max (h, cat.Items [0].Icon.Height + 2) + itemPadding * 2;
+				if (cat.FirstVisibleItem > 0) {
+					cr.SetSourceColor (textColor);
+					DrawArrow (cr, xPos, yPos, w, h, true);
+					yPos += iconHeight;
+					curItem++;
+				}
+
+				for (int i = cat.FirstVisibleItem; i < cat.Items.Count; i++) {
+					var item = cat.Items [i];
+
+					if (curItem + 1 >= maxItems && row + 1 >= maxRows && i + 1 < cat.Items.Count) {
+						cr.SetSourceColor (textColor);
+						DrawArrow (cr, xPos, yPos, w, h, false);
+						break;
+					}
+
+					if (item == ActiveItem) {
+						int itemWidth = w + (int)item.Icon.Width + 2 + itemPadding * 2;
+						cr.Rectangle (xPos, yPos, itemWidth, iconHeight);
+						cr.LineWidth = 1;
+						cr.SetSourceColor (selectedColor);
+						cr.Fill ();
+					} else if (item == hoverItem) {
+						int itemWidth = w + (int)item.Icon.Width + 2 + itemPadding * 2;
+						cr.Rectangle (xPos + 0.5, yPos + 0.5, itemWidth - 1, iconHeight);
+						cr.LineWidth = 1;
+						cr.SetSourceColor (selectedColor);
+						cr.Stroke ();
+					}
+					cr.SetSourceColor (item == ActiveItem ? selectedTextColor : textColor);
+					cr.MoveTo (xPos + item.Icon.Width + 2 + itemPadding, yPos + (iconHeight - h) / 2);
+					layout.SetText (Ellipsize (item.ListTitle ?? item.Title, maxLength));
+					cr.ShowLayout (layout);
+					cr.DrawImage (this, item == ActiveItem ? item.Icon.WithStyles ("sel") : item.Icon, (int)xPos + itemPadding,
+					                                 (int)(yPos + (iconHeight - item.Icon.Height) / 2));
+					yPos += iconHeight;
+					if (++curItem >= maxItems) {
+						curItem = 0;
+						yPos = startY;
+						xPos += w + cat.Items [0].Icon.Width + 2 + padding + itemPadding * 2;
+						row++;
+					}
+				}
+
+
+				xPos += w + cat.Items [0].Icon.Width + 2 + padding + itemPadding * 2;
+			}
+			layout.Dispose ();
+		}
+
+		Gdk.RGBA LookupThemeColor (string name, Gdk.RGBA fallback)
+		{
+#pragma warning disable CS0612, CS0618 // StyleContext.LookupColor is deprecated in GTK 4 but is the only way to read theme colors
+			return StyleContext.LookupColor (name, out Gdk.RGBA color) ? color : fallback;
+#pragma warning restore CS0612, CS0618
+		}
+
+		bool HandleKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			Gdk.Key key;
 			Gdk.ModifierType mod;
 			KeyboardShortcut[] accels;
-			GtkWorkarounds.MapKeys (evnt, out key, out mod, out accels);
+			GtkWorkarounds.MapKeys (Display, keyval, keycode, state, 0, out key, out mod, out accels);
 			if (initialKey.IsEmpty)
 				initialKey = new KeyboardShortcut (key, mod);
 
 			if (accels [0].Key == initialKey.Key) {
-				if ((accels [0].Modifier & ModifierType.ShiftMask) == 0)
+				if ((accels [0].Modifier & Gdk.ModifierType.ShiftMask) == 0)
 					NextItem (true);
 				else
 					PrevItem (true);
@@ -295,7 +310,7 @@ namespace MonoDevelop.Ide
 						NextItem (false);
 						break;
 					case Gdk.Key.Tab:
-						if ((accels [0].Modifier & ModifierType.ShiftMask) == 0)
+						if ((accels [0].Modifier & Gdk.ModifierType.ShiftMask) == 0)
 							NextItem (true);
 						else
 							PrevItem (true);
@@ -310,28 +325,27 @@ namespace MonoDevelop.Ide
 					break;
 				}
 			}
-			return base.OnKeyPressEvent (evnt);
+			return true;
 		}
-		
-		protected override bool OnKeyReleaseEvent (Gdk.EventKey evnt)
+
+		void HandleKeyReleased (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			if (initialKey.IsEmpty) {
 				Gdk.Key key;
 				Gdk.ModifierType mod;
 				KeyboardShortcut [] accels;
-				GtkWorkarounds.MapKeys (evnt, out key, out mod, out accels);
+				GtkWorkarounds.MapKeys (Display, keyval, keycode, state, 0, out key, out mod, out accels);
 				initialKey = new KeyboardShortcut (key, mod);
 			}
 
 			var releaseMods = GtkWorkarounds.KeysForMod (initialKey.Modifier);
 
-			if ((releaseMods.Length == 0 && (evnt.Key == Gdk.Key.Control_L || evnt.Key == Gdk.Key.Control_R)) ||
-			    releaseMods.Contains (evnt.Key)) {
+			if ((releaseMods.Length == 0 && ((Gdk.Key)keyval == Gdk.Key.Control_L || (Gdk.Key)keyval == Gdk.Key.Control_R)) ||
+			    releaseMods.Contains ((Gdk.Key)keyval)) {
 				OnRequestClose (new RequestActionEventArgs (true));
 			}
-			return base.OnKeyReleaseEvent (evnt);
 		}
-		
+
 		protected virtual void OnRequestClose (RequestActionEventArgs e)
 		{
 			var handler = this.RequestClose;
@@ -497,7 +511,8 @@ namespace MonoDevelop.Ide
 			return cat;
 		}
 		
-		protected override void OnSizeRequested (ref Requisition req)
+		// Computes the size of the list from its content (replaces the GTK 2 OnSizeRequested override)
+		void UpdateSize ()
 		{
 			maxLength = 15;
 			foreach (var cat in categories) {
@@ -505,7 +520,7 @@ namespace MonoDevelop.Ide
 					maxLength = Math.Min (30, Math.Max (maxLength, (item.ListTitle ?? item.Title).Length));
 				}
 			}
-			
+
 			var layout = PangoUtil.CreateLayout (this);
 			int w, h;
 			layout.SetText (new string ('X', maxLength));
@@ -520,16 +535,16 @@ namespace MonoDevelop.Ide
 			var icon = firstNonEmptyCat.Items[0].Icon;
 			var iconHeight = Math.Max (h, (int)icon.Height + 2) + itemPadding * 2;
 			var iconWidth = (int) icon.Width + 2 + w  + itemPadding * 2;
-				
+
 			foreach (var cat in categories) {
 				var headerHeight = h + headerDistance;
 				totalHeight = Math.Max (totalHeight, headerHeight + (Math.Min (cat.Items.Count, maxItems)) * iconHeight);
 				totalWidth += (1 + Math.Min (maxRows - 1, cat.Items.Count / maxItems)) * iconWidth;
 			}
-			req.Width = totalWidth + padding * 2 + (categories.Count - 1) * padding;
-			req.Height = totalHeight + padding * 2;
+			ContentWidth = totalWidth + padding * 2 + (categories.Count - 1) * padding;
+			ContentHeight = totalHeight + padding * 2;
 		}
-		
+
 		public class Item
 		{
 			public string Title {
@@ -605,6 +620,7 @@ namespace MonoDevelop.Ide
 		}
 	}
 	
+	
 	internal class DocumentSwitcher : IdeWindow
 	{
 		List<MonoDevelop.Ide.Gui.Document> documents;
@@ -613,69 +629,79 @@ namespace MonoDevelop.Ide
 		Label labelType     = new Label ();
 		Label labelTitle    = new Label ();
 		DocumentList documentList = new DocumentList ();
+		static CssProvider styleProvider;
+		bool destroyed;
+		bool wasActive;
 
 		public DocumentSwitcher (Gtk.Window parent, bool startWithNext, out bool created) : this (parent, null, startWithNext, out created)
 		{
 		}
 
-		public DocumentSwitcher (Gtk.Window parent, string category, bool startWithNext, out bool dialogHasContent) : base(Gtk.WindowType.Toplevel)
+		public DocumentSwitcher (Gtk.Window parent, string category, bool startWithNext, out bool dialogHasContent)
 		{
 			if (string.IsNullOrEmpty (category))
 				category = GettextCatalog.GetString ("Documents");
-			
+
 			IdeApp.CommandService.IsEnabled = false;
 			this.documents = new List<MonoDevelop.Ide.Gui.Document> (
 				IdeApp.Workbench.Documents.OrderByDescending (d => d.LastTimeActive));
 			this.TransientFor = parent;
-			
+
 			this.Decorated = false;
 			this.DestroyWithParent = true;
-			this.CanDefault = true;
-			
+
 			this.Modal = true;
-			this.WindowPosition = Gtk.WindowPosition.CenterOnParent;
-			this.TypeHint = WindowTypeHint.Dialog;
-			
-			this.ModifyBg (StateType.Normal, Styles.BaseBackgroundColor.ToGdkColor ());
-			
-			VBox vBox = new VBox ();
-			HBox hBox = new HBox ();
-			
-			var hBox2 = new HBox ();
-			hBox2.PackStart (hBox, false, false, 8);
-			
-			hBox.PackStart (imageTitle.ToGtkWidget (), true, false, 2);
+
+			ApplyStyle ();
+			AddCssClass ("md-document-switcher");
+
+			var vBox = new Gtk.Box (Orientation.Vertical, 0);
+			var hBox = new Gtk.Box (Orientation.Horizontal, 2);
+
+			var hBox2 = new Gtk.Box (Orientation.Horizontal, 0);
+			hBox.MarginStart = 8;
+			hBox2.Append (hBox);
+
+			var titleImage = imageTitle.ToGtkWidget ();
+			titleImage.Halign = Align.Center;
+			hBox.Append (titleImage);
 			labelTitle.Xalign = 0;
 			labelTitle.HeightRequest = 24;
-			hBox.PackStart (labelTitle, true, true, 2);
-			vBox.PackStart (hBox2, false, false, 6);
-			
+			labelTitle.Hexpand = true;
+			hBox.Append (labelTitle);
+			hBox2.MarginTop = 6;
+			hBox2.MarginBottom = 6;
+			vBox.Append (hBox2);
+
 			labelType.Xalign = 0;
 			labelType.HeightRequest = 16;
-			hBox = new HBox ();
-			hBox.PackStart (labelType, false, false, 8);
-			vBox.PackStart (hBox, false, false, 2);
-			
-			hBox = new HBox ();
-			hBox.PackStart (documentList, true, true, 1);
-			vBox.PackStart (hBox, false, false, 0);
-			
+			labelType.MarginStart = 8;
+			labelType.MarginTop = 2;
+			labelType.MarginBottom = 2;
+			vBox.Append (labelType);
+
+			documentList.MarginStart = 1;
+			documentList.MarginEnd = 1;
+			vBox.Append (documentList);
+
 			labelFileName.Xalign = 0;
 			labelFileName.Ellipsize = Pango.EllipsizeMode.Start;
-			hBox = new HBox ();
-			hBox.PackStart (labelFileName, true, true, 8);
-			vBox.PackEnd (hBox, false, false, 6);
-			
-			Add (vBox);
-			
+			labelFileName.MarginStart = 8;
+			labelFileName.MarginEnd = 8;
+			labelFileName.MarginTop = 6;
+			labelFileName.MarginBottom = 6;
+			vBox.Append (labelFileName);
+
+			Child = vBox;
+
 			var padCategory = new  DocumentList.Category (GettextCatalog.GetString ("Pads"));
 			DocumentList.Item activeItem = null;
-			
+
 			foreach (Pad pad in IdeApp.Workbench.Pads) {
 				if (!pad.Visible)
 					continue;
 				var item = new DocumentList.Item () {
-					Icon = ImageService.GetIcon (pad.Icon.Name ?? MonoDevelop.Ide.Gui.Stock.GenericFile, IconSize.Menu),
+					Icon = ImageService.GetIcon (pad.Icon.Name ?? MonoDevelop.Ide.Gui.Stock.GenericFile, StockIconSize.Menu),
 					Title = pad.Title,
 					Tag = pad
 				};
@@ -686,11 +712,11 @@ namespace MonoDevelop.Ide
 				padCategory.AddItem (item);
 			}
 			documentList.AddCategory (padCategory);
-			
+
 			var documentCategory = new  DocumentList.Category (GettextCatalog.GetString ("Documents"));
 			foreach (var doc in documents) {
 				var item = new DocumentList.Item () {
-					Icon = doc.Icon.WithSize (IconSize.Menu),
+					Icon = doc.Icon.WithSize (StockIconSize.Menu),
 					Title = doc.Name,
 					ListTitle = doc.Window.Title,
 					Description = doc.DocumentControllerDescription?.Name ?? "",
@@ -704,7 +730,7 @@ namespace MonoDevelop.Ide
 				documentCategory.AddItem (item);
 			}
 			documentList.AddCategory (documentCategory);
-		
+
 			documentList.ActiveItemChanged += delegate {
 				if (documentList.ActiveItem == null) {
 					labelFileName.Text = labelType.Text = labelTitle.Text = "";
@@ -715,7 +741,7 @@ namespace MonoDevelop.Ide
 				labelType.Markup = "<span size=\"small\">" + documentList.ActiveItem.Description + "</span>";
 				labelTitle.Markup = "<span size=\"xx-large\" weight=\"bold\">" + documentList.ActiveItem.Title + "</span>";
 			};
-			
+
 			if (activeItem == null) {
 				if (documentCategory.Items.Count > 0) {
 					activeItem = documentCategory.Items [0];
@@ -731,8 +757,7 @@ namespace MonoDevelop.Ide
 
 			documentList.ActiveItem = activeItem;
 
-			ModifierType modifiers;
-			if (Gtk.Global.GetCurrentEventState (out modifiers) && modifiers.HasFlag (ModifierType.ShiftMask))
+			if ((documentList.GetCurrentModifiers () & Gdk.ModifierType.ShiftMask) != 0)
 				documentList.PrevItem (true);
 			else
 				documentList.NextItem (true);
@@ -750,18 +775,28 @@ namespace MonoDevelop.Ide
 						((MonoDevelop.Ide.Gui.Document)item).Select();
 				}
 			};
-			
-			this.ShowAll ();
+
+			// The window closes when it loses the focus (replaces the GTK 2 OnFocusOutEvent override)
+			AddNotification ("is-active", (o, args) => {
+				if (IsActive)
+					wasActive = true;
+				else if (wasActive)
+					DestroyWindow ();
+			});
+
 			documentList.GrabFocus ();
-			this.GrabDefault ();
 
 			dialogHasContent = true;
 		}
-		
-		protected override bool OnFocusOutEvent (EventFocus evnt)
+
+		// The window is drawn with the base background color and a thin border (replaces ModifyBg and the border painted on expose)
+		static void ApplyStyle ()
 		{
-			DestroyWindow ();
-			return base.OnFocusOutEvent (evnt);
+			if (styleProvider == null) {
+				styleProvider = new CssProvider ();
+				StyleContext.AddProviderForDisplay (Gdk.Display.Default, styleProvider, (uint)StyleProviderPriority.Application);
+			}
+			styleProvider.LoadFromString (".md-document-switcher { background-color: " + Styles.BaseBackgroundColor.ToGdkColor ().GetHex () + "; border: 1px solid alpha(currentColor, 0.4); }");
 		}
 
 		void DestroyWindow ()
@@ -769,21 +804,14 @@ namespace MonoDevelop.Ide
 			Destroy ();
 		}
 
-		protected override void OnDestroyed ()
+		// Replaces the GTK 2 OnDestroyed override: commands are enabled again when the window goes away
+		public override void Destroy ()
 		{
-			base.OnDestroyed ();
-			IdeApp.CommandService.IsEnabled = true;
-		}
-		
-		protected override bool OnExposeEvent (EventExpose evnt)
-		{
-			base.OnExposeEvent (evnt);
-			
-			int winWidth, winHeight;
-			this.GetSize (out winWidth, out winHeight);
-			
-			this.GdkWindow.DrawRectangle (this.Style.ForegroundGC (StateType.Insensitive), false, 0, 0, winWidth - 1, winHeight - 1);
-			return false;
+			if (!destroyed) {
+				destroyed = true;
+				IdeApp.CommandService.IsEnabled = true;
+			}
+			base.Destroy ();
 		}
 	}
 }

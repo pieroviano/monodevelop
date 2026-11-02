@@ -25,10 +25,8 @@
 // THE SOFTWARE.
 using System;
 using Gtk;
-using Gdk;
 using System.ComponentModel;
 using System.Collections.Generic;
-using Cairo;
 using System.Linq;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Core;
@@ -36,11 +34,11 @@ using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components.PropertyGrid
 {
-	class PropertyGridTable: Gtk.EventBox
+	class PropertyGridTable: ContainerWidget
 	{
 		EditorManager editorManager;
 		List<TableRow> rows = new List<TableRow> ();
-		Dictionary<Gtk.Widget, Gdk.Rectangle> children = new Dictionary<Gtk.Widget, Gdk.Rectangle> ();
+		Dictionary<Gtk.Widget, Gdk.Rectangle> childBounds = new Dictionary<Gtk.Widget, Gdk.Rectangle> ();
 		EditSession editSession;
 		Gtk.Widget currentEditor;
 		TableRow currentEditorRow;
@@ -143,45 +141,38 @@ namespace MonoDevelop.Components.PropertyGrid
 			}
 		}
 
-		Gdk.Cursor cursor;
-		Gdk.Cursor Cursor {
-			get { return cursor; }
-			set {
-				if (cursor == value)
-					return;
-				GdkWindow.Cursor = cursor = value;
-			}
-		}
-
 		public PropertyGridTable (EditorManager editorManager, PropertyGrid parentGrid)
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-
 			this.parentGrid = parentGrid;
 			this.editorManager = editorManager;
-			WidgetFlags |= Gtk.WidgetFlags.AppPaintable;
-			Events |= Gdk.EventMask.PointerMotionMask;
+			Focusable = true;
 			CanFocus = true;
-			resizeCursor = new Cursor (CursorType.SbHDoubleArrow);
-			handCursor = new Cursor (CursorType.Hand1);
+			resizeCursor = new Gdk.Cursor ("col-resize", null);
+			handCursor = new Gdk.Cursor ("pointer", null);
 
 			// Accessibility
-			Accessible.Role = Atk.Role.TreeTable;
+			AccessibleRole = AccessibleRole.TreeGrid;
+
+			this.AddClickHandler (OnButtonPressed, OnButtonReleased, 0);
+			this.AddMotionHandler (OnPointerMoved, null, HideTooltip);
+			this.AddKeyPressHandler (OnKeyPressed);
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			StopAllAnimations ();
-			base.OnDestroyed ();
-			resizeCursor.Dispose ();
-			handCursor.Dispose ();
+			if (disposing) {
+				StopAllAnimations ();
+				HideTooltip ();
+				resizeCursor?.Dispose ();
+				handCursor?.Dispose ();
+				resizeCursor = handCursor = null;
+			}
+			base.Dispose (disposing);
 		}
 
 		public event EventHandler Changed;
 
 		public PropertySort PropertySort { get; set; }
-
-		public ShadowType ShadowType { get; set; }
 
 		public void CommitChanges ()
 		{
@@ -436,65 +427,50 @@ namespace MonoDevelop.Components.PropertyGrid
 			return e;
 		}
 
-		protected override void ForAll (bool includeInternals, Gtk.Callback callback)
+		protected override void OnMeasure (Orientation orientation, int forSize, out int minimum, out int natural, out int minimumBaseline, out int naturalBaseline)
 		{
-			base.ForAll (includeInternals, callback);
-			foreach (var c in children.Keys.ToArray ()) {
-				if (c.Parent == null) {
-					LoggingService.LogError ("Error found unparented child in property grid:" + c.GetType ());
-					continue;
-				}
-				callback (c);
+			minimumBaseline = naturalBaseline = -1;
+			if (orientation == Orientation.Horizontal) {
+				minimum = natural = 20;
+			} else {
+				int y = 0;
+				MeasureHeight (rows, ref y, forSize >= 0 ? forSize : Math.Max (Width, 20));
+				minimum = natural = y;
 			}
+
+			foreach (var c in childBounds.Keys)
+				c.Measure (orientation, -1, out _, out _, out _, out _);
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			requisition.Width = 20;
-
-			int dx = (int)((double)Allocation.Width * dividerPosition) - PropertyContentLeftPadding;
-			if (dx < 0) dx = 0;
 			int y = 0;
-			MeasureHeight (rows, ref y);
-			requisition.Height = y;
-
-			foreach (var c in children)
-				c.Key.SizeRequest ();
-		}
-
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			int y = 0;
-			MeasureHeight (rows, ref y);
-			if (currentEditor != null && currentEditorRow != null && children.ContainsKey (currentEditor))
-				children [currentEditor] = currentEditorRow.EditorBounds;
-			foreach (var cr in children) {
+			MeasureHeight (rows, ref y, width);
+			if (currentEditor != null && currentEditorRow != null && childBounds.ContainsKey (currentEditor))
+				childBounds [currentEditor] = currentEditorRow.EditorBounds;
+			foreach (var cr in childBounds) {
 				var r = cr.Value;
-				cr.Key.SizeAllocate (new Gdk.Rectangle (r.X, r.Y, r.Width, r.Height));
+				AllocateChild (cr.Key, new Gdk.Rectangle (r.X, r.Y, Math.Max (r.Width, 0), Math.Max (r.Height, 0)));
 			}
 		}
 
 		public void SetAllocation (Gtk.Widget w, Gdk.Rectangle rect)
 		{
-			children [w] = rect;
+			childBounds [w] = rect;
 			QueueResize ();
 		}
 
-		protected override void OnAdded (Gtk.Widget widget)
+		protected override void OnChildAdded (Gtk.Widget child)
 		{
-			children.Add (widget, new Gdk.Rectangle (0,0,0,0));
-			widget.Parent = this;
-			QueueResize ();
+			childBounds [child] = new Gdk.Rectangle (0, 0, 0, 0);
 		}
 
-		protected override void OnRemoved (Gtk.Widget widget)
+		protected override void OnChildRemoved (Gtk.Widget child)
 		{
-			children.Remove (widget);
-			widget.Unparent ();
+			childBounds.Remove (child);
 		}
 
-		void MeasureHeight (IEnumerable<TableRow> rowList, ref int y)
+		void MeasureHeight (IEnumerable<TableRow> rowList, ref int y, int width)
 		{
 			heightMeasured = true;
 			Pango.Layout layout = new Pango.Layout (PangoContext);
@@ -502,7 +478,7 @@ namespace MonoDevelop.Components.PropertyGrid
 				layout.SetText (r.Label);
 				int w,h;
 				layout.GetPixelSize (out w, out h);
-				var width = Allocation.Width;
+				
 				if (r.IsCategory) {
 					r.Bounds = new Gdk.Rectangle (0, y, width, h + CategoryTopBottomPadding * 2);
 					y += h + CategoryTopBottomPadding * 2;
@@ -511,15 +487,15 @@ namespace MonoDevelop.Components.PropertyGrid
 					int eh;
 					int dividerX = (int)((double)width * dividerPosition);
 					var cell = GetCell (r);
-					cell.GetSize (Allocation.Width - dividerX, out w, out eh);
+					cell.GetSize (width - dividerX, out w, out eh);
 					eh = Math.Max (h + PropertyTopBottomPadding * 2, eh);
-					r.Bounds = new Gdk.Rectangle (0, y, Allocation.Width, eh);
-					r.EditorBounds = new Gdk.Rectangle (dividerX + PropertyContentLeftPadding, y, Allocation.Width - dividerX - PropertyContentLeftPadding, eh);
+					r.Bounds = new Gdk.Rectangle (0, y, width, eh);
+					r.EditorBounds = new Gdk.Rectangle (dividerX + PropertyContentLeftPadding, y, width - dividerX - PropertyContentLeftPadding, eh);
 					y += eh;
 				}
 				if (r.ChildRows != null && (r.Expanded || r.AnimatingExpand)) {
 					int py = y;
-					MeasureHeight (r.ChildRows, ref y);
+					MeasureHeight (r.ChildRows, ref y, width);
 					r.ChildrenHeight = y - py;
 					if (r.AnimatingExpand)
 						y = py + r.AnimationHeight;
@@ -528,23 +504,25 @@ namespace MonoDevelop.Components.PropertyGrid
 			layout.Dispose ();
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
+		protected override void OnSnapshot (Snapshot snapshot)
 		{
-			using (Cairo.Context ctx = CairoHelper.Create (evnt.Window)) {
-				int dx = (int)((double)Allocation.Width * dividerPosition);
+			int width = Width, height = Height;
+			snapshot.DrawCairo (this, ctx => {
+				int dx = (int)((double)width * dividerPosition);
 				ctx.LineWidth = 1;
-				ctx.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+				ctx.Rectangle (0, 0, width, height);
 				ctx.SetSourceColor (Styles.PropertyPadLabelBackgroundColor.ToCairoColor ());
 				ctx.Fill ();
 				ctx.MoveTo (dx + 0.5, 0);
-				ctx.RelLineTo (0, Allocation.Height);
+				ctx.RelLineTo (0, height);
 				ctx.SetSourceColor (Styles.PropertyPadDividerColor.ToCairoColor ());
 				ctx.Stroke ();
 
 				int y = 0;
 				Draw (ctx, rows, dx, PropertyLeftPadding, ref y);
-			}
-			return base.OnExposeEvent (evnt);
+			});
+			// draws the editor child
+			base.OnSnapshot (snapshot);
 		}
 
 		void Draw (Cairo.Context ctx, List<TableRow> rowList, int dividerX, int x, ref int y)
@@ -563,12 +541,12 @@ namespace MonoDevelop.Components.PropertyGrid
 
 				if (r.IsCategory) {
 					var rh = h + CategoryTopBottomPadding*2;
-					ctx.Rectangle (0, y, Allocation.Width, rh);
+					ctx.Rectangle (0, y, Width, rh);
 					ctx.SetSourceColor (Styles.PadCategoryBackgroundColor.ToCairoColor ());
 					ctx.Fill ();
 
 					if (IsFocus && r.Focused) {
-						ctx.Rectangle (1, y + 1, Allocation.Width - 2, rh - 3);
+						ctx.Rectangle (1, y + 1, Width - 2, rh - 3);
 						ctx.SetDash (new double[] { 1, 1 }, 0.5);
 						ctx.LineWidth = 1.0;
 						ctx.SetSourceColor (Styles.BaseForegroundColor.ToCairoColor ());
@@ -577,10 +555,10 @@ namespace MonoDevelop.Components.PropertyGrid
 
 					if (lastCategory == null || lastCategory.Expanded || lastCategory.AnimatingExpand) {
 						ctx.MoveTo (0, y + 0.5);
-						ctx.LineTo (Allocation.Width, y + 0.5);
+						ctx.LineTo (Width, y + 0.5);
 					}
 					ctx.MoveTo (0, y + rh - 0.5);
-					ctx.LineTo (Allocation.Width, y + rh - 0.5);
+					ctx.LineTo (Width, y + rh - 0.5);
 					ctx.SetSourceColor (Styles.PadCategoryBorderColor.ToCairoColor ());
 					ctx.Stroke ();
 
@@ -589,7 +567,7 @@ namespace MonoDevelop.Components.PropertyGrid
 					Pango.CairoHelper.ShowLayout (ctx, layout);
 
 					var img = r.Expanded ? discloseUp : discloseDown;
-					ctx.DrawImage (this, img, Allocation.Width - img.Width - CategoryTopBottomPadding, y + Math.Round ((rh - img.Height) / 2));
+					ctx.DrawImage (this, img, Width - img.Width - CategoryTopBottomPadding, y + Math.Round ((rh - img.Height) / 2));
 
 					y += rh;
 					lastCategory = r;
@@ -597,25 +575,25 @@ namespace MonoDevelop.Components.PropertyGrid
 				else {
 					var cell = GetCell (r);
 					r.Enabled = !r.Property.IsReadOnly || cell.EditsReadOnlyObject;
-					var state = r.Enabled ? State : Gtk.StateType.Insensitive;
+					var state = r.Enabled ? StateFlags.Normal : StateFlags.Insensitive;
 					ctx.Save ();
 					ctx.Rectangle (0, y, dividerX, h + PropertyTopBottomPadding*2);
 					ctx.Clip ();
 					ctx.MoveTo (x, y + PropertyTopBottomPadding);
-					ctx.SetSourceColor (Style.Text (state).ToCairoColor ());
+					ctx.SetSourceColor (GetTextColor (state).ToCairoColor ());
 					Pango.CairoHelper.ShowLayout (ctx, layout);
 					ctx.Restore ();
 
 					if (r != currentEditorRow) {
 						var bounds = GetInactiveEditorBounds (r);
 
-						cell.Render (GdkWindow, ctx, bounds, state);
+						cell.Render (ctx, bounds, state);
 
 						if (r.IsExpandable) {
 							var img = r.Expanded ? discloseUp : discloseDown;
 							ctx.DrawImage (
 								this, img,
-								Allocation.Width - img.Width - PropertyTopBottomPadding,
+								Width - img.Width - PropertyTopBottomPadding,
 								y + Math.Round ((h + PropertyTopBottomPadding * 2 - img.Height) / 2)
 							);
 						}
@@ -630,9 +608,9 @@ namespace MonoDevelop.Components.PropertyGrid
 
 					ctx.Save ();
 					if (r.AnimatingExpand)
-						ctx.Rectangle (0, y, Allocation.Width, r.AnimationHeight);
+						ctx.Rectangle (0, y, Width, r.AnimationHeight);
 					else
-						ctx.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+						ctx.Rectangle (0, 0, Width, Height);
 
 					ctx.Clip ();
 					Draw (ctx, r.ChildRows, dividerX, x + indent, ref y);
@@ -641,11 +619,11 @@ namespace MonoDevelop.Components.PropertyGrid
 					if (r.AnimatingExpand) {
 						y = py + r.AnimationHeight;
 						// Repaing the background because the cairo clip doesn't work for gdk primitives
-						int dx = (int)((double)Allocation.Width * dividerPosition);
-						ctx.Rectangle (0, y, dx, Allocation.Height - y);
+						int dx = (int)((double)Width * dividerPosition);
+						ctx.Rectangle (0, y, dx, Height - y);
 						ctx.SetSourceColor (Styles.PropertyPadLabelBackgroundColor.ToCairoColor ());
 						ctx.Fill ();
-						ctx.Rectangle (dx + 1, y, Allocation.Width - dx - 1, Allocation.Height - y);
+						ctx.Rectangle (dx + 1, y, Width - dx - 1, Height - y);
 						ctx.SetSourceColor (Styles.BrowserPadBackground.ToCairoColor());
 						ctx.Fill ();
 					}
@@ -695,16 +673,19 @@ namespace MonoDevelop.Components.PropertyGrid
 			QueueResize ();
 		}
 
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		void OnButtonPressed (ClickInfo evnt)
 		{
-			if (evnt.Type != EventType.ButtonPress)
-				return base.OnButtonPressEvent (evnt);
+			// double and triple clicks are handled as the first click
+			if (evnt.NPress != 1)
+				return;
 
-			int dx = (int)((double)Allocation.Width * dividerPosition);
+			int width = Width;
+			int dx = (int)((double)width * dividerPosition);
 			if (Math.Abs (dx - evnt.X) < 4) {
 				draggingDivider = true;
 				Cursor = resizeCursor;
-				return true;
+				evnt.Claim ();
+				return;
 			}
 
 			var row = GetRowAtPoint ((int)evnt.X, (int)evnt.Y);
@@ -718,70 +699,82 @@ namespace MonoDevelop.Components.PropertyGrid
 					row = GetRowAtPoint ((int)evnt.X, (int)evnt.Y);
 
 					StartEditing (row);
-					return true;
+					evnt.Claim ();
+					return;
 				}
 
 				if (row.IsExpandable) {
 					ExpandOrCollapseRow (row);
-					return true;
+					evnt.Claim ();
+					return;
 				}
 			}
 
 			EndEditing ();
 			GrabFocus ();
-
-			return base.OnButtonPressEvent (evnt);
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
+		void OnButtonReleased (ClickInfo evnt)
 		{
 			if (draggingDivider) {
 				draggingDivider = false;
 				QueueResize ();
 			}
-			return base.OnButtonReleaseEvent (evnt);
 		}
 
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
+		void OnPointerMoved (double x, double y)
 		{
+			int width = Width;
 			if (draggingDivider) {
-				var px = evnt.X;
+				var px = x;
 				if (px < 10)
 					px = 10;
-				else if (px > Allocation.Width - 10)
-					px = Allocation.Width - 10;
-				dividerPosition = px / (double) Allocation.Width;
+				else if (px > width - 10)
+					px = width - 10;
+				dividerPosition = px / (double) width;
 				QueueResize ();
-				return true;
+				return;
 			}
 
-			var row = GetAllRows (true).FirstOrDefault (r => r.Bounds.Contains ((int)evnt.X, (int)evnt.Y));
+			var row = GetAllRows (true).FirstOrDefault (r => r.Bounds.Contains ((int)x, (int)y));
 			if (row != null && row.IsExpandable) {
 				var bounds = GetInactiveEditorBounds (row);
-				if (bounds.IsEmpty || !bounds.Contains ((int)evnt.X, (int)evnt.Y)) {
+				if (bounds.IsEmpty || !bounds.Contains ((int)x, (int)y)) {
 					Cursor = handCursor;
-					return true;
+					return;
 				}
 			}
 
-			int dx = (int)((double)Allocation.Width * dividerPosition);
-			if (Math.Abs (dx - evnt.X) < 4) {
+			int dx = (int)((double)width * dividerPosition);
+			if (Math.Abs (dx - x) < 4) {
 				Cursor = resizeCursor;
+				return;
+			}
+			ShowTooltip ((int)x, (int)y);
+			Cursor = null;
+		}
+
+		// Activates (expands/collapses) the focused row, as the GTK 2 "activate" signal did.
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
+		{
+			var key = (Gdk.Key) keyval;
+			if (!IsFocus || (key != Gdk.Key.Return && key != Gdk.Key.KP_Enter && key != Gdk.Key.space))
+				return false;
+			if (currentEditorRow != null && currentEditorRow.IsExpandable) {
+				ExpandOrCollapseRow (currentEditorRow);
 				return true;
 			}
-			ShowTooltip (evnt);
-			Cursor = null;
-			return base.OnMotionNotifyEvent (evnt);
+			return false;
 		}
 
 		uint tooltipTimeout;
 		TooltipPopoverWindow tooltipWindow;
 
-		void ShowTooltip (EventMotion evnt)
+		void ShowTooltip (int x, int y)
 		{
 			HideTooltip ();
 			tooltipTimeout = GLib.Timeout.Add (500, delegate {
-				ShowTooltipWindow ((int)evnt.X, (int)evnt.Y);
+				ShowTooltipWindow (x, y);
 				return false;
 			});
 		}
@@ -802,7 +795,7 @@ namespace MonoDevelop.Components.PropertyGrid
 		void ShowTooltipWindow (int x, int y)
 		{
 			tooltipTimeout = 0;
-			if (x >= Allocation.Width)
+			if (x >= Width)
 				return;
 			var row = GetAllRows (true).FirstOrDefault (r => !r.IsCategory && y >= r.EditorBounds.Y && y <= r.EditorBounds.Bottom);
 			if (row != null) {
@@ -825,20 +818,15 @@ namespace MonoDevelop.Components.PropertyGrid
 					}
 				}
 				tooltipWindow.Markup = s.ToString ();
-				tooltipWindow.ShowPopup (this, new Gdk.Rectangle (0, row.EditorBounds.Y, Allocation.Width, row.EditorBounds.Height), PopupPosition.Right);
+				tooltipWindow.ShowPopup (this, new Gdk.Rectangle (0, row.EditorBounds.Y, Width, row.EditorBounds.Height), PopupPosition.Right);
 			}
 		}
+
 
 		protected override void OnUnrealized ()
 		{
 			HideTooltip ();
 			base.OnUnrealized ();
-		}
-
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
-		{
-			HideTooltip ();
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 
 		void StartExpandAnimation (TableRow row)
@@ -896,19 +884,11 @@ namespace MonoDevelop.Components.PropertyGrid
 			}
 		}
 
-		protected override void OnDragLeave (DragContext context, uint time_)
-		{
-			if (!draggingDivider)
-				Cursor = null;
-			base.OnDragLeave (context, time_);
-		}
-
 		internal void EndEditing ()
 		{
 			if (editSession != null) {
 				if (currentEditor != null) {
-					Remove (currentEditor);
-					currentEditor.Destroy ();
+					RemoveChild (currentEditor);
 					currentEditor = null;
 				}
 				editSession.Dispose ();
@@ -916,6 +896,14 @@ namespace MonoDevelop.Components.PropertyGrid
 				parentGrid.Populate (saveEditSession: false);
 			}
 			QueueDraw ();
+		}
+
+		Gdk.RGBA GetTextColor (StateFlags state)
+		{
+			var color = StyleColor;
+			if ((state & StateFlags.Insensitive) != 0)
+				color.Alpha *= 0.5f;
+			return color;
 		}
 
 		void StartEditing (TableRow row)
@@ -932,15 +920,14 @@ namespace MonoDevelop.Components.PropertyGrid
 				return;
 			}
 
-			editSession = cell.StartEditing (row.EditorBounds, State);
+			editSession = cell.StartEditing (row.EditorBounds, StateFlags.Normal);
 			if (editSession == null) {
 				return;
 			}
 
 			currentEditor = (Gtk.Widget) editSession.Editor;
-			Add (currentEditor);
+			AddChild (currentEditor);
 			SetAllocation (currentEditor, row.EditorBounds);
-			currentEditor.Show ();
 			currentEditor.GrabFocus ();
 
 			var refreshAtt = row.Property.Attributes.OfType<RefreshPropertiesAttribute> ().FirstOrDefault ();
@@ -957,15 +944,17 @@ namespace MonoDevelop.Components.PropertyGrid
 
 			};
 
-			var vs = ((Gtk.Viewport)Parent).Vadjustment;
-			if (row.EditorBounds.Top < vs.Value)
-				vs.Value = row.EditorBounds.Top;
-			else if (row.EditorBounds.Bottom > vs.Value + vs.PageSize)
-				vs.Value = row.EditorBounds.Bottom - vs.PageSize;
+			var vs = (Parent as Gtk.Viewport)?.Vadjustment;
+			if (vs != null) {
+				if (row.EditorBounds.Top < vs.Value)
+					vs.Value = row.EditorBounds.Top;
+				else if (row.EditorBounds.Bottom > vs.Value + vs.PageSize)
+					vs.Value = row.EditorBounds.Bottom - vs.PageSize;
+			}
 			QueueDraw ();
 		}
 
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (DirectionType direction)
 		{
 			TableRow nextFocus = null;
 			bool needsRedraw = false;
@@ -1008,15 +997,6 @@ namespace MonoDevelop.Components.PropertyGrid
 			}
 
 			return currentEditorRow != null;
-		}
-
-		protected override void OnActivate ()
-		{
-			if (currentEditorRow != null && currentEditorRow.IsExpandable) {
-				ExpandOrCollapseRow (currentEditorRow);
-				return;
-			}
-			base.OnActivate ();
 		}
 
 		// When we stop editing a row, the tree gets rebuilt

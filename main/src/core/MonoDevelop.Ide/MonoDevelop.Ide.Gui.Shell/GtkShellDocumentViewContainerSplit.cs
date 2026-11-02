@@ -30,15 +30,30 @@ using MonoDevelop.Ide.Gui.Documents;
 using Xwt.Drawing;
 using System.Linq;
 using MonoDevelop.Core;
-using Gdk;
 using System.ComponentModel;
 
 namespace MonoDevelop.Ide.Gui.Shell
 {
 	class GtkShellDocumentViewContainerSplit : IGtkShellDocumentViewContainer
 	{
+		/// <summary>Paned reporting its size changes (replaces the GTK 2 SizeAllocated event).</summary>
+		class SplitPaned : Paned
+		{
+			public SplitPaned (Orientation orientation) : base (orientation)
+			{
+			}
+
+			public event Action<int, int> SizeAllocatedHandler;
+
+			protected override void OnSizeAllocate (int width, int height, int baseline)
+			{
+				base.OnSizeAllocate (width, height, baseline);
+				SizeAllocatedHandler?.Invoke (width, height);
+			}
+		}
+
 		DocumentViewContainerMode mode;
-		Paned paned;
+		SplitPaned paned;
 		List<double> relativeSplitSizes = new List<double> ();
 		bool settingSize, sizesLoaded;
 		Gdk.Rectangle lastRecalcSize;
@@ -47,20 +62,17 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			this.mode = mode;
 			paned = CreatePaned ();
-			paned.Show ();
-			paned.SizeAllocated += Paned_SizeAllocated;
+			paned.SizeAllocatedHandler += Paned_SizeAllocated;
 		}
 
 		public Gtk.Widget Widget => paned;
 
 
-		Paned CreatePaned ()
+		SplitPaned CreatePaned ()
 		{
-			Paned p;
-			if (mode == DocumentViewContainerMode.VerticalSplit)
-				p = new HPaned ();
-			else
-				p = new VPaned ();
+			// vertical split = side by side views (horizontal paned), horizontal split = stacked views
+			var orientation = mode == DocumentViewContainerMode.VerticalSplit ? Orientation.Horizontal : Orientation.Vertical;
+			var p = new SplitPaned (orientation);
 			p.AddNotification ("position",HandleNotifyHandler);
 			return p;
 		}
@@ -87,33 +99,23 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			settingSize = true;
 			ClearPaneds ();
+			// Views are chained: each paned holds a view in its start child and the next paned (or the last view) in its end child
 			var currentPaned = paned;
-			int currentChild = 1;
 			for (int n = 0; n < Children.Count; n++) {
 				var c = Children [n];
-				if (currentChild == 1) {
-					currentPaned.Add1 (c);
-					currentChild++;
-				} else if (n < Children.Count - 1) {
-					if (!(paned.Child2 is Paned childPaned)) {
-						childPaned = CreatePaned ();
-						currentPaned.Add2 (childPaned);
-					}
-					childPaned.Add1 (c);
-					currentPaned = childPaned;
-					currentChild = 2;
+				if (n == Children.Count - 1) {
+					if (n == 0)
+						currentPaned.StartChild = c;
+					else
+						currentPaned.EndChild = c;
 				} else {
-					if (paned.Child2 is Paned childPaned) {
-						paned.Remove (childPaned);
-						childPaned.Destroy ();
+					currentPaned.StartChild = c;
+					if (n < Children.Count - 2) {
+						var childPaned = CreatePaned ();
+						currentPaned.EndChild = childPaned;
+						currentPaned = childPaned;
 					}
-					paned.Add2 (c);
-					currentPaned = null;
 				}
-			}
-			if (currentPaned?.Child2 is Paned nextPaned) {
-				currentPaned.Remove (nextPaned);
-				nextPaned.Destroy ();
 			}
 			RestoreSizes ();
 			settingSize = false;
@@ -121,20 +123,18 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		void ClearPaneds ()
 		{
-			var p = paned;
+			Paned p = paned;
 			while (p != null) {
-				var next = p.Child2 as Paned;
-				if (p.Child1 != null)
-					p.Remove (p.Child1);
-				if (p.Child2 != null && next == null)
-					p.Remove (p.Child2);
+				var next = p.EndChild as Paned;
+				p.StartChild = null;
+				p.EndChild = null;
 				p = next;
 			}
 		}
 
 		public void Dispose ()
 		{
-			paned.SizeAllocated -= Paned_SizeAllocated;
+			paned.SizeAllocatedHandler -= Paned_SizeAllocated;
 		}
 
 		public void AddViews (IEnumerable<GtkShellDocumentViewItem> views)
@@ -206,22 +206,23 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public IEnumerable<GtkShellDocumentViewItem> GetAllViews ()
 		{
-			return paned.Children.Cast<GtkShellDocumentViewItem> ();
+			return Children.Cast<GtkShellDocumentViewItem> ();
 		}
 
 		public GtkShellDocumentViewItem GetChild (int index)
 		{
-			return (GtkShellDocumentViewItem) paned.Children [index];
+			return (GtkShellDocumentViewItem) Children [index];
 		}
 
 		public void SetViewTitle (GtkShellDocumentViewItem view, string label, Xwt.Drawing.Image icon, string accessibilityDescription)
 		{
 		}
 
-		void Paned_SizeAllocated (object o, SizeAllocatedArgs args)
+		void Paned_SizeAllocated (int width, int height)
 		{
-			if (!lastRecalcSize.Equals (args.Allocation)) {
-				lastRecalcSize = args.Allocation;
+			var allocation = new Gdk.Rectangle (0, 0, width, height);
+			if (!lastRecalcSize.Equals (allocation)) {
+				lastRecalcSize = allocation;
 				RestoreSizes ();
 				sizesLoaded = true;
 			}
@@ -232,13 +233,13 @@ namespace MonoDevelop.Ide.Gui.Shell
 		{
 			if (Children.Count > 1) {
 				settingSize = true;
-				var size = mode == DocumentViewContainerMode.VerticalSplit ? paned.Allocation.Width : paned.Allocation.Height;
+				var size = mode == DocumentViewContainerMode.VerticalSplit ? paned.Width : paned.Height;
 				var totalWidth = size - (Children.Count - 1) * HandleSize;
-				var p = paned;
+				Paned p = paned;
 				int index = 0;
-				while (p != null) {
-					paned.Position = (int)(totalWidth * relativeSplitSizes [index++]);
-					p = paned.Child2 as Paned;
+				while (p != null && index < relativeSplitSizes.Count) {
+					p.Position = (int)(totalWidth * relativeSplitSizes [index++]);
+					p = p.EndChild as Paned;
 				}
 				settingSize = false;
 			}
@@ -253,13 +254,13 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public double [] GetRelativeSplitSizes ()
 		{
-			var size = mode == DocumentViewContainerMode.VerticalSplit ? paned.Allocation.Width : paned.Allocation.Height;
+			var size = mode == DocumentViewContainerMode.VerticalSplit ? paned.Width : paned.Height;
 			var totalWidth = size - (Children.Count - 1) * HandleSize;
 
 			var sizes = new double[Children.Count];
 			for (int n = 0; n < Children.Count; n++) {
 				var child = Children [n];
-				var childSize = mode == DocumentViewContainerMode.VerticalSplit ? (double)child.Allocation.Width : (double)child.Allocation.Height;
+				var childSize = mode == DocumentViewContainerMode.VerticalSplit ? (double)child.Width : (double)child.Height;
 				sizes [n] = childSize / (double)totalWidth;
 			}
 			return sizes;

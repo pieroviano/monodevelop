@@ -34,9 +34,9 @@ using Gtk;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageListButton: EventBox
+	public class WelcomePageListButton: CairoWidget
 	{
-		static Gdk.Cursor hand_cursor = new Gdk.Cursor(Gdk.CursorType.Hand1);
+		static Gdk.Cursor hand_cursor;
 		string title, subtitle, actionUrl;
 		protected Xwt.Drawing.Image icon;
 		protected bool mouseOver;
@@ -87,14 +87,13 @@ namespace MonoDevelop.Ide.WelcomePage
 			actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += HandlePress;
 
-			Accessible.Role = Atk.Role.PushButton;
-			Accessible.SetTitle (title);
+			this.SetRole (AtkCocoa.Roles.AXButton);
+			this.SetTitle (title);
 
 			if (!actionUrl.StartsWith ("monodevelop://")) {
-				Accessible.Description = string.Format ("Opens {0}", title);
+				this.SetCommonAttributes (null, null, string.Format ("Opens {0}", title));
 			}
 
-			VisibleWindow = false;
 			this.title = title;
 			this.subtitle = subtitle;
 			this.icon = icon;
@@ -102,15 +101,60 @@ namespace MonoDevelop.Ide.WelcomePage
 
 			WidthRequest = Styles.WelcomeScreen.Pad.Solutions.SolutionTile.Width;
 			HeightRequest = Styles.WelcomeScreen.Pad.Solutions.SolutionTile.Height + 2;
-			Events |= (Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask | Gdk.EventMask.ButtonReleaseMask | Gdk.EventMask.PointerMotionMask);
 
 			LeftTextPadding = Styles.WelcomeScreen.Pad.Solutions.SolutionTile.TextLeftPadding;
 			InternalPadding = Styles.WelcomeScreen.Pad.Padding;
 
-			Gui.Styles.Changed += UpdateStyle;
 			UpdateStyle ();
 
 			UpdateActions ();
+
+			this.AddMotionHandler ((x, y) => {
+				var so = starRect.Contains ((int)x, (int)y);
+				if (so != mouseOverStar) {
+					mouseOverStar = so;
+					QueueDraw ();
+				}
+			}, (x, y) => {
+				if (hand_cursor == null)
+					hand_cursor = new Gdk.Cursor ("pointer", null);
+				Cursor = hand_cursor;
+				mouseOver = true;
+				if (AllowPinning) {
+					this.SetAlternateUIVisible (true);
+				}
+				QueueDraw ();
+			}, () => {
+				Cursor = null;
+				mouseOver = false;
+				mouseOverStar = false;
+				this.SetAlternateUIVisible (false);
+				QueueDraw ();
+			});
+			this.AddClickHandler (null, click => {
+				if (click.Button != 1)
+					return;
+				if (mouseOverStar && AllowPinning) {
+					pinned = !pinned;
+					QueueDraw ();
+					PinClicked?.Invoke (this, EventArgs.Empty);
+				} else if (mouseOver) {
+					WelcomePageSection.DispatchLink (actionUrl);
+				}
+			}, 1);
+		}
+
+		protected override void OnRoot ()
+		{
+			base.OnRoot ();
+			Gui.Styles.Changed -= UpdateStyle;
+			Gui.Styles.Changed += UpdateStyle;
+		}
+
+		protected override void OnUnroot ()
+		{
+			Gui.Styles.Changed -= UpdateStyle;
+			base.OnUnroot ();
 		}
 
 		void UpdateActions ()
@@ -164,9 +208,9 @@ namespace MonoDevelop.Ide.WelcomePage
 				pinned = value;
 
 				if (pinned) {
-					Accessible.SetTitle (string.Format ("{0}. This item is pinned", title));
+					this.SetTitle (string.Format ("{0}. This item is pinned", title));
 				} else {
-					Accessible.SetTitle (title);
+					this.SetTitle (title);
 				}
 
 				if (AllowPinning && mouseOver) {
@@ -174,43 +218,6 @@ namespace MonoDevelop.Ide.WelcomePage
 				}
 				QueueDraw ();
 			}
-		}
-
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = hand_cursor;
-			mouseOver = true;
-			if (AllowPinning) {
-				Accessible.SetAlternateUIVisible (true);
-			}
-			QueueDraw ();
-			return base.OnEnterNotifyEvent (evnt);
-		}
-
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			GdkWindow.Cursor = null;
-			mouseOver = false;
-			Accessible.SetAlternateUIVisible (false);
-			QueueDraw ();
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
-		{
-			if (evnt.Button == 1) {
-				if (mouseOverStar && AllowPinning) {
-					pinned = !pinned;
-					QueueDraw ();
-					if (PinClicked != null)
-						PinClicked (this, EventArgs.Empty);
-					return true;
-				} else if (mouseOver) {
-					WelcomePageSection.DispatchLink (actionUrl);
-					return true;
-				}
-			}
-			return base.OnButtonReleaseEvent (evnt);
 		}
 
 		void HandlePress (object sender, EventArgs args)
@@ -229,7 +236,7 @@ namespace MonoDevelop.Ide.WelcomePage
 		void HandleShowAlternateUI (object sender, EventArgs args)
 		{
 			mouseOver = true;
-			Accessible.SetAlternateUIVisible (true);
+			this.SetAlternateUIVisible (true);
 			if (!actionUrl.StartsWith ("monodevelop://", StringComparison.Ordinal)) {
 				UpdatePinnedHelp ();
 			}
@@ -239,30 +246,20 @@ namespace MonoDevelop.Ide.WelcomePage
 		void UpdatePinnedHelp ()
 		{
 			if (pinned) {
-				Accessible.Description = string.Format ("Unpin {0}", title);
+				this.SetCommonAttributes (null, null, string.Format ("Unpin {0}", title));
 			} else {
-				Accessible.Description = string.Format ("Pin {0}", title);
+				this.SetCommonAttributes (null, null, string.Format ("Pin {0}", title));
 			}
 		}
 
 		void HandleShowDefaultUI (object sender, EventArgs args)
 		{
 			mouseOver = false;
-			Accessible.SetAlternateUIVisible (false);
+			this.SetAlternateUIVisible (false);
 			if (!actionUrl.StartsWith ("monodevelop://", StringComparison.Ordinal)) {
-				Accessible.Description = string.Format ("Open {0}", title);
+				this.SetCommonAttributes (null, null, string.Format ("Open {0}", title));
 			}
 			QueueDraw ();
-		}
-
-		protected override bool OnMotionNotifyEvent (Gdk.EventMotion evnt)
-		{
-			var so = starRect.Contains (Allocation.X + (int)evnt.X, Allocation.Y + (int)evnt.Y);
-			if (so != mouseOverStar) {
-				mouseOverStar = so;
-				QueueDraw ();
-			}
-			return base.OnMotionNotifyEvent (evnt);
 		}
 
 		protected virtual void DrawLayout (Cairo.Context ctx, Pango.Layout layout, string fontFace, int fontSize, Pango.Weight weight, string color, int tx, int ty)
@@ -273,28 +270,29 @@ namespace MonoDevelop.Ide.WelcomePage
 
 		protected virtual void DrawHoverBackground (Cairo.Context ctx)
 		{
+			var allocation = new Gdk.Rectangle (0, 0, Width, Height);
 			if (BorderPadding <= 0) {
-				ctx.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
+				ctx.Rectangle (allocation.X, allocation.Y, allocation.Width, allocation.Height);
 				ctx.SetSourceColor (CairoExtensions.ParseColor (HoverBackgroundColor));
 				ctx.Fill ();
-				ctx.MoveTo (Allocation.X, Allocation.Y + 0.5);
-				ctx.RelLineTo (Allocation.Width, 0);
-				ctx.MoveTo (Allocation.X, Allocation.Y + Allocation.Height - 0.5);
-				ctx.RelLineTo (Allocation.Width, 0);
+				ctx.MoveTo (allocation.X, allocation.Y + 0.5);
+				ctx.RelLineTo (allocation.Width, 0);
+				ctx.MoveTo (allocation.X, allocation.Y + allocation.Height - 0.5);
+				ctx.RelLineTo (allocation.Width, 0);
 				if (DrawRightBorder) {
-					ctx.MoveTo (Allocation.Right + 0.5, Allocation.Y + 0.5);
-					ctx.LineTo (Allocation.Right + 0.5, Allocation.Bottom - 0.5);
+					ctx.MoveTo (allocation.Right + 0.5, allocation.Y + 0.5);
+					ctx.LineTo (allocation.Right + 0.5, allocation.Bottom - 0.5);
 				}
 				if (DrawLeftBorder) {
-					ctx.MoveTo (Allocation.Left + 0.5, Allocation.Y + 0.5);
-					ctx.LineTo (Allocation.Left + 0.5, Allocation.Bottom - 0.5);
+					ctx.MoveTo (allocation.Left + 0.5, allocation.Y + 0.5);
+					ctx.LineTo (allocation.Left + 0.5, allocation.Bottom - 0.5);
 				}
 				ctx.LineWidth = 1;
 				ctx.SetSourceColor (CairoExtensions.ParseColor (HoverBorderColor));
 				ctx.Stroke ();
 			}
 			else {
-				Gdk.Rectangle region = Allocation;
+				Gdk.Rectangle region = allocation;
 				region.Inflate (-BorderPadding, -BorderPadding);
 				ctx.RoundedRectangle (region.X + 0.5, region.Y + 0.5, region.Width - 1, region.Height - 1, 3);
 				ctx.SetSourceColor (CairoExtensions.ParseColor (HoverBackgroundColor));
@@ -307,8 +305,8 @@ namespace MonoDevelop.Ide.WelcomePage
 
 		protected virtual void DrawIcon (Cairo.Context ctx)
 		{
-			int x = Allocation.X + InternalPadding;
-			int y = Allocation.Y + (Allocation.Height - (int)icon.Height) / 2;
+			int x = InternalPadding;
+			int y = (Height - (int)icon.Height) / 2;
 			ctx.DrawImage (this, icon, x, y);
 			if (AllowPinning && (mouseOver || pinned)) {
 				Xwt.Drawing.Image star;
@@ -331,67 +329,57 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnDraw (Cairo.Context ctx, int width, int height)
 		{
-			using (var ctx = Gdk.CairoHelper.Create (evnt.Window)) {
-				if (mouseOver)
-					DrawHoverBackground (ctx);
+			if (mouseOver)
+				DrawHoverBackground (ctx);
 
-				// Draw the icon
-				DrawIcon (ctx);
+			// Draw the icon
+			DrawIcon (ctx);
 
-				// Draw the text
+			// Draw the text
 
-				int textWidth = Allocation.Width - LeftTextPadding - InternalPadding * 2;
+			int textWidth = width - LeftTextPadding - InternalPadding * 2;
 
-				using (var titleLayout = new Pango.Layout (PangoContext))
+			using (var titleLayout = new Pango.Layout (PangoContext))
+			{
+				titleLayout.Width = Pango.Units.FromPixels (textWidth);
+				titleLayout.Ellipsize = Pango.EllipsizeMode.End;
+				titleLayout.SetMarkup (WelcomePageSection.FormatText (TitleFontFace, TitleFontSize, Pango.Weight.Bold, MediumTitleColor, title));
+
+				Pango.Layout subtitleLayout = null;
+
+				if (!string.IsNullOrEmpty (subtitle))
 				{
-					titleLayout.Width = Pango.Units.FromPixels (textWidth);
-					titleLayout.Ellipsize = Pango.EllipsizeMode.End;
-					titleLayout.SetMarkup (WelcomePageSection.FormatText (TitleFontFace, TitleFontSize, Pango.Weight.Bold, MediumTitleColor, title));
+					subtitleLayout = new Pango.Layout (PangoContext);
+					subtitleLayout.Width = Pango.Units.FromPixels (textWidth);
+					subtitleLayout.Ellipsize = Pango.EllipsizeMode.Start;
+					subtitleLayout.SetMarkup (WelcomePageSection.FormatText (SmallTitleFontFace, SmallTitleFontSize, Pango.Weight.Normal, SmallTitleColor, subtitle));
+				}
 
-					Pango.Layout subtitleLayout = null;
+				int totalHeight = 0;
+				int w, h1, h2 = 0;
+				titleLayout.GetPixelSize (out w, out h1);
+				totalHeight += h1;
 
-					if (!string.IsNullOrEmpty (subtitle))
-					{
-						subtitleLayout = new Pango.Layout (PangoContext);
-						subtitleLayout.Width = Pango.Units.FromPixels (textWidth);
-						subtitleLayout.Ellipsize = Pango.EllipsizeMode.Start;
-						subtitleLayout.SetMarkup (WelcomePageSection.FormatText (SmallTitleFontFace, SmallTitleFontSize, Pango.Weight.Normal, SmallTitleColor, subtitle));
-					}
+				if (subtitleLayout != null)
+				{
+					totalHeight += Styles.WelcomeScreen.Pad.Solutions.SolutionTile.TitleBottomMargin;
+					subtitleLayout.GetPixelSize (out w, out h2);
+					totalHeight += h2;
+				}
 
-					int height = 0;
-					int w, h1, h2;
-					titleLayout.GetPixelSize (out w, out h1);
-					height += h1;
+				int tx = InternalPadding + LeftTextPadding;
+				int ty = (height - totalHeight) / 2;
+				DrawLayout (ctx, titleLayout, TitleFontFace, TitleFontSize, Pango.Weight.Bold, MediumTitleColor, tx, ty);
 
-					if (subtitleLayout != null)
-					{
-						height += Styles.WelcomeScreen.Pad.Solutions.SolutionTile.TitleBottomMargin;
-						subtitleLayout.GetPixelSize (out w, out h2);
-						height += h2;
-					}
-
-					int tx = Allocation.X + InternalPadding + LeftTextPadding;
-					int ty = Allocation.Y + (Allocation.Height - height) / 2;
-					DrawLayout (ctx, titleLayout, TitleFontFace, TitleFontSize, Pango.Weight.Bold, MediumTitleColor, tx, ty);
-
-					if (subtitleLayout != null)
-					{
-						ty += h1 + Styles.WelcomeScreen.Pad.Solutions.SolutionTile.TitleBottomMargin;
-						DrawLayout (ctx, subtitleLayout, SmallTitleFontFace, SmallTitleFontSize, Pango.Weight.Normal, SmallTitleColor, tx, ty);
-						subtitleLayout.Dispose ();
-					}
+				if (subtitleLayout != null)
+				{
+					ty += h1 + Styles.WelcomeScreen.Pad.Solutions.SolutionTile.TitleBottomMargin;
+					DrawLayout (ctx, subtitleLayout, SmallTitleFontFace, SmallTitleFontSize, Pango.Weight.Normal, SmallTitleColor, tx, ty);
+					subtitleLayout.Dispose ();
 				}
 			}
-			return true;
-		}
-
-		protected override void OnDestroyed ()
-		{
-			Gui.Styles.Changed -= UpdateStyle;
-			base.OnDestroyed ();
 		}
 	}
 }
-

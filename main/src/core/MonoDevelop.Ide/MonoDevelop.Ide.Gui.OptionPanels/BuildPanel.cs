@@ -50,7 +50,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	internal partial class BuildPanelWidget :  Gtk.Bin 
+	internal partial class BuildPanelWidget :  MonoDevelop.Components.BinWidget 
 	{
 		public BuildPanelWidget ()
 		{

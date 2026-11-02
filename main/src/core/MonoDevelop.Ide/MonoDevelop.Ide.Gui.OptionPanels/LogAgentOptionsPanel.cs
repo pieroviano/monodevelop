@@ -48,11 +48,11 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	public class LogAgentPanelWidget : Gtk.Bin 
+	public class LogAgentPanelWidget : MonoDevelop.Components.BinWidget 
 	{	
 		bool? reportUsage;
 		CheckButton chkUsage;
-		VBox container;
+		Gtk.Box container;
 		
 		public LogAgentPanelWidget ()
 		{
@@ -61,23 +61,24 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			var reportingLabel = GettextCatalog.GetString ("Report errors and usage information to help {0} improve my experience.", BrandingService.SuiteName);
 
 			var value = LoggingService.ReportUsage;
-			chkUsage = new CheckButton (reportingLabel);
+			chkUsage = new CheckButton { Label = reportingLabel };
 			if (value.HasValue)
 				chkUsage.Active = value.Value;
 			chkUsage.Toggled += (sender, e) => reportUsage = chkUsage.Active;
 			
-			container = new Gtk.VBox ();
-			container.PackStart (chkUsage, false, false, 0);
+			container = DesignerLayout.VBox (0);
+			DesignerLayout.Pack (container, chkUsage);
 
 			var privacyStatement = BrandingService.PrivacyStatement;
 			if (!string.IsNullOrEmpty (privacyStatement)) {
 				var privacyLabel = new Xwt.Label { Markup = privacyStatement, Wrap = Xwt.WrapMode.Word };
-				container.Add (new HBox ());
-				container.PackEnd (privacyLabel.ToGtkWidget (), false, false, 30);
+				var privacyWidget = privacyLabel.ToGtkWidget ();
+				privacyWidget.MarginTop = 30;
+				privacyWidget.MarginBottom = 30;
+				DesignerLayout.Pack (container, privacyWidget);
 			}
 			
-			Add (container);
-			ShowAll ();
+			Child = container;
 		}
 		
 		public void Store ()

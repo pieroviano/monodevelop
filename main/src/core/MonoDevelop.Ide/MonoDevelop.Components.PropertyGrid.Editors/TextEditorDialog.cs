@@ -27,6 +27,7 @@
 //
 
 using System;
+using MonoDevelop.Core;
 using System.ComponentModel;
 
 namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
@@ -41,17 +42,18 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 			Gtk.ScrolledWindow sc = new Gtk.ScrolledWindow ();
 			sc.HscrollbarPolicy = Gtk.PolicyType.Automatic;
 			sc.VscrollbarPolicy = Gtk.PolicyType.Automatic;
-			sc.ShadowType = Gtk.ShadowType.In;
-			sc.BorderWidth = 6;
+			sc.HasFrame = true;
+			sc.Hexpand = sc.Vexpand = true;
+			sc.MarginTop = sc.MarginBottom = sc.MarginStart = sc.MarginEnd = 6;
 			
 			textview = new Gtk.TextView ();
-			sc.Add (textview);
+			sc.Child = textview;
 			
 			dialog = new Gtk.Dialog ();
 			IdeTheme.ApplyTheme (dialog);
-			dialog.AddButton (Gtk.Stock.Cancel, Gtk.ResponseType.Cancel);
-			dialog.AddButton (Gtk.Stock.Ok, Gtk.ResponseType.Ok);
-			dialog.VBox.Add (sc);
+			dialog.AddButton (GettextCatalog.GetString ("_Cancel"), (int) Gtk.ResponseType.Cancel);
+			dialog.AddButton (GettextCatalog.GetString ("_OK"), (int) Gtk.ResponseType.Ok);
+			dialog.ContentArea.Append (sc);
 		}
 
 		public Gtk.Window TransientFor {
@@ -67,7 +69,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		{
 			dialog.DefaultWidth = 500;
 			dialog.DefaultHeight = 400;
-			dialog.ShowAll ();
 			return MonoDevelop.Ide.MessageService.ShowCustomDialog (dialog, dialog.TransientFor);
 		}
 		

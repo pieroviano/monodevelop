@@ -48,7 +48,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		readonly SortedDictionary<string, List<SupportedFramework>> supportedFrameworks;
 		readonly List<OptionCombo> options;
 
-		HBox warningHBox;
+		Box warningHBox;
 		Label warning;
 		ImageView warningImage;
 		ImageView infoImage;
@@ -93,9 +93,8 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		{
 			this.Title = GettextCatalog.GetString ("Change Targets");
 
-			this.AddActionWidget (new Button (Stock.Cancel), ResponseType.Cancel);
-			this.AddActionWidget (new Button (Stock.Ok), ResponseType.Ok);
-			this.ActionArea.ShowAll ();
+			this.AddButton (GettextCatalog.GetString ("_Cancel"), (int)ResponseType.Cancel);
+			this.AddButton (GettextCatalog.GetString ("_OK"), (int)ResponseType.Ok);
 
 			this.TargetFramework = initialTarget;
 
@@ -255,20 +254,19 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			AddWarningLabel ();
 		}
 
-		void AddLabel (string text, uint top)
+		void AddContent (Widget widget, int top = 0, int bottom = 0, int start = 0, int end = 0)
 		{
-			var label = new Label (text);
-			label.SetAlignment (0.0f, 0.5f);
-			label.Show ();
+			widget.MarginTop = top;
+			widget.MarginBottom = bottom;
+			widget.MarginStart = start;
+			widget.MarginEnd = end;
+			ContentArea.Append (widget);
+		}
 
-			var alignment = new Alignment (0.0f, 0.5f, 1.0f, 1.0f) {
-				TopPadding = top,
-				BottomPadding = 4
-			};
-			alignment.Add (label);
-			alignment.Show ();
-
-			VBox.PackStart (alignment, false, true, 0);
+		void AddLabel (string text, int top)
+		{
+			var label = new Label (text) { Xalign = 0f, Halign = Align.Start };
+			AddContent (label, top, 4);
 		}
 
 		void AddTopSelectorCombo ()
@@ -290,22 +288,12 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 				((CellRendererText)c).Text = (string)model.GetValue (i, 0);
 			});
 
-			combo.Show ();
-
 			combo.Changed += (sender, e) => {
 				if (combo.Active >= 0)
 					CurrentProfileChanged (targetFrameworks[combo.Active]);
 			};
 
-			var alignment = new Alignment (0.0f, 0.5f, 1.0f, 1.0f) {
-				LeftPadding = 18,
-				RightPadding = 18
-			};
-			alignment.Add (combo);
-
-			alignment.Show ();
-
-			VBox.PackStart (alignment, false, true, 0);
+			AddContent (combo, start: 18, end: 18);
 		}
 
 		void AddMultiOptionCombo (OptionCombo option)
@@ -344,9 +332,6 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 			option.Combo.Active = 0;
 
-			option.Check.Show ();
-			option.Combo.Show ();
-
 			option.Combo.Changed += (sender, e) => {
 				if (option.Check.Active)
 					TargetFrameworkChanged (option);
@@ -355,19 +340,12 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 				TargetFrameworkChanged (option);
 			};
 
-			var hbox = new HBox ();
-			hbox.PackStart (option.Check, false, false, 0);
-			hbox.PackStart (option.Combo, true, true, 0);
-			hbox.Show ();
+			var hbox = new Box (Orientation.Horizontal, 0);
+			hbox.Append (option.Check);
+			option.Combo.Hexpand = true;
+			hbox.Append (option.Combo);
 
-			var alignment = new Alignment (0.0f, 0.5f, 1.0f, 1.0f) {
-				LeftPadding = 18,
-				RightPadding = 18
-			};
-			alignment.Add (hbox);
-			alignment.Show ();
-
-			VBox.PackStart (alignment, false, true, 0);
+			AddContent (hbox, start: 18, end: 18);
 		}
 
 		void AddSingleOptionCheckbox (OptionCombo option)
@@ -375,48 +353,28 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			if (option.Items.Count != 1)
 				throw new InvalidOperationException ();
 
-			option.Check = new CheckButton (option.Items[0].Name);
+			option.Check = new CheckButton { Label = option.Items[0].Name };
 
 			option.Check.Toggled += (sender, e) => {
 				TargetFrameworkChanged (option);
 			};
 
-			option.Check.Show ();
-
-			var alignment = new Alignment (0.0f, 0.5f, 1.0f, 1.0f) {
-				LeftPadding = 18,
-				RightPadding = 18
-			};
-			alignment.Add (option.Check);
-			alignment.Show ();
-
-			VBox.PackStart (alignment, false, true, 0);
+			AddContent (option.Check, start: 18, end: 18);
 		}
 
 		void AddWarningLabel ()
 		{
-			var alignment = new Alignment (0.0f, 0.5f, 1.0f, 1.0f) {
-				TopPadding = 8,
-				LeftPadding = 18,
-				RightPadding = 18
-			};
-
-			warning = new Label (GettextCatalog.GetString ("Test Error"));
-			warning.SetAlignment (0.0f, 0.5f);
-			warning.Show ();
+			warning = new Label (GettextCatalog.GetString ("Test Error")) { Xalign = 0f, Halign = Align.Start };
 
 			infoImage = new ImageView (Xwt.Drawing.Image.FromResource (GetType ().Assembly, "warning-16.png"));
 			warningImage = new ImageView (Xwt.Drawing.Image.FromResource (GetType ().Assembly, "error-16.png"));
 
-			warningHBox = new HBox (false, 6);
-			warningHBox.PackStart (infoImage, false, false, 0);
-			warningHBox.PackStart (warningImage, false, false, 0);
-			warningHBox.PackStart (warning, false, true, 0);
+			warningHBox = new Box (Orientation.Horizontal, 6);
+			warningHBox.Append (infoImage);
+			warningHBox.Append (warningImage);
+			warningHBox.Append (warning);
 
-			alignment.Child = warningHBox;
-			alignment.Show ();
-
-			VBox.PackStart (alignment, false, true, 0);
+			AddContent (warningHBox, 8, 0, 18, 18);
 		}
 
 		void ClearWarnings ()

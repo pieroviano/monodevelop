@@ -39,7 +39,7 @@ using Foundation;
 
 namespace MonoDevelop.Ide.Fonts
 {
-	public partial class FontChooserPanelWidget : Gtk.Bin
+	public partial class FontChooserPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		Dictionary<string, string> selectedFonts = new Dictionary<string, string> ();
 		Dictionary<string, string> customFonts = new Dictionary<string, string> ();
@@ -67,12 +67,12 @@ namespace MonoDevelop.Ide.Fonts
 			}
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnUnroot ()
 		{
 			foreach (var val in selectedFonts) {
 				IdeServices.FontService.SetFont (val.Key, val.Value);
 			}
-			base.OnDestroyed ();
+			base.OnUnroot ();
 		}
 
 		public FontChooserPanelWidget ()
@@ -84,13 +84,13 @@ namespace MonoDevelop.Ide.Fonts
 				var fontNameLabel = new Label (desc.DisplayName);
 				fontNameLabel.Justify = Justification.Left;
 				fontNameLabel.Xalign = 0;
-				mainBox.PackStart (fontNameLabel, false, false, 0);
-				var hBox = new HBox ();
+				mainBox.Append (fontNameLabel);
+				var hBox = new Box (Orientation.Horizontal, 0);
 				var setFontButton = new Button ();
 				setFontButton.Label = GetDisplayDescription (IdeServices.FontService.GetFont (desc.Name));
 
 				var descStr = GettextCatalog.GetString ("Set the font options for {0}", desc.DisplayName);
-				setFontButton.Accessible.Description = descStr;
+				setFontButton.SetCommonAccessibilityAttributes (null, (string)null, descStr);
 				setFontButton.Clicked += delegate {
 
 					// var xwtParent = Xwt.Toolkit.CurrentEngine.WrapWindow (this.Toplevel);
@@ -108,7 +108,8 @@ namespace MonoDevelop.Ide.Fonts
 						setFontButton.Label = GetDisplayDescription (selectionDialog.SelectedFont);
 					});
 				};
-				hBox.PackStart (setFontButton, true, true, 0);
+				setFontButton.Hexpand = true;
+				hBox.Append (setFontButton);
 
 				var setDefaultFontButton = new Button ();
 				setDefaultFontButton.Label = GettextCatalog.GetString ("Set To Default");
@@ -116,10 +117,9 @@ namespace MonoDevelop.Ide.Fonts
 					SetFont (desc.Name, IdeServices.FontService.GetFontDescriptionCodon (desc.Name).FontDescription);
 					setFontButton.Label = GetDisplayDescription (IdeServices.FontService.GetFont (desc.Name));
 				};
-				hBox.PackStart (setDefaultFontButton, false, false, 0);
-				mainBox.PackStart (hBox, false, false, 0);
+				hBox.Append (setDefaultFontButton);
+				mainBox.Append (hBox);
 			}
-			mainBox.ShowAll ();
 		}
 
 		private string GetDisplayDescription (Font selectedFont)

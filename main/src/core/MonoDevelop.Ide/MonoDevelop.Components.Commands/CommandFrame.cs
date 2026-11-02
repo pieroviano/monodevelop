@@ -26,13 +26,14 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using Gtk;
+
 
 namespace MonoDevelop.Components.Commands
 {
-	class CommandFrame: EventBox
+	/// <summary>Root container of the workbench content: makes the content a global command handler. Children are added with <c>Append</c>.</summary>
+	class CommandFrame: Gtk.Box
 	{
-		public CommandFrame (CommandManager manager)
+		public CommandFrame (CommandManager manager): base (Gtk.Orientation.Vertical, 0)
 		{
 			manager.RegisterGlobalHandler (this);
 		}

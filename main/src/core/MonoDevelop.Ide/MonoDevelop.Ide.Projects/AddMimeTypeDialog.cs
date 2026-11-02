@@ -63,20 +63,20 @@ namespace MonoDevelop.Ide.Projects
 			string mt = TryGetFileType (name);
 			if (mt != null && mt != "text/plain") {
 				desc = IdeServices.DesktopService.GetMimeTypeDescription (mt);
-				img = IdeServices.DesktopService.GetIconForType (mt, Gtk.IconSize.Menu);
+				img = IdeServices.DesktopService.GetIconForType (mt, StockIconSize.Menu);
 				mimeType = mt;
 			}
 			else if (name.IndexOf ('/') != -1) {
 				desc = IdeServices.DesktopService.GetMimeTypeDescription (name);
-				img = IdeServices.DesktopService.GetIconForType (name, Gtk.IconSize.Menu);
+				img = IdeServices.DesktopService.GetIconForType (name, StockIconSize.Menu);
 				mimeType = name;
 			} else {
-				img = ImageService.GetIcon (Gtk.Stock.DialogError, Gtk.IconSize.Menu);
+				img = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Error, StockIconSize.Menu);
 				desc = GettextCatalog.GetString ("Unknown type");
 				mimeType = null;
 			}
 			if (mimeType != null && currentTypes.Contains (mimeType)) {
-				img = ImageService.GetIcon (Gtk.Stock.DialogError, Gtk.IconSize.Menu);
+				img = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Error, StockIconSize.Menu);
 				desc = GettextCatalog.GetString ("Type '{0}' already registered", desc);
 				mimeType = null;
 			}

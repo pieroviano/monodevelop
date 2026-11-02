@@ -24,34 +24,30 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
+using MonoDevelop.Components;
+using MonoDevelop.Components.AtkCocoaHelper;
 using System.Xml.Linq;
 
 using MonoDevelop.Core;
 using MonoDevelop.Ide.Gui;
-using MonoDevelop.Components;
 
 namespace MonoDevelop.Ide.WelcomePage
 {
-	public class WelcomePageButtonBar: HBox
+	public class WelcomePageButtonBar: Gtk.Box
 	{
-		public WelcomePageButtonBar (params WelcomePageBarButton[] buttons)
+		public WelcomePageButtonBar (params WelcomePageBarButton[] buttons) : base (Gtk.Orientation.Horizontal, Styles.WelcomeScreen.Links.LinkSeparation)
 		{
-			Accessible.Name = "WelcomePage.ButtonBar";
-
-			Spacing = Styles.WelcomeScreen.Links.LinkSeparation;
+			Name = "WelcomePage.ButtonBar";
 
 			int idx = 1;
 			foreach (var button in buttons) {
-				button.Accessible.Name = string.Format ("WelcomePage.ButtonBar.Button{0}", idx);
+				button.Name = string.Format ("WelcomePage.ButtonBar.Button{0}", idx);
 				idx++;
 
 				if (!button.IsVisible)
 					continue;
-				PackStart (button, false, false, 0);
+				Append (button);
 			}
-			ShowAll ();
 		}
 	}
 }
-

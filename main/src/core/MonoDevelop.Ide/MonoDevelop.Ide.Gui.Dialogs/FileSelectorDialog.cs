@@ -46,221 +46,243 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 	{
 		int selectOption;
 		int firstEncIndex;
-		
+
 		Gtk.Label encodingLabel;
-		Gtk.OptionMenu encodingMenu;
+		Gtk.ComboBoxText encodingMenu;
 		Gtk.Label viewerLabel;
-		Gtk.ComboBox viewerSelector;
+		Gtk.ComboBoxText viewerSelector;
 		Gtk.CheckButton closeWorkspaceCheck;
+		Gtk.Widget extraWidget;
 		List<FileViewer> currentViewers = new List<FileViewer> ();
-		
+
+		// The GTK 4 file chooser has no selection-changed notification: the selection is polled while the dialog is mapped
+		const uint selectionPollInterval = 250;
+		uint selectionPollTimeout;
+		string lastSelection;
+		string lastFolder;
+
+		/// <summary>Raised when the folder shown by the chooser changes (GTK 4 has no current-folder-changed signal; it is polled).</summary>
+		public event EventHandler CurrentFolderChanged;
+
 		public FileSelectorDialog (string title): this (title, Gtk.FileChooserAction.Open)
 		{
 		}
-		
+
 		public FileSelectorDialog (string title, Gtk.FileChooserAction action): base (title, action)
 		{
-			LocalOnly = true;
-			
 			// Add the text encoding selector
-			Table table = new Table (2, 2, false);
-			table.RowSpacing = 6;
-			table.ColumnSpacing = 6;
-			
-			encodingLabel = new Label (GettextCatalog.GetString ("_Character Coding:"));
-			encodingLabel.Xalign = 0;
-			table.Attach (encodingLabel, 0, 1, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
-			
-			encodingMenu = new Gtk.OptionMenu ();
-			FillEncodings ();
-			encodingMenu.SetHistory (0);
-			table.Attach (encodingMenu, 1, 2, 0, 1, AttachOptions.Expand|AttachOptions.Fill, AttachOptions.Expand|AttachOptions.Fill, 0, 0);
+			var table = DesignerLayout.Grid (6, 6);
+			DesignerLayout.Margin (table, 6);
 
-			encodingMenu.Changed += EncodingChanged;
-			
+			encodingLabel = new Label (GettextCatalog.GetString ("_Character Coding:"));
+			encodingLabel.UseUnderline = true;
+			encodingLabel.Xalign = 0;
+			DesignerLayout.Attach (table, encodingLabel, 0, 0);
+
+			encodingMenu = new Gtk.ComboBoxText ();
+			encodingLabel.MnemonicWidget = encodingMenu;
+			FillEncodings ();
+			DesignerLayout.Attach (table, encodingMenu, 1, 0, hexpand: true);
+
 			// Add the viewer selector
 			viewerLabel = new Label (GettextCatalog.GetString ("Open With:"));
 			viewerLabel.Xalign = 0;
-			table.Attach (viewerLabel, 0, 1, 1, 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
-			
-			Gtk.HBox box = new HBox (false, 6);
-			viewerSelector = Gtk.ComboBox.NewText ();
-			box.PackStart (viewerSelector, true, true, 0);
-			closeWorkspaceCheck = new CheckButton (GettextCatalog.GetString ("Close current workspace"));
+			DesignerLayout.Attach (table, viewerLabel, 0, 1);
+
+			var box = DesignerLayout.HBox (6);
+			viewerSelector = new Gtk.ComboBoxText ();
+			DesignerLayout.Pack (box, viewerSelector, true);
+			closeWorkspaceCheck = new CheckButton { Label = GettextCatalog.GetString ("Close current workspace") };
 			closeWorkspaceCheck.Active = true;
-			box.PackStart (closeWorkspaceCheck, false, false, 0);
-			table.Attach (box, 1, 2, 1, 2, AttachOptions.Expand|AttachOptions.Fill, AttachOptions.Expand|AttachOptions.Fill, 0, 0);
+			DesignerLayout.Pack (box, closeWorkspaceCheck);
+			DesignerLayout.Attach (table, box, 1, 1, hexpand: true);
 			FillViewers ();
 			viewerSelector.Changed += OnViewerChanged;
-			
-			table.ShowAll ();
-			this.ExtraWidget = table;
-			
-			// Give back the height that the extra widgets take
-			int w, h;
-			GetSize (out w, out h);
-			Resize (w, h + table.SizeRequest ().Height);
-			
+
+			// The GTK 2 extra widget lives below the chooser in the dialog content area
+			extraWidget = table;
+			DesignerLayout.Pack (ContentArea, extraWidget);
+
 			if (action == Gtk.FileChooserAction.SelectFolder)
 				ShowEncodingSelector = false;
-				
+
 			if (action != Gtk.FileChooserAction.Open)
 				closeWorkspaceCheck.Visible = ShowViewerSelector = false;
+
+			Mapped += OnDialogMapped;
+			Unmapped += OnDialogUnmapped;
+		}
+
+		/// <summary>First selected file or empty when nothing is selected.</summary>
+		string FirstSelectedFile {
+			get {
+				var files = Filenames;
+				return files.Length > 0 ? files [0] : string.Empty;
+			}
+		}
+
+		void OnDialogMapped (object sender, EventArgs args)
+		{
+			if (selectionPollTimeout != 0)
+				return;
+			lastSelection = string.Join ("\n", Filenames);
+			lastFolder = CurrentFolderPath;
+			selectionPollTimeout = GLib.Timeout.Add (selectionPollInterval, () => {
+				var folder = CurrentFolderPath;
+				if (folder != lastFolder) {
+					lastFolder = folder;
+					CurrentFolderChanged?.Invoke (this, EventArgs.Empty);
+				}
+				var selection = string.Join ("\n", Filenames);
+				if (selection != lastSelection) {
+					lastSelection = selection;
+					OnSelectionChanged ();
+				}
+				return true;
+			});
+		}
+
+		void OnDialogUnmapped (object sender, EventArgs args)
+		{
+			if (selectionPollTimeout != 0) {
+				GLib.Source.Remove (selectionPollTimeout);
+				selectionPollTimeout = 0;
+			}
 		}
 
 		public TextEncoding SelectedEncoding {
 			get {
 				if (!ShowEncodingSelector)
 					return null;
-				else if (encodingMenu.History < firstEncIndex || encodingMenu.History == selectOption)
+				int history = encodingMenu.Active;
+				if (history < firstEncIndex || history == selectOption)
 					return null;
-				return TextEncoding.ConversionEncodings [encodingMenu.History - firstEncIndex];
+				return TextEncoding.ConversionEncodings [history - firstEncIndex];
 			}
 			set {
-				for (uint n=0; n < TextEncoding.ConversionEncodings.Length; n++) {
+				for (int n=0; n < TextEncoding.ConversionEncodings.Length; n++) {
 					if (TextEncoding.ConversionEncodings [n] == value) {
-						encodingMenu.SetHistory (n + (uint)firstEncIndex);
-						Menu menu = (Menu)encodingMenu.Menu;
-						RadioMenuItem rm = (RadioMenuItem) menu.Children [n + firstEncIndex];
-						rm.Active = true;
+						encodingMenu.Active = n + firstEncIndex;
 						return;
 					}
 				}
-				encodingMenu.SetHistory (0);
+				encodingMenu.Active = 0;
 			}
 		}
-		
+
 		public bool ShowEncodingSelector {
 			get { return encodingLabel.Visible; }
 			set { encodingLabel.Visible = encodingMenu.Visible = value; }
 		}
-		
+
 		public bool ShowViewerSelector {
 			get { return viewerLabel.Visible; }
 			set { viewerLabel.Visible = viewerSelector.Visible = value; }
 		}
-		
+
 		public bool CloseCurrentWorkspace {
 			get { return closeWorkspaceCheck.Active; }
 		}
-		
+
 		void FillEncodings ()
 		{
 			selectOption = -1;
-			RadioMenuItem defaultActivated = null;
-			
-			Gtk.Menu menu = new Menu ();
-			
+			encodingMenu.Changed -= EncodingChanged;
+			encodingMenu.RemoveAll ();
+
 			// Don't show the auto-detection option when saving
-			
 			if (Action != Gtk.FileChooserAction.Save) {
-				RadioMenuItem autodetect = new RadioMenuItem (GettextCatalog.GetString ("Auto Detected"));
-				autodetect.Group = new GLib.SList (typeof(object));
-				menu.Append (autodetect);
-				menu.Append (new Gtk.SeparatorMenuItem ());
-				autodetect.Active = true;
-				defaultActivated = autodetect;
-				firstEncIndex = 2;
+				encodingMenu.AppendText (GettextCatalog.GetString ("Auto Detected"));
+				firstEncIndex = 1;
 			} else
 				firstEncIndex = 0;
-			
+
 			foreach (var textEncoding in TextEncoding.ConversionEncodings) {
 				var enc = textEncoding.Encoding;
-				RadioMenuItem mitem = new RadioMenuItem (enc.EncodingName + " (" + enc.WebName + ")");
-				menu.Append (mitem);
-				if (defaultActivated == null) {
-					defaultActivated = mitem;
-					defaultActivated.Group = new GLib.SList (typeof(object));
-				} else {
-					mitem.Group = defaultActivated.Group;
-				}
-				mitem.Active = false;
+				encodingMenu.AppendText (enc.EncodingName + " (" + enc.WebName + ")");
 			}
-			
-			if (defaultActivated != null)
-				defaultActivated.Active = true;
-			
-			menu.Append (new Gtk.SeparatorMenuItem ());
-			
-			MenuItem select = new MenuItem (GettextCatalog.GetString ("Add or _Remove..."));
-			menu.Append (select);
-			
-			menu.ShowAll ();
-			encodingMenu.Menu = menu;
-			
-			encodingMenu.SetHistory (0);
-					
-			selectOption = firstEncIndex + TextEncoding.ConversionEncodings.Length + 1;
+
+			encodingMenu.AppendText (GettextCatalog.GetString ("Add or Remove..."));
+			selectOption = firstEncIndex + TextEncoding.ConversionEncodings.Length;
+			encodingMenu.Active = 0;
+			encodingMenu.Changed += EncodingChanged;
 		}
-		
+
 		void EncodingChanged (object s, EventArgs args)
 		{
-			if (encodingMenu.History == selectOption) {
+			if (encodingMenu.Active == selectOption) {
 				using (var dlg = new SelectEncodingsDialog ())
 					MessageService.ShowCustomDialog (dlg, this);
 				FillEncodings ();
 			}
 		}
-		
+
 		void FillViewers ()
 		{
-			((Gtk.ListStore)viewerSelector.Model).Clear ();
+			viewerSelector.Changed -= OnViewerChanged;
+			viewerSelector.RemoveAll ();
 			currentViewers.Clear ();
-			
-			if (Filenames.Length == 0 || Filename.Length == 0 || System.IO.Directory.Exists (Filename))
-				return;
-			
-			int selected = -1;
-			int i = 0;
-			
-			if (IdeServices.ProjectService.IsWorkspaceItemFile (Filename) || IdeServices.ProjectService.IsSolutionItemFile (Filename)) {
-				viewerSelector.AppendText (GettextCatalog.GetString ("Solution Workbench"));
-				currentViewers.Add (null);
-				
-				if (closeWorkspaceCheck.Visible)
-					closeWorkspaceCheck.Active = true;
 
-				// Default exe/dll to AssemblyBrowser, solutions/projects to Solution Workbench.
-				// HACK: Couldn't make it a generic SolutionItemFile based conditional, .csproj fits under this category also.
-				if (!(Filename.EndsWith (".exe", StringComparison.OrdinalIgnoreCase) || Filename.EndsWith (".dll", StringComparison.OrdinalIgnoreCase)))
-					selected = 0;
-				i++;
-			}
-			
-			foreach (FileViewer vw in IdeServices.DisplayBindingService.GetFileViewers (Filename, null).Result) {
-				if (!vw.IsExternal) {
-					viewerSelector.AppendText (vw.Title);
-					currentViewers.Add (vw);
-					
-					if (vw.CanUseAsDefault && selected == -1)
-						selected = i;
-					
+			try {
+				var filename = FirstSelectedFile;
+				if (filename.Length == 0 || System.IO.Directory.Exists (filename))
+					return;
+
+				int selected = -1;
+				int i = 0;
+
+				if (IdeServices.ProjectService.IsWorkspaceItemFile (filename) || IdeServices.ProjectService.IsSolutionItemFile (filename)) {
+					viewerSelector.AppendText (GettextCatalog.GetString ("Solution Workbench"));
+					currentViewers.Add (null);
+
+					if (closeWorkspaceCheck.Visible)
+						closeWorkspaceCheck.Active = true;
+
+					// Default exe/dll to AssemblyBrowser, solutions/projects to Solution Workbench.
+					// HACK: Couldn't make it a generic SolutionItemFile based conditional, .csproj fits under this category also.
+					if (!(filename.EndsWith (".exe", StringComparison.OrdinalIgnoreCase) || filename.EndsWith (".dll", StringComparison.OrdinalIgnoreCase)))
+						selected = 0;
 					i++;
 				}
+
+				foreach (FileViewer vw in IdeServices.DisplayBindingService.GetFileViewers (filename, null).Result) {
+					if (!vw.IsExternal) {
+						viewerSelector.AppendText (vw.Title);
+						currentViewers.Add (vw);
+
+						if (vw.CanUseAsDefault && selected == -1)
+							selected = i;
+
+						i++;
+					}
+				}
+
+				if (selected == -1)
+					selected = 0;
+
+				viewerSelector.Active = selected;
+				viewerLabel.Sensitive = viewerSelector.Sensitive = currentViewers.Count > 1;
+			} finally {
+				viewerSelector.Changed += OnViewerChanged;
 			}
-			
-			if (selected == -1)
-				selected = 0;
-			
-			viewerSelector.Active = selected;
-			viewerLabel.Sensitive = viewerSelector.Sensitive = currentViewers.Count > 1;
 		}
-		
+
 		void OnViewerChanged (object s, EventArgs args)
 		{
 			UpdateExtraWidgets ();
 		}
-		
+
 		void UpdateExtraWidgets ()
 		{
-			if (Filenames.Length == 0 || Filename == null || Filename.Length == 0 || System.IO.Directory.Exists (Filename)) {
+			var filename = FirstSelectedFile;
+			if (filename.Length == 0 || System.IO.Directory.Exists (filename)) {
 				encodingLabel.Sensitive = encodingMenu.Sensitive = false;
 				viewerLabel.Sensitive = viewerSelector.Sensitive = false;
 				closeWorkspaceCheck.Visible = false;
 				return;
 			}
-			
-			if (IdeServices.ProjectService.IsWorkspaceItemFile (Filename) || IdeServices.ProjectService.IsSolutionItemFile (Filename)) {
+
+			if (IdeServices.ProjectService.IsWorkspaceItemFile (filename) || IdeServices.ProjectService.IsSolutionItemFile (filename)) {
 				encodingLabel.Sensitive = encodingMenu.Sensitive = (SelectedViewer != null);
 				closeWorkspaceCheck.Visible = viewerLabel.Visible && IdeApp.Workspace.IsOpen;
 			}
@@ -271,24 +293,29 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 			viewerLabel.Sensitive = viewerSelector.Sensitive = currentViewers.Count > 1;
 		}
-		
+
 		public FileViewer SelectedViewer {
 			get {
-				if (viewerSelector.Active == -1)
+				int active = viewerSelector.Active;
+				if (active < 0 || active >= currentViewers.Count)
 					return null;
-				return currentViewers [viewerSelector.Active];
+				return currentViewers [active];
 			}
 		}
-		
-		protected override void OnSelectionChanged ()
+
+		void OnSelectionChanged ()
 		{
-			base.OnSelectionChanged ();
-			
-			if (ExtraWidget == null || this.Action != Gtk.FileChooserAction.Open)
+			if (extraWidget == null || this.Action != Gtk.FileChooserAction.Open)
 				return;
-			
+
 			UpdateExtraWidgets ();
 			FillViewers ();
+		}
+
+		public override void Destroy ()
+		{
+			OnDialogUnmapped (this, EventArgs.Empty);
+			base.Destroy ();
 		}
 	}
 }

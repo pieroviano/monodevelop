@@ -90,10 +90,7 @@ namespace MonoDevelop.Components.MainToolbar
 			toolbarView.RunConfigurationChanged += HandleRunConfigurationChanged;
 			toolbarView.RuntimeChanged += HandleRuntimeChanged;
 
-			IdeApp.Workbench.RootWindow.WidgetEvent += delegate(object o, WidgetEventArgs args) {
-				if (args.Event is Gdk.EventConfigure)
-					PositionPopup ();
-			};
+			// Window moves/resizes are reported by the toolbar view through SearchEntryResized (GTK 4 has no configure events)
 
 			// Update Search Entry on keybinding change.
 			var cmd = IdeApp.CommandService.GetCommand (Commands.NavigateTo);
@@ -669,14 +666,6 @@ namespace MonoDevelop.Components.MainToolbar
 			if (IdeApp.Workbench.RootWindow.Visible)
 				popup.ShowPopup (anchor, PopupPosition.TopRight);
 
-			if (anchor.GdkWindow == null) {
-				var location = new Xwt.Point (anchor.Allocation.X + anchor.Allocation.Width - popup.Size.Width, anchor.Allocation.Y);
-
-				// Need to hard lock the location because Xwt doesn't know that the allocation might be coming from a
-				// Cocoa control and thus has been changed to take macOS monitor layout into consideration
-				popup.IgnoreRepositionWindow = true;
-				popup.Location = location;
-			}
 		}
 
 		void DestroyPopup ()

@@ -37,14 +37,12 @@ using Gtk;
 
 namespace MonoDevelop.Ide.Gui.Dialogs
 {
-	class AboutMonoDevelopTabPage: VBox
+	class AboutMonoDevelopTabPage: Gtk.Box
 	{
 		Xwt.Drawing.Image imageSep;
 
-		public AboutMonoDevelopTabPage ()
+		public AboutMonoDevelopTabPage () : base (Gtk.Orientation.Vertical, 0)
 		{
-			BorderWidth = 0;
-
 			var aboutFile = BrandingService.GetFile (AboutDialogImage.Name);
 			if (aboutFile != null)
 				imageSep = Xwt.Drawing.Image.FromFile (aboutFile);
@@ -53,7 +51,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 			var iv = new ImageView (imageSep);
 			iv.SetCommonAccessibilityAttributes ("AboutImage", BrandingService.ApplicationLongName, "");
-			PackStart (iv, false, false, 0);
+			Append (iv);
 
 			Xwt.VBox infoBox = new Xwt.VBox () {
 				CanGetFocus = false
@@ -64,7 +62,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 
 			infoBox.Spacing = 6;
 			infoBox.Margin = 12;
-			PackStart (mbox.ToGtkWidget (), false, false, 0);
+			Append (mbox.ToGtkWidget ());
 
 			infoBox.PackStart (new Xwt.Label () {
 				Markup = string.Format ("<b>{0}</b>", GettextCatalog.GetString ("Version")),
@@ -127,7 +125,6 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				MarginLeft = 12
 			});
 
-			this.ShowAll ();
 		}
 	}
 }

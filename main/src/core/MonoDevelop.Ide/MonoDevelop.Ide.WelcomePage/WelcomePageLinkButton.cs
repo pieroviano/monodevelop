@@ -41,10 +41,10 @@ namespace MonoDevelop.Ide.WelcomePage
 		Label label;
 		ImageView image;
 		string text, desc, icon;
-		Gtk.IconSize iconSize = IconSize.Menu;
-		HBox box;
+		StockIconSize iconSize = StockIconSize.Menu;
+		Gtk.Box box;
 		
-		public WelcomePageLinkButton (string title, string href, Gtk.IconSize iconSize = Gtk.IconSize.Menu, string icon = null, string desc = null, string tooltip = null)
+		public WelcomePageLinkButton (string title, string href, StockIconSize iconSize = StockIconSize.Menu, string icon = null, string desc = null, string tooltip = null)
 			: this ()
 		{
 			this.iconSize = iconSize;
@@ -82,17 +82,20 @@ namespace MonoDevelop.Ide.WelcomePage
 		
 		public WelcomePageLinkButton ()
 		{
-			Relief = ReliefStyle.None;
+			HasFrame = false;
 			
 			label = new Label () {
 				Xalign = 0,
-				Xpad = 0,
-				Ypad = 0,
+
+
 			};
 			
-			box = new HBox (false, 6);
-			box.PackStart (label, true, true, 0);
-			Add (box);
+			box = new Gtk.Box (Gtk.Orientation.Horizontal, 6);
+			label.Hexpand = true;
+			box.Append (label);
+			Child = box;
+
+			this.AddMotionHandler (null, (x, y) => UpdateLabel (true), () => UpdateLabel (false));
 		}
 		
 		public string LinkUrl { get; private set; }
@@ -147,8 +150,7 @@ namespace MonoDevelop.Ide.WelcomePage
 			}
 			if (image == null) {
 				image = new ImageView ();
-				box.PackStart (image, false, false, 0);
-				box.ReorderChild (image, 0);
+				box.Prepend (image);
 			}
 			image.Image = ImageService.GetIcon (icon, iconSize);
 		}
@@ -161,18 +163,6 @@ namespace MonoDevelop.Ide.WelcomePage
 		public Pango.EllipsizeMode Ellipsize {
 			get { return label.Ellipsize; }
 			set { label.Ellipsize = value; }
-		}
-		
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			UpdateLabel (true);
-			return base.OnEnterNotifyEvent (evnt);
-		}
-		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			UpdateLabel (false);
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 		
 		protected override void OnClicked ()

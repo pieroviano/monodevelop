@@ -31,14 +31,14 @@ using Gtk;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using MonoDevelop.Components;
 using MonoDevelop.Components.Commands;
 using MonoDevelop.Components.AtkCocoaHelper;
-using Gdk;
 using MonoDevelop.Core;
 
 namespace MonoDevelop.Ide.Gui.Shell
 {
-	class GtkShellDocumentViewItem : EventBox, IShellDocumentViewItem, ICommandDelegator
+	class GtkShellDocumentViewItem : BinWidget, IShellDocumentViewItem, ICommandDelegator
 	{
 		CancellationTokenSource cancellationTokenSource = new CancellationTokenSource ();
 		object delegatedCommandTarget;
@@ -48,8 +48,9 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		public GtkShellDocumentViewItem ()
 		{
-			Accessible.SetShouldIgnore (true);
-			Events |= EventMask.FocusChangeMask;
+			this.SetShouldIgnore (true);
+			Realized += HandleRealized;
+			this.AddFocusHandler (HandleFocusEnter, HandleFocusLeave);
 		}
 
 		public event EventHandler GotFocus;
@@ -73,10 +74,8 @@ namespace MonoDevelop.Ide.Gui.Shell
 		public Xwt.Drawing.Image Icon { get; set; }
 		public string AccessibilityDescription { get; set; }
 
-		protected override void OnRealized ()
+		void HandleRealized (object sender, EventArgs e)
 		{
-			base.OnRealized ();
-
 			var token = cancellationTokenSource.Token;
 			Application.Invoke ((s,a) => {
 				// Don't execute Load inside the OnRealized handler, since Load can trigger events or async continuations that
@@ -88,9 +87,17 @@ namespace MonoDevelop.Ide.Gui.Shell
 			});
 		}
 
-		protected override void OnDestroyed ()
+		// Replaces the GTK 2 OnDestroyed override: runs once, when the view is disposed or its native widget is finalized
+		void NotifyDestroyed ()
 		{
+			if (destroyed)
+				return;
 			destroyed = true;
+			OnDestroyed ();
+		}
+
+		protected virtual void OnDestroyed ()
+		{
 			if (cancellationTokenSource != null) {
 				cancellationTokenSource.Cancel ();
 				cancellationTokenSource.Dispose ();
@@ -99,7 +106,13 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 			focusLostTimeout?.Dispose ();
 			focusLostTimeout = null;
-			base.OnDestroyed ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing)
+				NotifyDestroyed ();
+			base.Dispose (disposing);
 		}
 
 		public Task Load ()
@@ -139,7 +152,13 @@ namespace MonoDevelop.Ide.Gui.Shell
 		void IShellDocumentViewItem.Dispose ()
 		{
 			DetachFromView ();
-			Destroy ();
+			NotifyDestroyed ();
+			if (Parent is ContainerWidget container)
+				container.RemoveChild (this);
+			else if (Parent is Gtk.Box box)
+				box.Remove (this);
+			else if (Parent != null)
+				Unparent ();
 		}
 
 		public virtual void DetachFromView ()
@@ -155,48 +174,50 @@ namespace MonoDevelop.Ide.Gui.Shell
 		IDisposable focusLostTimeout;
 		static readonly WeakReference<GtkShellDocumentViewItem> lastViewFocused = new WeakReference<GtkShellDocumentViewItem> (null);
 
-		protected override void OnFocusChildSet (Widget widget)
+		// Focus entered this view or one of its descendants (replaces the GTK 2 OnFocusChildSet (widget != null) notification)
+		void HandleFocusEnter ()
 		{
-			if (widget != null) {
 
-				hasFocusInWindow = true;
+			hasFocusInWindow = true;
 
-				// Cancel any pending focus lose notification
+			// Cancel any pending focus lose notification
 
-				if (focusLostTimeout != null) {
-					focusLostTimeout.Dispose ();
-					focusLostTimeout = null;
-				}
-
-				// Check if any other view currently has the focus and notify that the focus has been lost.
-				// The focus lose would be detected anyway, but we explicitly notify it here because
-				// focus lose notification is a bit delayed, and here we have a chance to be more immediate
-				// in notifying it
-
-				GtkShellDocumentViewItem last;
-				if (lastViewFocused.TryGetTarget (out last) && last != this && !IsChildView (last) && last.Item != null)
-					last.NotifyLostFocus ();
-				
-				NotifyGotFocus ();
-
-			} else {
-
-				hasFocusInWindow = false;
-
-				// Don't notify the lose of focus immediately. When switching between child widgets we
-				// we receive a OnFocusChildSet with widget=null for the child that is losing the focus
-				// followed by another call with the new child
-
-				if (focusLostTimeout == null) {
-					focusLostTimeout = Xwt.Application.TimeoutInvoke (100, () => {
-						if (!destroyed)
-							NotifyLostFocus ();
-						return false;
-					});
-				}
-
+			if (focusLostTimeout != null) {
+				focusLostTimeout.Dispose ();
+				focusLostTimeout = null;
 			}
-			base.OnFocusChildSet (widget);
+
+			// Check if any other view currently has the focus and notify that the focus has been lost.
+			// The focus lose would be detected anyway, but we explicitly notify it here because
+			// focus lose notification is a bit delayed, and here we have a chance to be more immediate
+			// in notifying it
+
+			GtkShellDocumentViewItem last;
+			if (lastViewFocused.TryGetTarget (out last) && last != this && !IsChildView (last) && last.Item != null)
+				last.NotifyLostFocus ();
+			
+			NotifyGotFocus ();
+
+		}
+
+		// Focus left this view and its descendants (replaces the GTK 2 OnFocusChildSet (null) notification)
+		void HandleFocusLeave ()
+		{
+
+			hasFocusInWindow = false;
+
+			// Don't notify the lose of focus immediately. When switching between child widgets we
+			// we receive a OnFocusChildSet with widget=null for the child that is losing the focus
+			// followed by another call with the new child
+
+			if (focusLostTimeout == null) {
+				focusLostTimeout = Xwt.Application.TimeoutInvoke (100, () => {
+					if (!destroyed)
+						NotifyLostFocus ();
+					return false;
+				});
+			}
+
 		}
 
 		bool IsChildView (Gtk.Widget view)
@@ -225,7 +246,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 		void SubscribeWindowEvents ()
 		{
-			var topLevel = Toplevel as Gtk.Window;
+			var topLevel = Root as Gtk.Window;
 			if (topLevel == subscribedWindow)
 				return;
 
@@ -233,29 +254,28 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 			subscribedWindow = topLevel;
 			if (subscribedWindow != null) {
-				subscribedWindow.FocusInEvent += SubscribedWindow_FocusInEvent;
-				subscribedWindow.FocusOutEvent += SubscribedWindow_FocusOutEvent;
+				subscribedWindow.AddNotification ("is-active", SubscribedWindow_ActiveChanged);
 			}
 		}
 
 		void UnsubscribeWindowEvents ()
 		{
 			if (subscribedWindow != null) {
-				subscribedWindow.FocusInEvent -= SubscribedWindow_FocusInEvent;
-				subscribedWindow.FocusOutEvent -= SubscribedWindow_FocusOutEvent;
+				subscribedWindow.RemoveNotification ("is-active", SubscribedWindow_ActiveChanged);
 				subscribedWindow = null;
 			}
 		}
 
-		private void SubscribedWindow_FocusInEvent (object o, FocusInEventArgs args)
+		void SubscribedWindow_ActiveChanged (object o, GLib.NotifyArgs args)
 		{
-			if (hasFocusInWindow)
-				NotifyGotFocus ();
-		}
-
-		private void SubscribedWindow_FocusOutEvent (object o, FocusOutEventArgs args)
-		{
-			NotifyLostFocus ();
+			if (subscribedWindow == null)
+				return;
+			if (subscribedWindow.IsActive) {
+				if (hasFocusInWindow)
+					NotifyGotFocus ();
+			} else {
+				NotifyLostFocus ();
+			}
 		}
 
 		public void GrabViewFocus ()

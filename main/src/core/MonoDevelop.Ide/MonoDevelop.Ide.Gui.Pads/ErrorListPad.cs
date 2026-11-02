@@ -62,7 +62,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 {
 	class ErrorListPad : PadContent
 	{
-		HPaned control;
+		SizeNotifyingPaned control;
 		ScrolledWindow sw;
 		PadTreeView view;
 		BuildOutputViewContent buildOutputViewContent;
@@ -75,7 +75,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 		Button buildLogBtn;
 		ToggleButton logBtn;
 		Label errorBtnLbl, warnBtnLbl, msgBtnLbl, logBtnLbl;
-		SearchEntry searchEntry;
+		MonoDevelop.Components.SearchEntry searchEntry;
 		string currentSearchPattern = null;
 		Hashtable tasks = new Hashtable ();
 		int errorCount;
@@ -83,7 +83,6 @@ namespace MonoDevelop.Ide.Gui.Pads
 		int infoCount;
 		bool initialLogShow = true;
 
-		Clipboard clipboard;
 
 		Xwt.Drawing.Image iconWarning;
 		Xwt.Drawing.Image iconError;
@@ -154,17 +153,17 @@ namespace MonoDevelop.Ide.Gui.Pads
 			return btn;
 		}
 
-		HBox MakeHBox (string image, out Label label)
+		Box MakeHBox (string image, out Label label)
 		{
-			var btnBox = new HBox (false, 2);
-			btnBox.Accessible.SetShouldIgnore (true);
-			var imageView = new ImageView (image, Gtk.IconSize.Menu);
-			imageView.Accessible.SetShouldIgnore (true);
-			btnBox.PackStart (imageView);
+			var btnBox = new Box (Orientation.Horizontal, 2);
+			btnBox.SetShouldIgnore (true);
+			var imageView = new ImageView (image, MonoDevelop.Components.StockIconSize.Menu);
+			imageView.SetShouldIgnore (true);
+			btnBox.Append (imageView);
 
 			label = new Label ();
-			label.Accessible.SetShouldIgnore (true);
-			btnBox.PackStart (label);
+			label.SetShouldIgnore (true);
+			btnBox.Append (label);
 
 			return btnBox;
 		}
@@ -174,57 +173,53 @@ namespace MonoDevelop.Ide.Gui.Pads
 			window.Title = GettextCatalog.GetString ("Errors");
 
 			DockItemToolbar toolbar = window.GetToolbar (DockPositionType.Top);
-			toolbar.Accessible.Name = "ErrorPad.Toolbar";
-			toolbar.Accessible.SetLabel ("Error Pad Toolbar");
-			toolbar.Accessible.SetRole ("AXToolbar", "Pad toolbar");
-			toolbar.Accessible.Description = GettextCatalog.GetString ("The Error pad toolbar");
 
 			errorBtn = MakeButton (Stock.Error, "toggleErrors", ShowErrors, out errorBtnLbl);
-			errorBtn.Accessible.Name = "ErrorPad.ErrorButton";
+			errorBtn.SetCommonAttributes ("ErrorPad.ErrorButton", null, null);
 
 			errorBtn.Toggled += FilterChanged;
 			errorBtn.TooltipText = GettextCatalog.GetString ("Show Errors");
-			errorBtn.Accessible.Description = GettextCatalog.GetString ("Show Errors");
+			errorBtn.SetCommonAttributes (null, null, GettextCatalog.GetString ("Show Errors"));
 			UpdateErrorsNum ();
 			toolbar.Add (errorBtn);
 
 			warnBtn = MakeButton (Stock.Warning, "toggleWarnings", ShowWarnings, out warnBtnLbl);
-			warnBtn.Accessible.Name = "ErrorPad.WarningButton";
+			warnBtn.SetCommonAttributes ("ErrorPad.WarningButton", null, null);
 			warnBtn.Toggled += FilterChanged;
 			warnBtn.TooltipText = GettextCatalog.GetString ("Show Warnings");
-			warnBtn.Accessible.Description = GettextCatalog.GetString ("Show Warnings");
+			warnBtn.SetCommonAttributes (null, null, GettextCatalog.GetString ("Show Warnings"));
 			UpdateWarningsNum ();
 			toolbar.Add (warnBtn);
 
 			msgBtn = MakeButton (Stock.Information, "toggleMessages", ShowMessages, out msgBtnLbl);
-			msgBtn.Accessible.Name = "ErrorPad.MessageButton";
+			msgBtn.SetCommonAttributes ("ErrorPad.MessageButton", null, null);
 			msgBtn.Toggled += FilterChanged;
 			msgBtn.TooltipText = GettextCatalog.GetString ("Show Messages");
-			msgBtn.Accessible.Description = GettextCatalog.GetString ("Show Messages");
+			msgBtn.SetCommonAttributes (null, null, GettextCatalog.GetString ("Show Messages"));
 			UpdateMessagesNum ();
 			toolbar.Add (msgBtn);
 
-			var sep = new SeparatorToolItem ();
-			sep.Accessible.SetShouldIgnore (true);
+			var sep = new Separator (Orientation.Vertical);
+			sep.SetShouldIgnore (true);
 			toolbar.Add (sep);
 
 			logBtn = MakeButton ("md-message-log", "toggleBuildOutput", false, out logBtnLbl);
-			logBtn.Accessible.Name = "ErrorPad.LogButton";
+			logBtn.SetCommonAttributes ("ErrorPad.LogButton", null, null);
 			logBtn.TooltipText = GettextCatalog.GetString ("Build Output");
-			logBtn.Accessible.Description = GettextCatalog.GetString ("Build Output");
+			logBtn.SetCommonAttributes (null, null, GettextCatalog.GetString ("Build Output"));
 			logBtnLbl.Text = GettextCatalog.GetString ("Build Output");
-			logBtn.Accessible.SetTitle (logBtnLbl.Text);
+			logBtn.SetTitle (logBtnLbl.Text);
 			logBtn.Toggled += HandleTextLogToggled;
 			toolbar.Add (logBtn);
 
 			if (BuildOutput.IsFeatureEnabled) {
 				buildLogBtn = MakeButton ("md-message-log", "toggleBuildOutput", out logBtnLbl);
-				buildLogBtn.Accessible.Name = "ErrorPad.BuildLogButton";
+				buildLogBtn.SetCommonAttributes ("ErrorPad.BuildLogButton", null, null);
 				buildLogBtn.TooltipText = GettextCatalog.GetString ("Structured Build Output");
-				buildLogBtn.Accessible.Description = GettextCatalog.GetString ("Structured Build Output");
+				buildLogBtn.SetCommonAttributes (null, null, GettextCatalog.GetString ("Structured Build Output"));
 
 				logBtnLbl.Text = GettextCatalog.GetString ("Structured Build Output");
-				buildLogBtn.Accessible.SetTitle (logBtnLbl.Text);
+				buildLogBtn.SetTitle (logBtnLbl.Text);
 
 				buildLogBtn.Clicked += HandleBinLogClicked;
 				toolbar.Add (buildLogBtn);
@@ -233,20 +228,19 @@ namespace MonoDevelop.Ide.Gui.Pads
 			buildOutput = new BuildOutput ();
 
 			//Dummy widget to take all space between "Build Output" button and SearchEntry
-			var spacer = new HBox ();
-			spacer.Accessible.SetShouldIgnore (true);
+			var spacer = new Box (Orientation.Horizontal, 0);
+			spacer.SetShouldIgnore (true);
 			toolbar.Add (spacer, true);
 
-			searchEntry = new SearchEntry ();
-			searchEntry.Accessible.SetLabel (GettextCatalog.GetString ("Search"));
-			searchEntry.Accessible.Name = "ErrorPad.Search";
-			searchEntry.Accessible.Description = GettextCatalog.GetString ("Search the error data");
+			searchEntry = new MonoDevelop.Components.SearchEntry ();
+			searchEntry.SetLabel (GettextCatalog.GetString ("Search"));
+			searchEntry.SetCommonAttributes ("ErrorPad.Search", null, null);
+			searchEntry.SetCommonAttributes (null, null, GettextCatalog.GetString ("Search the error data"));
 			searchEntry.Entry.Changed += searchPatternChanged;
 			searchEntry.WidthRequest = 200;
 			searchEntry.Visible = true;
 			toolbar.Add (searchEntry);
 
-			toolbar.ShowAll ();
 
 			UpdatePadIcon ();
 
@@ -262,7 +256,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 
 		void CreateControl ()
 		{
-			control = new HPaned ();
+			control = new SizeNotifyingPaned ();
 
 			store = new Gtk.TreeStore (typeof (Xwt.Drawing.Image), // image - type
 									   typeof (bool),       // read?
@@ -272,7 +266,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			TypeDescriptor.AddAttributes (store, modelAttr);
 
 			TreeModelFilterVisibleFunc filterFunct = new TreeModelFilterVisibleFunc (FilterTasks);
-			filter = new TreeModelFilter (store, null);
+			filter = (TreeModelFilter) store.FilterNew (null);
 			filter.VisibleFunc = filterFunct;
 			
 			sort = new TreeModelSort (filter);
@@ -284,7 +278,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			view = new PadTreeView (sort);
 			view.Selection.Mode = SelectionMode.Multiple;
 			view.ShowExpanders = true;
-			view.RulesHint = true;
+			// TODO GTK4: TreeView.RulesHint (alternating row colours) has no binding
 
 			view.DoPopupMenu += ShowPopup;
 
@@ -296,8 +290,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			view.Columns [VisibleColumns.Category].SortColumnId = VisibleColumns.Category;
 
 			sw = new MonoDevelop.Components.CompactScrolledWindow ();
-			sw.ShadowType = ShadowType.None;
-			sw.Add (view);
+			sw.Child = view;
 			IdeServices.TaskService.Errors.TasksRemoved += ShowResults;
 			IdeServices.TaskService.Errors.TasksAdded += TaskAdded;
 			IdeServices.TaskService.Errors.TasksChanged += TaskChanged;
@@ -308,20 +301,23 @@ namespace MonoDevelop.Ide.Gui.Pads
 
 			view.RowActivated += OnRowActivated;
 
-			iconWarning = ImageService.GetIcon (Ide.Gui.Stock.Warning, Gtk.IconSize.Menu);
-			iconError = ImageService.GetIcon (Ide.Gui.Stock.Error, Gtk.IconSize.Menu);
-			iconInfo = ImageService.GetIcon (Ide.Gui.Stock.Information, Gtk.IconSize.Menu);
-			iconEmpty = ImageService.GetIcon (Ide.Gui.Stock.Empty, Gtk.IconSize.Menu);
+			iconWarning = ImageService.GetIcon (Ide.Gui.Stock.Warning, MonoDevelop.Components.StockIconSize.Menu);
+			iconError = ImageService.GetIcon (Ide.Gui.Stock.Error, MonoDevelop.Components.StockIconSize.Menu);
+			iconInfo = ImageService.GetIcon (Ide.Gui.Stock.Information, MonoDevelop.Components.StockIconSize.Menu);
+			iconEmpty = ImageService.GetIcon (Ide.Gui.Stock.Empty, MonoDevelop.Components.StockIconSize.Menu);
 
-			control.Add1 (sw);
+			control.StartChild = sw;
+			control.ResizeStartChild = true;
+			control.ShrinkStartChild = false;
 
 			logView = new LogView { Name = "buildOutput" };
-			control.Add2 (logView);
+			control.EndChild = logView;
+			control.ResizeEndChild = false;
+			control.ShrinkEndChild = false;
 
-			control.ShowAll ();
 
-			control.SizeAllocated += HandleControlSizeAllocated;
-			sw.SizeAllocated += HandleSwSizeAllocated;
+			control.Allocated += HandleControlSizeAllocated;
+			control.AddNotification ("position", HandleSeparatorPositionChanged);
 
 			logView.Visible = OutputViewVisible;
 			logBtn.Active = OutputViewVisible;
@@ -363,29 +359,29 @@ namespace MonoDevelop.Ide.Gui.Pads
 			}
 
 			if (control != null) {
-				control.SizeAllocated -= HandleControlSizeAllocated;
+				control.Allocated -= HandleControlSizeAllocated;
 			}
 
-			if (sw != null) {
-				sw.SizeAllocated -= HandleSwSizeAllocated;
+			if (control != null) {
+				control.RemoveNotification ("position", HandleSeparatorPositionChanged);
 			}
 
 			base.Dispose ();
 		}
 
-		void HandleSwSizeAllocated (object o, SizeAllocatedArgs args)
+		void HandleSeparatorPositionChanged (object o, GLib.NotifyArgs args)
 		{
-			if (!initialLogShow && OutputViewVisible) {
-				var val = (double)((double)control.Position / (double)control.Allocation.Width);
+			var width = control.AllocatedWidth;
+			if (!initialLogShow && OutputViewVisible && width > 0) {
+				var val = (double)((double)control.Position / (double)width);
 				LogSeparatorPosition.Value = val;
 			}
 		}
 
-		[GLib.ConnectBefore]
-		void HandleControlSizeAllocated (object o, SizeAllocatedArgs args)
+		void HandleControlSizeAllocated (int width, int height)
 		{
 			if (initialLogShow && OutputViewVisible) {
-				SetInitialOutputViewSize (args.Allocation.Width);
+				SetInitialOutputViewSize (width);
 				initialLogShow = false;
 			}
 		}
@@ -451,7 +447,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			}
 		}
 
-		void ShowPopup (Gdk.EventButton evt)
+		void ShowPopup (ClickInfo evt)
 		{
 			var menu = new ContextMenu ();
 
@@ -595,10 +591,8 @@ namespace MonoDevelop.Ide.Gui.Pads
 				}
 			}
 
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-			clipboard.Text = text.ToString ();
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-			clipboard.Text = text.ToString ();
+			ClipboardHelper.SetText (text.ToString ());
+			ClipboardHelper.SetText (text.ToString (), primary: true);
 		}
 
 		void OnShowReference (object o, EventArgs args)
@@ -669,7 +663,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			var descriptionCol = view.AppendColumn (GettextCatalog.GetString ("Description"), descriptionCellRenderer);
 			descriptionCol.SetCellDataFunc (descriptionCellRenderer, new Gtk.TreeCellDataFunc (DescriptionDataFunc));
 			descriptionCol.Resizable = true;
-			descriptionCellRenderer.PreferedMaxWidth = IdeApp.Workbench.RootWindow.Allocation.Width / 3;
+			descriptionCellRenderer.PreferedMaxWidth = IdeApp.Workbench.RootWindow.AllocatedWidth / 3;
 			descriptionCellRenderer.WrapWidth = descriptionCellRenderer.PreferedMaxWidth;
 			descriptionCellRenderer.WrapMode = Pango.WrapMode.Word;
 
@@ -690,7 +684,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			col.Resizable = true;
 		}
 
-		static void ToggleDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void ToggleDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererToggle toggleRenderer = (Gtk.CellRendererToggle)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -701,7 +695,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			toggleRenderer.Active = task.Completed;
 		}
 		
-		static void LineDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void LineDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererText textRenderer = (Gtk.CellRendererText)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -712,7 +706,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, task.Line != 0 ? task.Line.ToString () : "");
 		}
 
-		static void DescriptionDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void DescriptionDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			var textRenderer = (CellRendererText)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -732,7 +726,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, text);
 		}
 
-		static void FileDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void FileDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererText textRenderer = (Gtk.CellRendererText)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -744,7 +738,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, task.GetFile ());
 		}
 		
-		static void ProjectDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void ProjectDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererText textRenderer = (Gtk.CellRendererText)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -755,7 +749,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, task.GetProject ());
 		}
 		
-		static void PathDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void PathDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererText textRenderer = (Gtk.CellRendererText)cell;
 			TaskListEntry task = model.GetValue (iter, DataColumns.Task) as TaskListEntry; 
@@ -766,7 +760,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, task.GetPath ());
 		}
 
-		static void CategoryDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void CategoryDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			Gtk.CellRendererText textRenderer = (Gtk.CellRendererText)cell;
 			var task = model.GetValue (iter, DataColumns.Task) as TaskListEntry;
@@ -777,7 +771,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			SetText (textRenderer, model, iter, task, task.Category ?? "");
 		}
 		
-		static void SetText (CellRendererText textRenderer, TreeModel model, TreeIter iter, TaskListEntry task, string text)
+		static void SetText (CellRendererText textRenderer, ITreeModel model, TreeIter iter, TaskListEntry task, string text)
 		{
 			textRenderer.Text = text;
 			textRenderer.Weight = (int)((bool)model.GetValue (iter, DataColumns.Read) ? Pango.Weight.Normal : Pango.Weight.Bold);
@@ -834,7 +828,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 		}
 
 
-		bool FilterTasks (TreeModel model, TreeIter iter)
+		bool FilterTasks (ITreeModel model, TreeIter iter)
 		{
 			bool canShow = false;
 
@@ -951,19 +945,19 @@ namespace MonoDevelop.Ide.Gui.Pads
 		void UpdateErrorsNum () 
 		{
 			errorBtnLbl.Text = " " + string.Format(GettextCatalog.GetPluralString("{0} Error", "{0} Errors", errorCount), errorCount);
-			errorBtn.Accessible.SetTitle (errorBtnLbl.Text);
+			errorBtn.SetTitle (errorBtnLbl.Text);
 		}
 
 		void UpdateWarningsNum ()
 		{
 			warnBtnLbl.Text = " " + string.Format(GettextCatalog.GetPluralString("{0} Warning", "{0} Warnings", warningCount), warningCount);
-			warnBtn.Accessible.SetTitle (warnBtnLbl.Text);
+			warnBtn.SetTitle (warnBtnLbl.Text);
 		}
 
 		void UpdateMessagesNum ()
 		{
 			msgBtnLbl.Text = " " + string.Format(GettextCatalog.GetPluralString("{0} Message", "{0} Messages", infoCount), infoCount);
-			msgBtn.Accessible.SetTitle (msgBtnLbl.Text);
+			msgBtn.SetTitle (msgBtnLbl.Text);
 		}
 
 		void UpdatePadIcon ()
@@ -987,7 +981,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			}
 		}
 
-		static int SeverityIterSort(TreeModel model, TreeIter a, TreeIter z)
+		static int SeverityIterSort(ITreeModel model, TreeIter a, TreeIter z)
 		{
 			TaskListEntry aTask = model.GetValue(a, DataColumns.Task) as TaskListEntry,
 			     zTask = model.GetValue(z, DataColumns.Task) as TaskListEntry;
@@ -997,7 +991,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			       0;
 		}
 		
-		static int ProjectIterSort (TreeModel model, TreeIter a, TreeIter z)
+		static int ProjectIterSort (ITreeModel model, TreeIter a, TreeIter z)
 		{
 			TaskListEntry aTask = model.GetValue (a, DataColumns.Task) as TaskListEntry,
 			     zTask = model.GetValue (z, DataColumns.Task) as TaskListEntry;
@@ -1007,7 +1001,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			       0;
 		}
 		
-		static int FileIterSort (TreeModel model, TreeIter a, TreeIter z)
+		static int FileIterSort (ITreeModel model, TreeIter a, TreeIter z)
 		{
 			TaskListEntry aTask = model.GetValue (a, DataColumns.Task) as TaskListEntry,
 			     zTask = model.GetValue (z, DataColumns.Task) as TaskListEntry;
@@ -1017,7 +1011,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			       0;
 		}
 
-		static int CategoryIterSort (TreeModel model, TreeIter a, TreeIter z)
+		static int CategoryIterSort (ITreeModel model, TreeIter a, TreeIter z)
 		{
 			TaskListEntry aTask = model.GetValue (a, DataColumns.Task) as TaskListEntry,
 				 zTask = model.GetValue (z, DataColumns.Task) as TaskListEntry;
@@ -1038,7 +1032,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 			OutputViewVisible.Value = visible;
 			logView.Visible = visible;
 
-			SetInitialOutputViewSize (control.Allocation.Width);
+			SetInitialOutputViewSize (control.AllocatedWidth);
 
 			if (visible) {
 				Counters.BuildLogShown.Inc (1);
@@ -1084,22 +1078,35 @@ namespace MonoDevelop.Ide.Gui.Pads
 		{
 			public int PreferedMaxWidth { get; set; }
 
-			public override void GetSize (Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+			protected override void OnGetPreferredWidth (Widget widget, out int minimum_size, out int natural_size)
 			{
 				int originalWrapWidth = WrapWidth;
 				WrapWidth = -1;
-				// First calculate Width with WrapWidth=-1 which will give us
-				// Width of text in one line(without wrapping)
-				base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-				int oneLineWidth = width;
+				// Calculate the width with WrapWidth=-1 which gives us the
+				// width of the text in one line (without wrapping)
+				base.OnGetPreferredWidth (widget, out int oneLineMinimum, out int oneLineNatural);
 				WrapWidth = originalWrapWidth;
-				// originalWrapWidth(aka WrapWidth) equals to actual width of Column if oneLineWidth is bigger
-				// then column width/height we must recalculate, because Height is atm for one line
-				// and not multipline that WrapWidth creates...
-				if (oneLineWidth > originalWrapWidth) {
-					base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
-				}
-				width = Math.Min (oneLineWidth, PreferedMaxWidth);
+				// The height is computed by GTK from the final column width (OnGetPreferredHeightForWidth),
+				// so only the width is limited here.
+				minimum_size = Math.Min (oneLineMinimum, PreferedMaxWidth);
+				natural_size = Math.Min (oneLineNatural, PreferedMaxWidth);
+			}
+		}
+
+		/// <summary>Paned that reports its size allocation (GTK 4 has no size-allocate signal).</summary>
+		sealed class SizeNotifyingPaned : Paned
+		{
+			public SizeNotifyingPaned () : base (Orientation.Horizontal)
+			{
+			}
+
+			/// <summary>Raised after each allocation with the new width and height.</summary>
+			public event Action<int, int> Allocated;
+
+			protected override void OnSizeAllocate (int width, int height, int baseline)
+			{
+				base.OnSizeAllocate (width, height, baseline);
+				Allocated?.Invoke (width, height);
 			}
 		}
 	}

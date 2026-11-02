@@ -56,7 +56,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	partial class IDEStyleOptionsPanelWidget : Gtk.Bin
+	partial class IDEStyleOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		string currentTheme;
 
@@ -67,7 +67,13 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 			FilePath homeDir = Environment.GetFolderPath (Environment.SpecialFolder.Personal);
 
 			searchDirs.Add (homeDir.Combine (".themes"));
-			searchDirs.Add (Gtk.Rc.ThemeDir);
+			searchDirs.Add (homeDir.Combine (".local").Combine ("share").Combine ("themes"));
+			// GTK 4 has no Gtk.Rc.ThemeDir: search the XDG system data directories
+			var dataDirs = Environment.GetEnvironmentVariable ("XDG_DATA_DIRS");
+			if (string.IsNullOrEmpty (dataDirs))
+				dataDirs = "/usr/local/share:/usr/share";
+			foreach (var dataDir in dataDirs.Split (new [] { ':' }, StringSplitOptions.RemoveEmptyEntries))
+				searchDirs.Add (new FilePath (dataDir).Combine ("themes"));
 			if (!string.IsNullOrEmpty (prefix))
 				searchDirs.Add (new FilePath (prefix).Combine ("share").Combine ("themes"));
 			
@@ -136,7 +142,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		{
 			Store ();
 			IdeApp.Restart (true).Ignore();
-			(Toplevel as Gtk.Dialog)?.Respond (Gtk.ResponseType.Ok);
+			(Root as Gtk.Dialog)?.Respond (Gtk.ResponseType.Ok);
 		}
 
 		void UpdateRestartMessage ()
@@ -187,12 +193,12 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		{
 			var themes = new Dictionary<string, string> ();
 			if (Platform.IsLinux) {
-				string gtkrc = System.IO.Path.Combine ("gtk-2.0", "gtkrc");
+				string gtkTheme = System.IO.Path.Combine ("gtk-4.0", "gtk.css");
 				foreach (string themeDir in themeDirs) {
 					if (string.IsNullOrEmpty (themeDir) || !System.IO.Directory.Exists (themeDir))
 						continue;
 					foreach (FilePath dir in System.IO.Directory.GetDirectories (themeDir)) {
-						if (System.IO.File.Exists (dir.Combine (gtkrc))) {
+						if (System.IO.File.Exists (dir.Combine (gtkTheme))) {
 							var themeName = dir.FileName;
 							if (!IsBadGtkTheme (themeName))
 								themes.Add (themeName, themeName);

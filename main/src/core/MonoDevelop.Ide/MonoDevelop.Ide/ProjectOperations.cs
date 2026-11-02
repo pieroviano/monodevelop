@@ -1586,7 +1586,7 @@ namespace MonoDevelop.Ide
 		static bool? PromptToBuild ()
 		{
 			var bBuild = new AlertButton (GettextCatalog.GetString ("Build"));
-			var bRun = new AlertButton (Gtk.Stock.Execute, true);
+			var bRun = new AlertButton (MonoDevelop.Ide.Gui.GtkStock.Execute, true);
 			var res = MessageService.AskQuestion (
 				GettextCatalog.GetString ("Outdated Build"),
 				GettextCatalog.GetString ("The project you are executing has changed since the last time it was compiled. Do you want to continue or rebuild it?"),

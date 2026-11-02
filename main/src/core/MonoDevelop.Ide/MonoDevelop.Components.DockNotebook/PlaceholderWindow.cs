@@ -36,15 +36,28 @@ using MonoDevelop.Ide.Gui.Shell;
 
 namespace MonoDevelop.Components.DockNotebook
 {
-
-	class PlaceholderWindow: Gtk.Window
+	/// <summary>
+	/// Drag and drop of a document tab out of its tab strip: shows where the tab would be dropped (an outline over the
+	/// notebook under the pointer) and moves the document there when the button is released. Dropping it outside of
+	/// every notebook moves the document to a new floating window.
+	/// </summary>
+	/// <remarks>
+	/// GTK 4 windows can't be positioned by the application and coordinates can't be translated between windows, so
+	/// the target notebook is searched among the notebooks of the window that contains the tab strip.
+	/// </remarks>
+	class PlaceholderWindow
 	{
-		uint anim;
-		int rx, ry, rw, rh;
 		List<DockNotebook> allNotebooks;
-		uint timeout;
+		readonly TabStrip source;
+		readonly DockNotebookTab frame;
+		bool destroyed;
+		bool controlPressed;
+		EventControllerKey keyController;
+		Gtk.Window keyWindow;
+		DockNotebook outlinedNotebook;
 
-		DocumentTitleWindow titleWindow;
+		/// <summary>Raised when the drag has finished, because the tab was dropped or the drag was canceled.</summary>
+		public event EventHandler Destroyed;
 
 		static PlaceholderWindow ()
 		{
@@ -53,129 +66,144 @@ namespace MonoDevelop.Components.DockNotebook
 				if (doc == null)
 					return;
 				var workspaceWindow = doc.Window as SdiWorkspaceWindow;
-				var rootWindow = workspaceWindow?.Toplevel as DockWindow;
+				var rootWindow = workspaceWindow?.GetToplevelWindow () as DockWindow;
 				if (rootWindow == null)
 					return;
-				
+
 				rootWindow.Title = DefaultWorkbench.GetTitle (workspaceWindow);
 			};
 		}
 
-		DockNotebookTab frame;
-		
-		public PlaceholderWindow (DockNotebookTab tab): base (Gtk.WindowType.Toplevel)
+		public PlaceholderWindow (DockNotebookTab tab, TabStrip source)
 		{
 			this.frame = tab;
-			SkipTaskbarHint = true;
-			Decorated = false;
-			TypeHint = WindowTypeHint.Utility;
-			titleWindow = new DocumentTitleWindow (this, tab);
+			this.source = source;
 			IdeApp.Workbench.LockActiveWindowChangeEvent ();
-
-			titleWindow.FocusInEvent += delegate {
-				if (timeout != 0) {
-					GLib.Source.Remove (timeout);
-					timeout = 0;
-				}
-			};
-
-			titleWindow.FocusOutEvent += delegate {
-				timeout = GLib.Timeout.Add (100, () => {
-					timeout = 0;
-					titleWindow.Close ();
-					return false;
-				});
-			};
 
 			var windowStack = IdeApp.CommandService.TopLevelWindowStack.ToArray ();
 			allNotebooks = DockNotebook.AllNotebooks.ToList ();
 			allNotebooks.Sort (delegate(DockNotebook x, DockNotebook y) {
-				var ix = Array.IndexOf (windowStack, (Gtk.Window) x.Toplevel);
-				var iy = Array.IndexOf (windowStack, (Gtk.Window) y.Toplevel);
+				var ix = Array.IndexOf (windowStack, x.GetToplevelWindow ());
+				var iy = Array.IndexOf (windowStack, y.GetToplevelWindow ());
 				if (ix == -1) ix = int.MaxValue;
 				if (iy == -1) iy = int.MaxValue;
 				return ix.CompareTo (iy);
 			});
+
+			// Ctrl disables the placement in a notebook, Escape cancels the drag
+			keyWindow = source.GetToplevelWindow ();
+			if (keyWindow != null) {
+				keyController = keyWindow.AddKeyPressHandler (
+					(keyval, keycode, state) => {
+						var key = (Gdk.Key)keyval;
+						if (key == Gdk.Key.Escape) {
+							Destroy ();
+							return true;
+						}
+						UpdateControl (state, keyval, true);
+						return false;
+					},
+					(keyval, keycode, state) => UpdateControl (state, keyval, false),
+					PropagationPhase.Capture);
+			}
+		}
+
+		int controlKeyMask;
+
+		void UpdateControl (Gdk.ModifierType state, uint keyval, bool pressed)
+		{
+			var key = (Gdk.Key)keyval;
+			int mask = key == Gdk.Key.Control_L ? 1 : key == Gdk.Key.Control_R ? 2 : 0;
+			if (mask == 0)
+				return;
+			if (pressed)
+				controlKeyMask |= mask;
+			else
+				controlKeyMask &= ~mask;
+			controlPressed = controlKeyMask != 0;
+			UpdatePosition ();
 		}
 
 		DockNotebook hoverNotebook;
 
 		bool CanPlaceInHoverNotebook ()
 		{
-			return !titleWindow.ControlPressed && hoverNotebook != null;
+			return !controlPressed && hoverNotebook != null;
 		}
 
-		protected override void OnDestroyed ()
+		/// <summary>Cancels the drag, hiding the outline.</summary>
+		public void Destroy ()
 		{
-			base.OnDestroyed ();
-			Gtk.Application.Invoke ((o, args) => {
-				titleWindow.Destroy ();
-			});
+			if (destroyed)
+				return;
+			destroyed = true;
+
+			ShowOutline (null, null);
+			if (keyController != null && keyWindow != null)
+				keyWindow.RemoveController (keyController);
+			keyController = null;
+			keyWindow = null;
 			IdeApp.Workbench.UnlockActiveWindowChangeEvent ();
+			Destroyed?.Invoke (this, EventArgs.Empty);
 		}
 
-		int curX, curY;
+		double curX, curY;
 
 		public void UpdatePosition ()
 		{
-			MovePosition (curX, curY);
+			if (!destroyed)
+				MovePosition (curX, curY);
 		}
 
-		public void MovePosition (int x, int y)
+		/// <summary>Updates the drop target. The position is in the coordinates of the source tab strip.</summary>
+		public void MovePosition (double x, double y)
 		{
 			this.curX = x;
 			this.curY = y;
 
 			ShowPlaceholder (x, y);
-
-			var alloc = titleWindow.Child.SizeRequest ();
-			titleWindow.Move (x - alloc.Width / 2, y - alloc.Height / 2);
-			titleWindow.Show ();
-			titleWindow.Present ();
 		}
 
-		public void ShowPlaceholder (int x, int y)
+		void ShowOutline (DockNotebook notebook, Gdk.Rectangle? rect)
+		{
+			if (outlinedNotebook != null && outlinedNotebook != notebook)
+				outlinedNotebook.ShowDropPlaceholder (null);
+			outlinedNotebook = notebook;
+			notebook?.ShowDropPlaceholder (rect);
+		}
+
+		public void ShowPlaceholder (double x, double y)
 		{
 			hoverNotebook = null;
+			double nx = 0, ny = 0;
 
 			// TODO: Handle z-ordering of floating windows.
-			int ox = 0, oy = 0;
 			foreach (var notebook in allNotebooks) {
-				if (notebook.GdkWindow == null)
+				if (!notebook.IsRealized)
 					continue;
 
-				int ox2, oy2;
-				notebook.ParentWindow.GetOrigin (out ox2, out oy2);
-				var alloc = notebook.Allocation;
-				ox2 += alloc.X;
-				ox2 += alloc.Y;
-				if (ox2 <= x && x <= ox2 + alloc.Width && oy2 <= y && y <= oy2 + alloc.Height) {
+				if (!source.TranslateCoordinates (notebook, x, y, out double nx2, out double ny2))
+					continue;
+				if (nx2 >= 0 && nx2 <= notebook.Width && ny2 >= 0 && ny2 <= notebook.Height) {
 					hoverNotebook = notebook;
-					TransientFor = (Gtk.Window) hoverNotebook.Toplevel;
-					ox = ox2;
-					oy = oy2;
+					nx = nx2;
+					ny = ny2;
 					break;
 				}
 			}
 
 			if (CanPlaceInHoverNotebook ()) {
 				var container = hoverNotebook.Container;
-				var alloc = hoverNotebook.Allocation;
+				int width = hoverNotebook.Width, height = hoverNotebook.Height;
 				var targetTabCount = hoverNotebook.TabCount;
-				var overTabStrip = y <= oy + hoverNotebook.BarHeight;
+				var overTabStrip = ny <= hoverNotebook.BarHeight;
 
 				if (hoverNotebook.Tabs.Contains (frame))
 					targetTabCount--; // Current is going to be removed, so it doesn't count
 
-				if (targetTabCount > 0 && x <= ox + alloc.Width / 3 && !overTabStrip) {
+				if (targetTabCount > 0 && nx <= width / 3 && !overTabStrip) {
 					if (container.AllowLeftInsert) {
-						Relocate (
-							ox,
-							oy,
-							alloc.Width / 2,
-							alloc.Height,
-							false
-						);
+						ShowOutline (hoverNotebook, new Gdk.Rectangle (0, 0, width / 2, height));
 						placementDelegate = delegate(DockNotebook arg1, DockNotebookTab tab, Rectangle allocation2, int x2, int y2) {
 							var window = (SdiWorkspaceWindow)tab.Content;
 							container.InsertLeft (window);
@@ -185,15 +213,9 @@ namespace MonoDevelop.Components.DockNotebook
 					}
 				}
 
-				if (targetTabCount > 0 && x >= ox + alloc.Width - alloc.Width / 3 && !overTabStrip) {
+				if (targetTabCount > 0 && nx >= width - width / 3 && !overTabStrip) {
 					if (container.AllowRightInsert) {
-						Relocate (
-							ox + alloc.Width / 2,
-							oy,
-							alloc.Width / 2,
-							alloc.Height,
-							false
-						);
+						ShowOutline (hoverNotebook, new Gdk.Rectangle (width / 2, 0, width / 2, height));
 						placementDelegate = delegate(DockNotebook arg1, DockNotebookTab tab, Rectangle allocation2, int x2, int y2) {
 							var window = (SdiWorkspaceWindow)tab.Content;
 							container.InsertRight (window);
@@ -203,13 +225,7 @@ namespace MonoDevelop.Components.DockNotebook
 					}
 				}
 
-				Relocate (
-					ox, 
-					oy, 
-					alloc.Width, 
-					alloc.Height, 
-					false
-				); 
+				ShowOutline (hoverNotebook, new Gdk.Rectangle (0, 0, width, height));
 				if (!hoverNotebook.Tabs.Contains (frame))
 					placementDelegate = PlaceInHoverNotebook;
 				else
@@ -217,99 +233,8 @@ namespace MonoDevelop.Components.DockNotebook
 				return;
 			}
 
-			Hide ();
+			ShowOutline (null, null);
 			placementDelegate = PlaceInFloatingFrame;
-			titleWindow.SetDectorated (true);
-		}
-
-		protected override bool OnFocusInEvent (EventFocus evt)
-		{
-			if (timeout != 0) {
-				GLib.Source.Remove (timeout);
-				timeout = 0;
-			}
-
-			return base.OnFocusInEvent (evt);
-		}
-
-		protected override bool OnFocusOutEvent (EventFocus evt)
-		{
-			timeout = GLib.Timeout.Add (100, () => {
-				timeout = 0;
-				titleWindow.Close ();
-				return false;
-			});
-
-			return base.OnFocusOutEvent (evt);
-		}
-
-		protected override void OnRealized ()
-		{
-			base.OnRealized ();
-			GdkWindow.Opacity = 0.4;
-		}
-		protected override bool OnExposeEvent (EventExpose evnt)
-		{
-			int w, h;
-			GetSize (out w, out h);
-
-			using (var ctx = CairoHelper.Create (evnt.Window)) {
-				ctx.SetSourceColor (new Cairo.Color (0.17, 0.55, 0.79));
-				ctx.Rectangle (Allocation.ToCairoRect ());
-				ctx.Fill ();
-			}
-			return true;
-		}
-
-		public void Relocate (int x, int y, int w, int h, bool animate)
-		{
-			if (!Visible || x != rx || y != ry || w != rw || h != rh) {
-				Hide ();
-				if (w != rw || h != rh)
-					Resize (w, h);
-				Move (x, y);
-				ShowAll ();
-				titleWindow.SetDectorated (false);
-
-				rx = x; ry = y; rw = w; rh = h;
-
-				if (anim != 0) {
-					GLib.Source.Remove (anim);
-					anim = 0;
-				}
-				if (animate && w < 150 && h < 150) {
-					const int sa = 7;
-					Move (rx-sa, ry-sa);
-					Resize (rw+sa*2, rh+sa*2);
-					anim = GLib.Timeout.Add (10, RunAnimation);
-				}
-			}
-		}
-
-		bool RunAnimation ()
-		{
-			int cx, cy, ch, cw;
-			GetSize (out cw, out ch);
-			GetPosition	(out cx, out cy);
-
-			if (cx != rx) {
-				cx++; cy++;
-				ch-=2; cw-=2;
-				Move (cx, cy);
-				Resize (cw, ch);
-				return true;
-			}
-			anim = 0;
-			return false;
-		}
-
-		public DockDelegate DockDelegate { get; private set; }
-		public Rectangle DockRect { get; private set; }
-
-		public void SetDockInfo (DockDelegate dockDelegate, Rectangle rect)
-		{
-			DockDelegate = dockDelegate;
-			DockRect = rect;
 		}
 
 		static void PlaceInFloatingFrame (DockNotebook notebook, DockNotebookTab tab, Rectangle allocation, int ox, int oy)
@@ -323,9 +248,9 @@ namespace MonoDevelop.Components.DockNotebook
 			newWindow.Title = DefaultWorkbench.GetTitle (workspaceWindow);
 
 			workspaceWindow.SetDockNotebook (newNotebook, newTab);
-			newWindow.Move (ox - w / 2, oy - h / 2);
-			newWindow.Resize (w, h);
-			newWindow.ShowAll ();
+			// GTK 4 windows can't be positioned, only the size is set
+			newWindow.SetDefaultSize (w, h);
+			newWindow.Present ();
 			DockNotebook.ActiveNotebook = newNotebook;
 		}
 
@@ -335,8 +260,8 @@ namespace MonoDevelop.Components.DockNotebook
 		void PlaceInHoverNotebook (DockNotebook notebook, DockNotebookTab tab, Rectangle allocation, int ox, int oy)
 		{
 			var window = (SdiWorkspaceWindow)tab.Content;
-			var newTab = hoverNotebook.AddTab (window); 
-			window.SetDockNotebook (hoverNotebook, newTab); 
+			var newTab = hoverNotebook.AddTab (window);
+			window.SetDockNotebook (hoverNotebook, newTab);
 			window.SelectWindow ();
 		}
 
@@ -346,136 +271,19 @@ namespace MonoDevelop.Components.DockNotebook
 		{
 			try {
 				IdeApp.Workbench.LockActiveWindowChangeEvent ();
-				var allocation = Allocation;
+				var allocation = new Rectangle (0, 0, w, h);
 				Destroy ();
 
 				if (placementDelegate != null) {
 					var tab = notebook.CurrentTab;
-					notebook.RemoveTab (tab.Index, true); 
-					placementDelegate (notebook, tab, allocation, curX, curY);
+					notebook.RemoveTab (tab.Index, true);
+					placementDelegate (notebook, tab, allocation, (int)curX, (int)curY);
 				} else {
 					((SdiWorkspaceWindow)frame.Content).SelectWindow ();
 				}
 			} finally {
 				IdeApp.Workbench.UnlockActiveWindowChangeEvent ();
 			}
-		}
-	}
-
-
-	class DocumentTitleWindow: Gtk.Window
-	{
-		int controlKeyMask;
-		PlaceholderWindow placeholder;
-		HBox titleBox;
-
-		public DocumentTitleWindow (PlaceholderWindow placeholder, DockNotebookTab draggedItem): base (Gtk.WindowType.Toplevel)
-		{
-			this.placeholder = placeholder;
-
-			SkipTaskbarHint = true;
-			Decorated = false;
-
-			//TransientFor = parent;
-			TypeHint = WindowTypeHint.Utility;
-
-			VBox mainBox = new VBox ();
-			mainBox.Spacing = 3;
-
-			titleBox = new HBox (false, 3);
-			if (draggedItem.Icon != null) {
-				var img = new Xwt.ImageView (draggedItem.Icon);
-				titleBox.PackStart (img.ToGtkWidget (), false, false, 0);
-			}
-			Gtk.Label la = new Label ();
-			la.Markup = draggedItem.Text;
-			titleBox.PackStart (la, false, false, 0);
-
-			mainBox.PackStart (titleBox, false, false, 0);
-
-			var wi = RenderWidget (draggedItem.Content);
-			if (wi != null) {
-				wi = wi.WithBoxSize (200);
-				mainBox.PackStart (new ImageView (wi), false, false, 0);
-			}
-
-			CustomFrame f = new CustomFrame ();
-			f.SetPadding (2, 2, 2, 2);
-			f.SetMargins (1, 1, 1, 1);
-			f.Add (mainBox);
-
-			Add (f);
-			mainBox.CanFocus = true;
-			Child.ShowAll ();
-		}
-
-		static Xwt.Drawing.Image RenderWidget (Widget w)
-		{
-			Gdk.Window win = w.GdkWindow;
-			if (win == null || !win.IsViewable) {
-				return null;
-			}
-
-#if MAC
-			//WORKAROUND: Pixbuf.FromDrawable (and by extension XWT's RenderWidget) is broken on Mac
-			return Xwt.Toolkit.NativeEngine.WrapImage (Mac.GtkMacInterop.RenderGtkWidget (w));
-#else
-			return Xwt.Toolkit.CurrentEngine.RenderWidget (Xwt.Toolkit.CurrentEngine.WrapWidget (w));
-#endif
-		}
-
-		public void SetDectorated (bool decorated)
-		{
-		//	Decorated = decorated;
-		//	titleBox.Visible = !decorated;
-		}
-
-		public bool ControlPressed {
-			get { return controlKeyMask != 0; }
-		}
-
-		protected override bool OnKeyPressEvent (EventKey evnt)
-		{
-			if (evnt.Key == Gdk.Key.Escape)
-				Close ();
-			if (evnt.Key == Gdk.Key.Control_L)
-				controlKeyMask |= 1;
-			if (evnt.Key == Gdk.Key.Control_R)
-				controlKeyMask |= 2;
-			placeholder.UpdatePosition ();
-
-			return base.OnKeyPressEvent (evnt);
-		}
-
-
-		protected override bool OnKeyReleaseEvent (EventKey evnt)
-		{
-			if (evnt.Key == Gdk.Key.Control_L)
-				controlKeyMask &= ~1;
-			if (evnt.Key == Gdk.Key.Control_R)
-				controlKeyMask &= ~2;
-			placeholder.UpdatePosition ();
-
-			return base.OnKeyReleaseEvent (evnt);
-		}
-
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
-		{
-			Close ();
-			return base.OnButtonReleaseEvent (evnt);
-		}
-
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
-		{
-			Close ();
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		public void Close ()
-		{
-			Application.Invoke ((o, args) => {
-				placeholder.Destroy ();
-			});
 		}
 	}
 }

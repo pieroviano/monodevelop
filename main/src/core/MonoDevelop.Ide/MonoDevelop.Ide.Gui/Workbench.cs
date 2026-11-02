@@ -299,7 +299,7 @@ namespace MonoDevelop.Ide.Gui
 				if (IdeServices.DesktopService.IsModalDialogRunning ())
 					return false;
 				var windows = Gtk.Window.ListToplevels ();
-				var toplevel = windows.FirstOrDefault (x => x.HasToplevelFocus);
+				var toplevel = windows.FirstOrDefault (x => x.IsActive);
 				if (toplevel == null)
 					return false;
 				if (toplevel == RootWindow)
@@ -331,11 +331,8 @@ namespace MonoDevelop.Ide.Gui
 
 			//HACK: window resets its size on Win32 on Present if it was maximized by snapping to top edge of screen
 			//partially work around this by avoiding the present call if it's already toplevel
-			if (Platform.IsWindows && RootWindow.HasToplevelFocus)
+			if (Platform.IsWindows && RootWindow.IsActive)
 				return;
-
-			RootWindow.Deiconify ();
-			RootWindow.Visible = true;
 
 			//FIXME: this should do a "request for attention" dock bounce on MacOS but only in some cases.
 			//Doing it for all Present calls is excessive and annoying. Maybe we have too many Present calls...
@@ -794,14 +791,14 @@ namespace MonoDevelop.Ide.Gui
 			var fwId = 1;
 
 			foreach (var window in DockWindow.GetAllWindows ()) {
-				int x, y;
-				window.GetPosition (out x, out y);
+				// GTK 4 does not expose window positions, only the size is meaningful
+				int x = 0, y = 0;
 				var fwp = new FloatingWindowUserPrefs {
 					WindowId = fwId,
 					X = x,
 					Y = y,
-					Width = window.Allocation.Width,
-					Height = window.Allocation.Height
+					Width = window.Width,
+					Height = window.Height
 				};
 
 				foreach (var nb in window.Container.GetNotebooks ())
@@ -902,8 +899,8 @@ namespace MonoDevelop.Ide.Gui
 
 					foreach (var fw in prefs.FloatingWindows) {
 						var dockWindow = new DockWindow ();
-						dockWindow.Move (fw.X, fw.Y);
-						dockWindow.Resize (fw.Width, fw.Height);
+						// GTK 4 can not position windows, only the size is restored
+						dockWindow.SetDefaultSize (fw.Width, fw.Height);
 						docList = fw.Files.Distinct (new DocumentUserPrefsFilenameComparer ()).OrderBy (d => d.NotebookId).ToList ();
 						await OpenDocumentsInContainer (pm, baseDir, docViews, docList, dockWindow.Container);
 						floatingWindows.Add (dockWindow);
@@ -936,7 +933,7 @@ namespace MonoDevelop.Ide.Gui
 				}
 
 				foreach (var w in floatingWindows)
-					w.ShowAll ();
+					w.Present ();
 
 				if (activeDoc != null) {
 					activeDoc.RunWhenLoaded (activeDoc.Select);

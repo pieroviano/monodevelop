@@ -40,7 +40,7 @@ namespace MonoDevelop.Ide.Extensions
 		public string StockId { get; private set; }
 		
 		[NodeAttribute ("size", "Size of the icon.")]
-		public Gtk.IconSize IconSize { get; private set; }
+		public MonoDevelop.Components.StockIconSize IconSize { get; private set; }
 
 		[NodeAttribute ("resource", "Name of the resource where the icon is stored.")]
 		public string Resource { get; private set; }

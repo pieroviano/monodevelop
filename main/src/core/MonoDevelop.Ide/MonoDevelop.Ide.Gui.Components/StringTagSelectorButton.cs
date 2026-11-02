@@ -34,7 +34,7 @@ using MonoDevelop.Components.AtkCocoaHelper;
 namespace MonoDevelop.Ide.Gui.Components
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public class StringTagSelectorButton : MenuButton
+	public class StringTagSelectorButton : MonoDevelop.Components.MenuButton
 	{
 		public StringTagSelectorButton ()
 		{
@@ -54,7 +54,7 @@ namespace MonoDevelop.Ide.Gui.Components
 			}
 		}
 
-		ContextMenu CreateMenu(MenuButton button)
+		ContextMenu CreateMenu(MonoDevelop.Components.MenuButton button)
 		{
 			if (TagModel == null) {
 				return null;

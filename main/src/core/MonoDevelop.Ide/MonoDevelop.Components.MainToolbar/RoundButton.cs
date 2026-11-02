@@ -24,8 +24,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
-using Gdk;
+using System;
 using MonoDevelop.Components;
 using Cairo;
 using MonoDevelop.Ide;
@@ -33,15 +32,17 @@ using System.Reflection;
 
 namespace MonoDevelop.Components.MainToolbar
 {
-	class RoundButton : Gtk.EventBox
+	class RoundButton : CairoWidget
 	{
 		const int height = 32;
-/*		Cairo.Color borderColor;
 
-		Cairo.Color fill0Color;
-		Cairo.Color fill1Color;
-		Cairo.Color fill2Color;
-		Cairo.Color fill3Color;*/
+		enum ButtonState
+		{
+			Normal,
+			Prelight,
+			Selected,
+			Insensitive
+		}
 
 		Xwt.Drawing.Image btnNormal, btnInactive, btnHover, btnPressed;
 
@@ -49,11 +50,10 @@ namespace MonoDevelop.Components.MainToolbar
 		Xwt.Drawing.Image iconStopNormal, iconStopDisabled;
 		Xwt.Drawing.Image iconBuildNormal, iconBuildDisabled;
 
+		bool hovering, pressed;
+
 		public RoundButton ()
 		{
-			WidgetFlags |= Gtk.WidgetFlags.AppPaintable;
-			Events |= EventMask.ButtonPressMask | EventMask.ButtonReleaseMask | EventMask.LeaveNotifyMask | EventMask.PointerMotionMask;
-			VisibleWindow = false;
 			SetSizeRequest (height, height);
 
 			btnNormal = Xwt.Drawing.Image.FromResource (GetType (), "btn-execute-normal-32.png");
@@ -69,64 +69,75 @@ namespace MonoDevelop.Components.MainToolbar
 
 			iconBuildNormal = Xwt.Drawing.Image.FromResource (GetType (), "ico-build-normal-32.png");
 			iconBuildDisabled = Xwt.Drawing.Image.FromResource (GetType (), "ico-build-disabled-32.png");
+
+			this.AddMotionHandler (
+				(x, y) => SetHover (IsInside (x, y)),
+				(x, y) => SetHover (IsInside (x, y)),
+				() => {
+					SetHover (false);
+					pressed = false;
+					QueueDraw ();
+				});
+			this.AddClickHandler (
+				c => {
+					if (c.Button == 1 && IsInside (c.X, c.Y)) {
+						pressed = true;
+						c.Claim ();
+						QueueDraw ();
+					}
+				},
+				c => {
+					bool wasPressed = pressed;
+					pressed = false;
+					hovering = IsInside (c.X, c.Y);
+					QueueDraw ();
+					if (wasPressed)
+						OnClicked (EventArgs.Empty);
+				}, 1);
+			// GTK 4 doesn't redraw on sensitivity changes of a custom drawn widget
+			StateFlagsChanged += (o, args) => QueueDraw ();
 		}
 
-		StateType hoverState = StateType.Prelight;
-
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
+		void SetHover (bool value)
 		{
-
-			State = IsInside (evnt.X, evnt.Y) ? hoverState : StateType.Normal;;
-			return base.OnMotionNotifyEvent (evnt);
-		}
-
-
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
-		{
-			State = StateType.Normal;
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnButtonPressEvent (EventButton evnt)
-		{
-			if (evnt.Button == 1 && IsInside (evnt.X, evnt.Y)) {
-				hoverState = State = StateType.Selected;
+			if (hovering != value) {
+				hovering = value;
+				QueueDraw ();
 			}
-			return true;
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
-		{
-			if (State == StateType.Selected)
-				OnClicked (EventArgs.Empty);
-			State = IsInside (evnt.X, evnt.Y) ? StateType.Prelight : StateType.Normal;;
-			hoverState = StateType.Prelight; 
-			return true;
+		ButtonState State {
+			get {
+				if (!Sensitive)
+					return ButtonState.Insensitive;
+				if (pressed)
+					return ButtonState.Selected;
+				return hovering ? ButtonState.Prelight : ButtonState.Normal;
+			}
 		}
 
 		bool IsInside (double x, double y)
 		{
-			var xr = x - Allocation.Width / 2;
-			var yr = y - Allocation.Height / 2;
+			var xr = x - Width / 2;
+			var yr = y - Height / 2;
 			return Math.Sqrt (xr * xr + yr * yr) <= height / 2;
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			requisition.Width = (int) btnNormal.Size.Width;
-			requisition.Height = (int) btnNormal.Size.Height + 2;
-			base.OnSizeRequested (ref requisition);
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? (int) btnNormal.Size.Width : (int) btnNormal.Size.Height + 2;
+			minimum_baseline = natural_baseline = -1;
 		}
 
 		Xwt.Drawing.Image GetIcon()
 		{
 			switch (icon) {
 			case OperationIcon.Stop:
-				return State ==  StateType.Insensitive ? iconStopDisabled : iconStopNormal;
+				return State == ButtonState.Insensitive ? iconStopDisabled : iconStopNormal;
 			case OperationIcon.Run:
-				return State ==  StateType.Insensitive ? iconRunDisabled : iconRunNormal;
+				return State == ButtonState.Insensitive ? iconRunDisabled : iconRunNormal;
 			case OperationIcon.Build:
-				return State ==  StateType.Insensitive ? iconBuildDisabled : iconBuildNormal;
+				return State == ButtonState.Insensitive ? iconBuildDisabled : iconBuildNormal;
 			}
 			throw new InvalidOperationException ();
 		}
@@ -142,28 +153,25 @@ namespace MonoDevelop.Components.MainToolbar
 			}
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
+		protected override void OnDraw (Cairo.Context context, int width, int height)
 		{
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
-				DrawBackground (context, Allocation, 15, State);
-				var icon = GetIcon();
-				context.DrawImage (this, icon, Allocation.X + Math.Max (0, (Allocation.Width - icon.Width) / 2), Allocation.Y + Math.Max (0, (Allocation.Height - icon.Height) / 2));
-			}
-			return base.OnExposeEvent (evnt);
+			DrawBackground (context, new Gdk.Rectangle (0, 0, width, height), 15, State);
+			var icon = GetIcon();
+			context.DrawImage (this, icon, Math.Max (0, (width - icon.Width) / 2), Math.Max (0, (height - icon.Height) / 2));
 		}
 
-		void DrawBackground (Cairo.Context context, Gdk.Rectangle region, int radius, StateType state)
+		void DrawBackground (Cairo.Context context, Gdk.Rectangle region, int radius, ButtonState state)
 		{
 			int x = region.X + region.Width / 2;
 			int y = region.Y + region.Height / 2;
 
 			var img = btnNormal;
 			switch (state) {
-			case StateType.Insensitive:
+			case ButtonState.Insensitive:
 				img = btnInactive; break;
-			case StateType.Prelight:
+			case ButtonState.Prelight:
 				img = btnHover; break;
-			case StateType.Selected:
+			case ButtonState.Selected:
 				img = btnPressed; break;
 			}
 
@@ -182,60 +190,30 @@ namespace MonoDevelop.Components.MainToolbar
 				handler (this, e);
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
+			base.Dispose (disposing);
+			if (!disposing)
+				return;
 
-			if (btnNormal != null) {
-				btnNormal.Dispose ();
-				btnNormal = null;
-			}
+			DisposeImage (ref btnNormal);
+			DisposeImage (ref btnInactive);
+			DisposeImage (ref btnPressed);
+			DisposeImage (ref btnHover);
+			DisposeImage (ref iconRunNormal);
+			DisposeImage (ref iconRunDisabled);
+			DisposeImage (ref iconStopNormal);
+			DisposeImage (ref iconStopDisabled);
+			DisposeImage (ref iconBuildNormal);
+			DisposeImage (ref iconBuildDisabled);
+		}
 
-			if (btnInactive != null) {
-				btnInactive.Dispose ();
-				btnInactive = null;
-			}
-
-			if (btnPressed != null) {
-				btnPressed.Dispose ();
-				btnPressed = null;
-			}
-
-			if (btnHover != null) {
-				btnHover.Dispose ();
-				btnHover = null;
-			}
-
-			if (iconRunNormal != null) {
-				iconRunNormal.Dispose ();
-				iconRunNormal = null;
-			}
-
-			if (iconRunDisabled != null) {
-				iconRunDisabled.Dispose ();
-				iconRunDisabled = null;
-			}
-
-			if (iconStopNormal != null) {
-				iconStopNormal.Dispose ();
-				iconStopNormal = null;
-			}
-
-			if (iconStopDisabled != null) {
-				iconStopDisabled.Dispose ();
-				iconStopDisabled = null;
-			}
-
-			if (iconBuildNormal != null) {
-				iconBuildNormal.Dispose ();
-				iconBuildNormal = null;
-			}
-
-			if (iconBuildDisabled != null) {
-				iconBuildDisabled.Dispose ();
-				iconBuildDisabled = null;
+		static void DisposeImage (ref Xwt.Drawing.Image image)
+		{
+			if (image != null) {
+				image.Dispose ();
+				image = null;
 			}
 		}
 	}
 }
-

@@ -58,9 +58,8 @@ namespace MonoDevelop.Ide.Tasks
 		TreeModelSort sortModel;
 		CellRendererText cellRendDesc;
 		
-		Gdk.Color highPrioColor, normalPrioColor, lowPrioColor;
+		string highPrioColor, normalPrioColor, lowPrioColor; // Pango colour specs (cell renderer "foreground")
 		
-		Clipboard clipboard;
 		bool solutionLoaded = false;
 		bool updating;
 		string[] priorities = { GettextCatalog.GetString ("High"), GettextCatalog.GetString ("Normal"), GettextCatalog.GetString ("Low")};
@@ -90,13 +89,12 @@ namespace MonoDevelop.Ide.Tasks
 				typeof (bool),		 // completed 
 				typeof (string),     // desc
 				typeof (TaskListEntry),	 // user task
-				typeof (Gdk.Color),  // foreground color
+				typeof (string),  // foreground color (Pango colour spec)
 				typeof (int));		 // font style
 
 			sortModel = new TreeModelSort (store);
 
 			view = new MonoDevelop.Ide.Gui.Components.PadTreeView (sortModel);
-			view.RulesHint = true;
 			view.SearchColumn = (int)Columns.Description;
 			view.Selection.Changed += new EventHandler (SelectionChanged);
 			TreeViewColumn col;
@@ -105,7 +103,7 @@ namespace MonoDevelop.Ide.Tasks
 			cellRendPriority.Values = priorities;
 			cellRendPriority.Editable = true;
 			cellRendPriority.Changed += new ComboSelectionChangedHandler (UserTaskPriorityEdited);
-			col = view.AppendColumn (GettextCatalog.GetString ("Priority"), cellRendPriority, "text", Columns.Priority, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("Priority"), cellRendPriority, "text", Columns.Priority, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.Resizable = true;
 			col.SortColumnId = (int)Columns.Priority;
 			
@@ -118,28 +116,25 @@ namespace MonoDevelop.Ide.Tasks
 			cellRendDesc = view.TextRenderer;
 			cellRendDesc.Editable = true;
 			cellRendDesc.Edited += new EditedHandler (UserTaskDescEdited);
-			col = view.AppendColumn (GettextCatalog.GetString ("Description"), cellRendDesc, "text", Columns.Description, "strikethrough", Columns.Completed, "foreground-gdk", Columns.Foreground, "weight", Columns.Bold);
+			col = view.AppendColumn (GettextCatalog.GetString ("Description"), cellRendDesc, "text", Columns.Description, "strikethrough", Columns.Completed, "foreground", Columns.Foreground, "weight", Columns.Bold);
 			col.Resizable = true;
 			col.SortColumnId = (int)Columns.Description;
 			
 			newButton = new Button ();
 			newButton.Label = GettextCatalog.GetString ("New Task");
-			newButton.Image = new ImageView (Gtk.Stock.New, IconSize.Menu);
-			newButton.Image.Show ();
+			SetButtonImage (newButton, MonoDevelop.Ide.Gui.Stock.NewDocumentIcon);
 			newButton.Clicked += new EventHandler (NewUserTaskClicked); 
 			newButton.TooltipText = GettextCatalog.GetString ("Create New Task");
 
 			copyButton = new Button ();
 			copyButton.Label = GettextCatalog.GetString ("Copy Task");
-			copyButton.Image = new ImageView (Gtk.Stock.Copy, IconSize.Menu);
-			copyButton.Image.Show ();
+			SetButtonImage (copyButton, MonoDevelop.Ide.Gui.Stock.CopyIcon);
 			copyButton.Clicked += CopyUserTaskClicked;
 			copyButton.TooltipText = GettextCatalog.GetString ("Copy Task Description");
 			
 			delButton = new Button ();
 			delButton.Label = GettextCatalog.GetString ("Delete Task");
-			delButton.Image = new ImageView (Gtk.Stock.Delete, IconSize.Menu);
-			delButton.Image.Show ();
+			SetButtonImage (delButton, MonoDevelop.Ide.Gui.Stock.DeleteIcon);
 			delButton.Clicked += new EventHandler (DeleteUserTaskClicked); 
 			delButton.TooltipText = GettextCatalog.GetString ("Delete Task");
 
@@ -162,6 +157,15 @@ namespace MonoDevelop.Ide.Tasks
 			UserTasksChanged (this, null);
 		}
 		
+		/// <summary>Shows an icon next to the button label (GTK 4 buttons have no Image property).</summary>
+		static void SetButtonImage (Button button, IconId icon)
+		{
+			var box = new Gtk.Box (Gtk.Orientation.Horizontal, 6);
+			box.Append (new ImageView (icon, StockIconSize.Menu));
+			box.Append (new Label (button.Label));
+			button.Child = box;
+		}
+
 		void CombineOpened (object sender, EventArgs e)
 		{
 			solutionLoaded = true;
@@ -190,6 +194,22 @@ namespace MonoDevelop.Ide.Tasks
 			ValidateButtons ();
 		}
 		
+		/// <summary>Converts a stored "mode:RRRR/GGGG/BBBB" colour (16-bit hex channels) to a Pango colour spec (#RRRRGGGGBBBB).</summary>
+		static string StringToColor (string colorStr)
+		{
+			string[] rgb = colorStr.Substring (colorStr.IndexOf (':') + 1).Split ('/');
+			if (rgb.Length != 3) return "#000000";
+			try {
+				ushort red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber);
+				ushort green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber);
+				ushort blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber);
+				return string.Format ("#{0:X4}{1:X4}{2:X4}", red, green, blue);
+			} catch {
+				// something went wrong, then use neutral black color
+				return "#000000";
+			}
+		}
+
 		void OnPropertyUpdated (object sender, EventArgs e)
 		{
 			highPrioColor = StringToColor (IdeApp.Preferences.UserTasksHighPrioColor);
@@ -237,7 +257,7 @@ namespace MonoDevelop.Ide.Tasks
 		void CopyUserTaskClicked (object o, EventArgs args)
 		{
 			TaskListEntry task;
-			TreeModel model;
+			ITreeModel model;
 			TreeIter iter;
 
 			if (view.Selection.GetSelected (out model, out iter))
@@ -246,10 +266,8 @@ namespace MonoDevelop.Ide.Tasks
 			}
 			else return; // no one selected
 
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-			clipboard.Text = task.Description;
-			clipboard = Clipboard.Get (Gdk.Atom.Intern ("PRIMARY", false));
-			clipboard.Text = task.Description;
+			ClipboardHelper.SetText (task.Description);
+			ClipboardHelper.SetText (task.Description, true);
 		}
 
 		
@@ -322,7 +340,7 @@ namespace MonoDevelop.Ide.Tasks
 			}
 		}
 		
-		Gdk.Color GetColorByPriority (TaskPriority prio)
+		string GetColorByPriority (TaskPriority prio)
 		{
 			switch (prio)
 			{
@@ -348,24 +366,6 @@ namespace MonoDevelop.Ide.Tasks
 			}
 		}
 		
-		static Gdk.Color StringToColor (string colorStr)
-		{
-			string[] rgb = colorStr.Substring (colorStr.IndexOf (':') + 1).Split ('/');
-			if (rgb.Length != 3) return new Gdk.Color (0, 0, 0);
-			Gdk.Color color = Gdk.Color.Zero;
-			try
-			{
-				color.Red = UInt16.Parse (rgb[0], System.Globalization.NumberStyles.HexNumber);
-				color.Green = UInt16.Parse (rgb[1], System.Globalization.NumberStyles.HexNumber);
-				color.Blue = UInt16.Parse (rgb[2], System.Globalization.NumberStyles.HexNumber);
-			}
-			catch
-			{
-				// something went wrong, then use neutral black color
-				color = new Gdk.Color (0, 0, 0);
-			}
-			return color;
-		}
 		
 		#region ITaskListView members
 		Control ITaskListView.Content { get { return view; } }

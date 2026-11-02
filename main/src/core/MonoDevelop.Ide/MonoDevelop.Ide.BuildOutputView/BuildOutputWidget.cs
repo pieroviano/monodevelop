@@ -54,7 +54,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 		CheckBox showDiagnosticsButton;
 		Button saveButton;
 		SearchEntry searchEntry;
-		Gtk.VBox box;
+		Gtk.Box box;
 		PathBar pathBar;
 		Button buttonSearchBackward;
 		Button buttonSearchForward;
@@ -114,11 +114,10 @@ namespace MonoDevelop.Ide.BuildOutputView
 			pathBar = new PathBar (this.CreatePathWidget, PathBarTopPadding) {
 				DrawBottomBorder = false
 			};
-			pathBar.Show ();
 
-			box.PackStart (pathBar, true, true, 2);
-			box.ReorderChild (pathBar, 0);
-			box.Show ();
+			pathBar.Vexpand = true;
+			pathBar.MarginTop = pathBar.MarginBottom = 2;
+			box.Prepend (pathBar);
 		}
 
 		void OnOutputChanged (object sender, EventArgs args)
@@ -142,7 +141,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 			// FIXME: DocumentToolbar does not support native widgets
 			// Toolbar items must use Gtk, for now
-			Xwt.Toolkit.Load (ToolkitType.Gtk).Invoke (() => {
+			Xwt.Toolkit.Load (ToolkitType.Gtk4).Invoke (() => {
 				showDiagnosticsButton = new CheckBox (GettextCatalog.GetString ("Diagnostic log verbosity"));
 				showDiagnosticsButton.HeightRequest = 17;
 				showDiagnosticsButton.Accessible.Identifier = "BuildOutputWidget.ShowDiagnosticsButton";
@@ -159,9 +158,9 @@ namespace MonoDevelop.Ide.BuildOutputView
 				saveButton.Clicked += SaveButtonClickedAsync;
 
 				searchEntry = new SearchEntry ();
-				searchEntry.Accessible.SetLabel (GettextCatalog.GetString ("Search"));
-				searchEntry.Accessible.Name = "BuildOutputWidget.Search";
-				searchEntry.Accessible.Description = GettextCatalog.GetString ("Search the build log");
+				searchEntry.SetLabel (GettextCatalog.GetString ("Search"));
+				searchEntry.Name = "BuildOutputWidget.Search";
+				searchEntry.SetCommonAttributes (null, null, GettextCatalog.GetString ("Search the build log"));
 				searchEntry.WidthRequest = 200;
 				searchEntry.Entry.HeightRequest = 17;
 				searchEntry.Visible = true;
@@ -184,8 +183,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 				SetSearchButtonsSensitivity (false);
 			});
 
-			box = new Gtk.VBox ();
-			box.Spacing = 0;
+			box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
 			toolbar.Add (box, true);
 
 			toolbar.AddSpace ();
@@ -228,7 +226,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 			PackStart (treeView, expand: true, fill: true);
 
-			loadingSpinner = new MDSpinner (Gtk.IconSize.Button) {
+			loadingSpinner = new MDSpinner (StockIconSize.Button) {
 				Visible = false
 			};
 			PackStart (loadingSpinner, expand: true, vpos: WidgetPlacement.Center, hpos: WidgetPlacement.Center);
@@ -563,7 +561,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 			if (currentSearch.SearchWrapped) {
 				IdeApp.Workbench.StatusBar.ShowMessage (
-					Gtk.Stock.Find, GettextCatalog.GetString ("Reached top, continued from bottom"));
+					GtkStock.Find, GettextCatalog.GetString ("Reached top, continued from bottom"));
 			} else {
 				IdeApp.Workbench.StatusBar.ShowReady ();
 			}
@@ -579,7 +577,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 
 			if (currentSearch.SearchWrapped) {
 				IdeApp.Workbench.StatusBar.ShowMessage (
-					Gtk.Stock.Find, GettextCatalog.GetString ("Reached bottom, continued from top"));
+					GtkStock.Find, GettextCatalog.GetString ("Reached bottom, continued from top"));
 			} else {
 				IdeApp.Workbench.StatusBar.ShowReady ();
 			}
@@ -595,7 +593,7 @@ namespace MonoDevelop.Ide.BuildOutputView
 				FocusRow (node);
 
 				resultInformLabel.Text = GettextCatalog.GetString ("{0} of {1}", currentSearch.CurrentAbsoluteMatchIndex, currentSearch.MatchesCount);
-				resultInformLabel.TextColor = searchEntry.Style.Foreground (Gtk.StateType.Insensitive).ToXwtColor();
+				resultInformLabel.TextColor = Ide.Gui.Styles.SecondaryTextColor; // GTK 4 has no per-state Style: use the muted text colour
 			} else if (string.IsNullOrEmpty (searchEntry.Entry.Text)) {
 				resultInformLabel.Text = string.Empty;
 				IdeApp.Workbench.StatusBar.ShowReady ();
@@ -620,8 +618,8 @@ namespace MonoDevelop.Ide.BuildOutputView
 		void SetSearchButtonsSensitivity (bool sensitive)
 		{
 			buttonSearchForward.Sensitive = buttonSearchBackward.Sensitive = sensitive;
-			buttonSearchForward.Image = ImageService.GetIcon ("gtk-go-down", Gtk.IconSize.Menu).WithStyles (sensitive ? "" : "disabled");
-			buttonSearchBackward.Image = ImageService.GetIcon ("gtk-go-up", Gtk.IconSize.Menu).WithStyles (sensitive ? "" : "disabled");
+			buttonSearchForward.Image = ImageService.GetIcon ("gtk-go-down", StockIconSize.Menu).WithStyles (sensitive ? "" : "disabled");
+			buttonSearchBackward.Image = ImageService.GetIcon ("gtk-go-up", StockIconSize.Menu).WithStyles (sensitive ? "" : "disabled");
 		}
 
 		Task SetSpinnerVisibility (bool visible)

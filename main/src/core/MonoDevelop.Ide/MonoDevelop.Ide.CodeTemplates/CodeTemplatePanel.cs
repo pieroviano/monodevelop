@@ -37,7 +37,7 @@ using MonoDevelop.Ide.Gui;
 namespace MonoDevelop.Ide.CodeTemplates
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class CodeTemplatePanelWidget : Gtk.Bin
+	internal partial class CodeTemplatePanelWidget : MonoDevelop.Components.BinWidget
 	{
 		List<CodeTemplate> templates;
 		Gtk.TreeStore templateStore;
@@ -49,8 +49,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 		{
 			this.Build();
 			Gtk.Widget control = textEditor;
-			scrolledwindow1.AddWithViewport (control);
-			control.ShowAll ();
+			scrolledwindow1.Child = control;
 			
 			templateStore = new TreeStore (typeof (CodeTemplate), typeof (string), typeof (string));
 			
@@ -116,7 +115,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 			if (template != null) {
 				templatesToSave.Add (template);
 				using (var editDialog = new EditTemplateDialog (template, false))
-					if (MessageService.ShowCustomDialog (editDialog, this.Toplevel as Gtk.Window) == (int)ResponseType.Ok)
+					if (MessageService.ShowCustomDialog (editDialog, this.Root as Gtk.Window) == (int)ResponseType.Ok)
 						templatesToSave.Add (template);
 				HandleChanged (this, EventArgs.Empty);
 			}
@@ -134,7 +133,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 		{
 			var newTemplate = new CodeTemplate ();
 			using (var editDialog = new EditTemplateDialog (newTemplate, true)) {
-				if (MessageService.ShowCustomDialog (editDialog, this.Toplevel as Gtk.Window) == (int)ResponseType.Ok) {
+				if (MessageService.ShowCustomDialog (editDialog, this.Root as Gtk.Window) == (int)ResponseType.Ok) {
 					InsertTemplate (newTemplate);
 					templates.Add (newTemplate);
 					templatesToSave.Add (newTemplate);
@@ -151,20 +150,20 @@ namespace MonoDevelop.Ide.CodeTemplates
 			CodeTemplateService.Templates = templates;
 		}
 		
-		static void RenderIcon (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		static void RenderIcon (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CodeTemplate template = (CodeTemplate)model.GetValue (iter, 0);
 
 			var cri = (CellRendererImage)cell;
 			if (template == null) {
-				cri.Image = ImageService.GetIcon (((TreeView)column.TreeView).GetRowExpanded (model.GetPath (iter)) ? MonoDevelop.Ide.Gui.Stock.OpenFolder : MonoDevelop.Ide.Gui.Stock.ClosedFolder, IconSize.Menu);
+				cri.Image = ImageService.GetIcon (((TreeView)column.TreeView).GetRowExpanded (model.GetPath (iter)) ? MonoDevelop.Ide.Gui.Stock.OpenFolder : MonoDevelop.Ide.Gui.Stock.ClosedFolder, StockIconSize.Menu);
 			} else {
-				cri.Image = ImageService.GetIcon (template.Icon, IconSize.Menu);
+				cri.Image = ImageService.GetIcon (template.Icon, StockIconSize.Menu);
 			}
 				
 		}
 		
-		void RenderTemplateName (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void RenderTemplateName (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CodeTemplate template = (CodeTemplate)model.GetValue (iter, 0);
 			var crt = (CellRendererText)cell;

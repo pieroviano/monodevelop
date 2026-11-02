@@ -24,34 +24,30 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
 
 using System;
 using MonoDevelop.Core;
 
 namespace MonoDevelop.Components.Commands
 {
-	class CommandToolButton: Gtk.ToolButton, ICommandUserItem
+	class CommandToolButton: Gtk.Button, ICommandUserItem
 	{
 		CommandManager commandManager;
 		object commandId;
 		string lastDesc;
 		object initialTarget;
 		CommandInfo lastCmdInfo;
+		readonly Gtk.Box content = new Gtk.Box (Gtk.Orientation.Horizontal, 4);
+		readonly Gtk.Label label = new Gtk.Label ("") { UseUnderline = true, Visible = false };
 		
-		public CommandToolButton (object commandId, CommandManager commandManager): base ("")
+		public CommandToolButton (object commandId, CommandManager commandManager)
 		{
 			this.commandId = commandId;
 			this.commandManager = commandManager;
-			UseUnderline = true;
-		}
-		
-		protected override void OnParentSet (Gtk.Widget parent)
-		{
-			base.OnParentSet (parent);
-			if (Parent == null) return;
-
-			((ICommandUserItem)this).Update (new CommandTargetRoute ());
+			AddCssClass ("flat");
+			content.Append (label);
+			Child = content;
+			Mapped += (s, e) => ((ICommandUserItem)this).Update (new CommandTargetRoute ());
 		}
 		
 		void ICommandUserItem.Update (CommandTargetRoute targetRoute)
@@ -73,7 +69,7 @@ namespace MonoDevelop.Components.Commands
 			commandManager.DispatchCommand (commandId, null, initialTarget, CommandSource.MainToolbar, lastCmdInfo);
 		}
 		
-		IconId stockId = null;
+		IconId stockId = IconId.Null;
 		ImageView iconWidget;
 		
 		void Update (CommandInfo cmdInfo)
@@ -90,20 +86,23 @@ namespace MonoDevelop.Components.Commands
 				lastDesc = cmdInfo.Description;
 			}
 			
-			if (Label != cmdInfo.Text)
-				Label = cmdInfo.Text;
+			if (label.Text != cmdInfo.Text)
+				label.Text = cmdInfo.Text;
 			if (cmdInfo.Icon != stockId) {
 				stockId = cmdInfo.Icon;
-				this.IconWidget = iconWidget = new ImageView (cmdInfo.Icon, Gtk.IconSize.Menu);
+				if (iconWidget != null)
+					content.Remove (iconWidget);
+				iconWidget = new ImageView (cmdInfo.Icon, StockIconSize.Menu);
+				content.Prepend (iconWidget);
 			}
-			if (IconWidget != null && cmdInfo.Enabled != Sensitive)
+			if (iconWidget != null && cmdInfo.Enabled != Sensitive)
 				iconWidget.Image = iconWidget.Image.WithStyles (cmdInfo.Enabled ? "" : "disabled").WithAlpha (cmdInfo.Enabled ? 1.0 : 0.4);
 			if (cmdInfo.Enabled != Sensitive)
 				Sensitive = cmdInfo.Enabled;
 			if (cmdInfo.Visible != Visible)
 				Visible = cmdInfo.Visible;
-			if (cmdInfo.Icon.IsNull)
-				IsImportant = true;
+			// Text is shown only for commands without an icon (GTK 2 "important" tool items)
+			label.Visible = cmdInfo.Icon.IsNull;
 		}
 	}
 }

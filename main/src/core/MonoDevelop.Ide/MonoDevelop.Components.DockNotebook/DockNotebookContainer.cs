@@ -34,7 +34,7 @@ using MonoDevelop.Ide.Gui.Shell;
 
 namespace MonoDevelop.Components.DockNotebook
 {
-	class DockNotebookContainer : EventBox
+	class DockNotebookContainer : BinWidget
 	{
 		bool isMasterTab;
 		bool splitsInitialized;
@@ -65,7 +65,7 @@ namespace MonoDevelop.Components.DockNotebook
 			this.isMasterTab = isMasterTab;
 			this.tabControl = tabControl;
 			Child = tabControl;
-			
+
 			if (!isMasterTab)
 				tabControl.PageRemoved += HandlePageRemoved;
 		}
@@ -74,7 +74,7 @@ namespace MonoDevelop.Components.DockNotebook
 			get {
 				if (Child is DockNotebook)
 					return 0;
-				return GetSplitCount (Child); 
+				return GetSplitCount (Child);
 			}
 		}
 
@@ -82,14 +82,14 @@ namespace MonoDevelop.Components.DockNotebook
 		{
 			var p = w as Paned;
 			if (p != null)
-				return 1 + GetSplitCount (p.Child1) + GetSplitCount (p.Child2);
+				return 1 + GetSplitCount (p.StartChild) + GetSplitCount (p.EndChild);
 			else
 				return ((DockNotebookContainer)w).SplitCount;
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
+			base.OnSizeAllocate (width, height, baseline);
 
 			// When showing the dock frame for the first time, the dock container is assigned a size of 1x1 before
 			// it gets the real size. This causes the splits to be initialized with position set to 0, which
@@ -99,15 +99,16 @@ namespace MonoDevelop.Components.DockNotebook
 			// Maybe the accessibility changes are causing the dock container to be realized earlier, or maybe
 			// it is due to some change in gtk.
 
-			if (!splitsInitialized && allocation.Width > 1 && allocation.Height > 1) {
+			if (!splitsInitialized && width > 1 && height > 1) {
 				splitsInitialized = true;
-				if (Child is HPaned) {
-					var p = (HPaned)Child;
-					p.Position = allocation.Width / 2;
-				}
-				else if (Child is VPaned) {
-					var p = (VPaned)Child;
-					p.Position = allocation.Height / 2;
+				var p = Child as Paned;
+				if (p != null) {
+					int position = p.Orientation == Orientation.Horizontal ? width / 2 : height / 2;
+					// The position can't be changed while the widget is being allocated
+					GLib.Idle.Add (() => {
+						p.Position = position;
+						return false;
+					});
 				}
 			}
 		}
@@ -148,6 +149,10 @@ namespace MonoDevelop.Components.DockNotebook
 			return MoveToFloatingWindow (workspaceWindow, 0, 0, 640, 480);
 		}
 
+		/// <summary>
+		/// Moves the window to a new floating dock window. GTK 4 windows can't be positioned by the application,
+		/// so <paramref name="x"/> and <paramref name="y"/> are ignored and only the size is applied.
+		/// </summary>
 		public static DockWindow MoveToFloatingWindow (SdiWorkspaceWindow workspaceWindow, int x, int y, int width, int height)
 		{
 			var window = new DockWindow ();
@@ -159,9 +164,8 @@ namespace MonoDevelop.Components.DockNotebook
 
 			workspaceWindow.SetDockNotebook (notebook, tab);
 
-			window.Move (x, y);
-			window.Resize (width, height);
-			window.ShowAll ();
+			window.SetDefaultSize (width, height);
+			window.Present ();
 
 			return window;
 		}
@@ -174,30 +178,30 @@ namespace MonoDevelop.Components.DockNotebook
 			var controlContainer = control.Parent as DockNotebookContainer;
 			if (controlContainer == null || controlContainer.Parent == null || controlContainer.isMasterTab)
 				return;
-			
+
 			var paned = controlContainer.Parent as Paned;
 			if (paned != null) {
-				var otherContainer = (paned.Child1 == control.Parent ? paned.Child2 : paned.Child1) as DockNotebookContainer;
+				var otherContainer = (paned.StartChild == control.Parent ? paned.EndChild : paned.StartChild) as DockNotebookContainer;
 				if (otherContainer == null)
 					return;
-				
+
 				var motherContainer = (DockNotebookContainer)paned.Parent;
 
 				var newChild = otherContainer.Child;
-				otherContainer.Remove (newChild);
-				
+				otherContainer.Child = null;
+
 				motherContainer.tabControl = otherContainer.tabControl;
 				if (motherContainer.isMasterTab) {
 					((DefaultWorkbench)IdeApp.Workbench.RootWindow).TabControl = (SdiDragNotebook)motherContainer.tabControl;
 				}
 				motherContainer.isMasterTab |= otherContainer.isMasterTab;
-				motherContainer.Remove (paned);
+				motherContainer.Child = null;
 				motherContainer.Child = newChild;
-				motherContainer.ShowAll ();
-				paned.Destroy ();
+				paned.StartChild = null;
+				paned.EndChild = null;
 				return;
 			}
-			
+
 			// window case.
 			controlContainer.Parent.Destroy ();
 		}
@@ -215,12 +219,11 @@ namespace MonoDevelop.Components.DockNotebook
 				var newTab = newNotebook.AddTab (window);
 				window.SetDockNotebook (newNotebook, newTab);
 			}
-			Remove (Child);
+			Child = null;
 
 			callback (newContainer);
 
 			tabControl.InitSize ();
-			ShowAll ();
 			return newNotebook;
 		}
 
@@ -230,8 +233,8 @@ namespace MonoDevelop.Components.DockNotebook
 				var box = new HPanedThin { GrabAreaSize = 6 };
 				var new_container = new DockNotebookContainer (tabControl);
 
-				box.Pack1 (container, true, true);
-				box.Pack2 (new_container, true, true);
+				box.StartChild = container;
+				box.EndChild = new_container;
 				Child = box;
 			});
 		}
@@ -242,9 +245,9 @@ namespace MonoDevelop.Components.DockNotebook
 				var box = new HPanedThin () { GrabAreaSize = 6 };
 				var new_container = new DockNotebookContainer (tabControl);
 
-				box.Pack1 (new_container, true, true);
-				box.Pack2 (container, true, true);
-				box.Position = Allocation.Width / 2;
+				box.StartChild = new_container;
+				box.EndChild = container;
+				box.Position = Width / 2;
 				Child = box;
 			});
 		}
@@ -257,7 +260,7 @@ namespace MonoDevelop.Components.DockNotebook
 					return (DockNotebook)p;
 				if (p is DockNotebookContainer)
 					return ((DockNotebookContainer)p).TabControl;
-				p = ((Paned)p).Child1;
+				p = ((Paned)p).StartChild;
 			}
 		}
 
@@ -269,7 +272,7 @@ namespace MonoDevelop.Components.DockNotebook
 					return (DockNotebook)p;
 				if (p is DockNotebookContainer)
 					return ((DockNotebookContainer)p).TabControl;
-				p = ((Paned)p).Child2;
+				p = ((Paned)p).EndChild;
 			}
 		}
 
@@ -286,8 +289,8 @@ namespace MonoDevelop.Components.DockNotebook
 			Widget curChild = container;
 			var paned = (Paned)container.Parent;
 			do {
-				if (paned.Child1 == curChild)
-					return ((DockNotebookContainer)paned.Child2).GetFirstNotebook ();
+				if (paned.StartChild == curChild)
+					return ((DockNotebookContainer)paned.EndChild).GetFirstNotebook ();
 				curChild = paned;
 				paned = paned.Parent as Paned;
 			}
@@ -317,8 +320,8 @@ namespace MonoDevelop.Components.DockNotebook
 			Widget curChild = container;
 			var paned = (Paned)container.Parent;
 			do {
-				if (paned.Child2 == curChild)
-					return ((DockNotebookContainer)paned.Child1).GetLastNotebook ();
+				if (paned.EndChild == curChild)
+					return ((DockNotebookContainer)paned.StartChild).GetLastNotebook ();
 				curChild = paned;
 				paned = paned.Parent as Paned;
 			}
@@ -327,4 +330,3 @@ namespace MonoDevelop.Components.DockNotebook
 		}
 	}
 }
-

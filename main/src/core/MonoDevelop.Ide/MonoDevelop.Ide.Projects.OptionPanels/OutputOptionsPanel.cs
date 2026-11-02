@@ -74,7 +74,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		}
 	}
 
-	partial class OutputOptionsPanelWidget : Gtk.Bin 
+	partial class OutputOptionsPanelWidget : MonoDevelop.Components.BinWidget 
 	{
 		ItemConfiguration[] configurations;
 
@@ -87,7 +87,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		void SetupAccessibility ()
 		{
-			label91.Accessible.Role = Atk.Role.Filler;
+			label91.SetShouldIgnore (true);
 			assemblyNameEntry.SetCommonAccessibilityAttributes ("OutputOptionsPanel.AssemblyEntry",
 			                                                    GettextCatalog.GetString ("Assembly Name"),
 			                                                    GettextCatalog.GetString ("Enter the name of the output assembly"));
@@ -95,8 +95,8 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			outputPathEntry.EntryAccessible.SetCommonAttributes ("OutputOptionsPanel.OutputEntry",
 				                                                 GettextCatalog.GetString ("Output Path"),
 				                                                 GettextCatalog.GetString ("Enter the output path"));
-			outputPathEntry.EntryAccessible.SetTitleUIElement (label99.Accessible);
-			label99.Accessible.SetTitleFor (outputPathEntry.EntryAccessible);
+			outputPathEntry.EntryAccessible.SetTitleUIElement (label99);
+			label99.SetTitleFor (outputPathEntry.EntryAccessible);
 		}
 		
 		public void Load (Project project, ItemConfiguration[] configs)

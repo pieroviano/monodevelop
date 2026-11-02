@@ -52,7 +52,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		MimeTypePanelData panelData;
 		Notebook notebook;
 		bool isRoot;
-		HBox warningMessage;
+		Gtk.Box warningMessage;
 		bool isGlobalPolicy;
 		List<PolicySet> setsInCombo = new List<PolicySet> ();
 		bool synchingPoliciesCombo;
@@ -90,10 +90,10 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		public override Control CreatePanelWidget ()
 		{
-			HBox hbox = new HBox (false, 6);
+			var hbox = DesignerLayout.HBox (6);
 			Label label = new Label ();
 			label.MarkupWithMnemonic = GettextCatalog.GetString ("_Policy:");
-			hbox.PackStart (label, false, false, 0);
+			DesignerLayout.Pack (hbox, label);
 			
 			store = new ListStore (typeof (string), typeof (PolicySet));
 			policyCombo = new ComboBox (store);
@@ -102,32 +102,29 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			policyCombo.AddAttribute (renderer, "text", 0);
 			
 			label.MnemonicWidget = policyCombo;
-			policyCombo.RowSeparatorFunc = (TreeModel model, TreeIter iter) =>
-				((string) model.GetValue (iter, 0)) == "--";
-			hbox.PackStart (policyCombo, false, false, 0);
+			policyCombo.RowSeparatorFunc = (ITreeModel model, TreeIter iter) =>
+				((string) model.GetModelValue (iter, 0)) == "--";
+			DesignerLayout.Pack (hbox, policyCombo);
 			
-			VBox vbox = new VBox (false, 6);
-			vbox.PackStart (hbox, false, false, 0);
-			vbox.ShowAll ();
+			var vbox = DesignerLayout.VBox (6);
+			DesignerLayout.Pack (vbox, hbox);
 			
 			// Warning message to be shown when the user modifies the default policy
 			
-			warningMessage = new HBox ();
-			warningMessage.Spacing = 6;
-			var img = new ImageView (Stock.Warning, IconSize.Menu);
+			warningMessage = DesignerLayout.HBox (6);
+			var img = new ImageView ("gtk-dialog-warning", StockIconSize.Menu);
 			img.SetCommonAccessibilityAttributes ("MimeTypePolicyOptionsPanel.Warning",
 												  GettextCatalog.GetString ("Warning"),
 												  null);
-			warningMessage.PackStart (img, false, false, 0);
+			DesignerLayout.Pack (warningMessage, img);
 			Label wl = new Label (GettextCatalog.GetString ("Changes made in this section will only be applied to new projects. " +
 				"Settings for existing projects can be modified in the project (or solution) options dialog."));
 			wl.Xalign = 0;
 			wl.Wrap = true;
-			wl.WidthRequest = 450;
-			warningMessage.PackStart (wl, true, true, 0);
-			warningMessage.ShowAll ();
+			wl.SetSizeRequest (450, -1);
+			DesignerLayout.Pack (warningMessage, wl, true);
 			warningMessage.Visible = false;
-			vbox.PackEnd (warningMessage, false, false, 0);
+			DesignerLayout.Pack (vbox, warningMessage);
 			
 			notebook = new Notebook ();
 
@@ -143,12 +140,9 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				Widget child = panel.CreateMimePanelWidget ();
 				
 				Label tlabel = new Label (panel.Label);
-				label.Show ();
-				child.Show ();
-				Alignment align = new Alignment (0.5f, 0.5f, 1f, 1f);
-				align.BorderWidth = 6;
-				align.Add (child);
-				align.Show ();
+				var align = new BinWidget ();
+				align.Padding = new Gtk.Border { Left = 6, Right = 6, Top = 6, Bottom = 6 };
+				align.Child = child;
 				
 				notebook.AppendPage (align, tlabel);
 				panel.LoadCurrentPolicy ();
@@ -157,8 +151,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 				if (notebook.Page >= 0 && notebook.Page < this.panels.Count)
 					this.panels[notebook.Page].PanelSelected ();
 			};
-			notebook.Show ();
-			vbox.PackEnd (notebook, true, true, 0);
+			notebook.Vexpand = true;
+			DesignerLayout.Pack (vbox, notebook, true);
 			
 			FillPolicies ();
 			policyCombo.Active = 0;
@@ -190,7 +184,9 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 					notebook.Sensitive = false;
 				}
 				else {
-					string activeName = policyCombo.ActiveText;
+					string activeName = null;
+					if (policyCombo.GetActiveIter (out TreeIter activeIter))
+						activeName = (string) store.GetValue (activeIter, 0);
 					PolicySet pset = PolicyService.GetPolicySet (activeName);
 					if (pset != null)
 						panelData.AssignPolicies (pset);

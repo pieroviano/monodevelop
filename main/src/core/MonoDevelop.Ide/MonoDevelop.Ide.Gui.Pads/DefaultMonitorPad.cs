@@ -50,6 +50,7 @@ namespace MonoDevelop.Ide.Gui.Pads
 		LogView logView;
 		Button buttonStop;
 		ToggleButton buttonPin;
+		ImageView pinImage;
 		Button buttonClear;
 		bool progressStarted;
 		LogViewProgressMonitor monitor;
@@ -75,7 +76,6 @@ namespace MonoDevelop.Ide.Gui.Pads
 			IdeApp.Workspace.FirstWorkspaceItemOpened += OnCombineOpen;
 			IdeApp.Workspace.LastWorkspaceItemClosed += OnCombineClosed;
 
-			logView.ShowAll ();
 		}
 
 		protected override void Initialize (IPadWindow window)
@@ -84,23 +84,22 @@ namespace MonoDevelop.Ide.Gui.Pads
 			
 			DockItemToolbar toolbar = window.GetToolbar (DockPositionType.Right);
 
-			buttonStop = new Button (new ImageView (Stock.Stop, IconSize.Menu));
+			buttonStop = new Button { Child = new ImageView (Stock.Stop, MonoDevelop.Components.StockIconSize.Menu) };
 			buttonStop.Clicked += new EventHandler (OnButtonStopClick);
 			buttonStop.TooltipText = GettextCatalog.GetString ("Stop");
 			toolbar.Add (buttonStop);
 
-			buttonClear = new Button (new ImageView (Stock.Broom, IconSize.Menu));
+			buttonClear = new Button { Child = new ImageView (Stock.Broom, MonoDevelop.Components.StockIconSize.Menu) };
 			buttonClear.Clicked += new EventHandler (OnButtonClearClick);
 			buttonClear.TooltipText = GettextCatalog.GetString ("Clear console");
 			toolbar.Add (buttonClear);
 
 			buttonPin = new ToggleButton ();
-			buttonPin.Image = new ImageView (Stock.PinUp, IconSize.Menu);
-			buttonPin.Image.ShowAll ();
+			pinImage = new ImageView (Stock.PinUp, MonoDevelop.Components.StockIconSize.Menu);
+			buttonPin.Child = pinImage;
 			buttonPin.Clicked += new EventHandler (OnButtonPinClick);
 			buttonPin.TooltipText = GettextCatalog.GetString ("Pin output pad");
 			toolbar.Add (buttonPin);
-			toolbar.ShowAll ();
 		}
 		
 		public LogView LogView {
@@ -139,9 +138,9 @@ namespace MonoDevelop.Ide.Gui.Pads
 		void OnButtonPinClick (object sender, EventArgs e)
 		{
 			if (buttonPin.Active)
-				((ImageView)buttonPin.Image).SetIcon (Stock.PinDown, IconSize.Menu);
+				pinImage.SetIcon (Stock.PinDown, MonoDevelop.Components.StockIconSize.Menu);
 			else
-				((ImageView)buttonPin.Image).SetIcon (Stock.PinUp, IconSize.Menu);
+				pinImage.SetIcon (Stock.PinUp, MonoDevelop.Components.StockIconSize.Menu);
 		}
 		
 		public bool AllowReuse {

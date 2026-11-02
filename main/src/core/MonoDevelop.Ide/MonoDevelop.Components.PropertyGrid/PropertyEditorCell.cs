@@ -28,7 +28,6 @@
 
 using System;
 using System.ComponentModel;
-using Gdk;
 using Gtk;
 using MonoDevelop.Ide.Fonts;
 using MonoDevelop.Core;
@@ -58,6 +57,11 @@ namespace MonoDevelop.Components.PropertyGrid
 		public Control Container {
 			get { return container; }
 		}
+
+		/// <summary>The native widget hosting the cell (used for style lookups and layouts).</summary>
+		protected Widget ContainerWidget {
+			get { return container; }
+		}
 		
 		internal EditorManager EditorManager {
 			get { return editorManager; }
@@ -79,7 +83,7 @@ namespace MonoDevelop.Components.PropertyGrid
 			Initialize ();
 		}
 
-		public EditSession StartEditing (Rectangle cellArea, StateType state)
+		public EditSession StartEditing (Gdk.Rectangle cellArea, StateFlags state)
 		{
 			IPropertyEditor ed = CreateEditor (cellArea, state);
 			if (ed == null)
@@ -141,20 +145,29 @@ namespace MonoDevelop.Components.PropertyGrid
 			layout.GetPixelSize (out width, out height);
 		}
 
-		public virtual void Render (Drawable window, Cairo.Context ctx, Rectangle bounds, StateType state)
+		/// <summary>Foreground color of the cell text for the given state.</summary>
+		protected Gdk.RGBA GetTextColor (StateFlags state)
+		{
+			var color = container.StyleColor;
+			if ((state & StateFlags.Insensitive) != 0)
+				color.Alpha *= 0.5f;
+			return color;
+		}
+
+		public virtual void Render (Cairo.Context ctx, Gdk.Rectangle bounds, StateFlags state)
 		{
 			int w, h;
 			layout.GetPixelSize (out w, out h);
 			int dy = (bounds.Height - h) / 2;
 
 			ctx.Save ();
-			ctx.SetSourceColor (container.Style.Text (state).ToCairoColor ());
+			ctx.SetSourceColor (GetTextColor (state).ToCairoColor ());
 			ctx.MoveTo (bounds.X, dy + bounds.Y);
 			Pango.CairoHelper.ShowLayout (ctx, layout);
 			ctx.Restore ();
 		}
 		
-		protected virtual IPropertyEditor CreateEditor (Rectangle cellArea, StateType state)
+		protected virtual IPropertyEditor CreateEditor (Gdk.Rectangle cellArea, StateFlags state)
 		{
 			if (DialogueEdit && (!Property.IsReadOnly || EditsReadOnlyObject)) {
 				return new PropertyDialogueEditor (this, context);
@@ -217,11 +230,9 @@ namespace MonoDevelop.Components.PropertyGrid
 			}
 		}
 		
-		protected override void OnChanged ()
+		public DefaultPropertyEditor ()
 		{
-			base.OnChanged ();
-			if (ValueChanged != null)
-				ValueChanged (this, EventArgs.Empty);
+			Changed += (sender, e) => ValueChanged?.Invoke (this, EventArgs.Empty);
 		}
 
 		public event EventHandler ValueChanged;
@@ -330,7 +341,7 @@ namespace MonoDevelop.Components.PropertyGrid
 		IContainer ITypeDescriptorContext.Container { get { return context.Container; } }
 	}
 	
-	class CellRendererWidget: DrawingArea
+class CellRendererWidget: DrawingArea
 	{
 		readonly PropertyEditorCell cell;
 		readonly ITypeDescriptorContext context;
@@ -341,42 +352,39 @@ namespace MonoDevelop.Components.PropertyGrid
 			this.cell = cell;
 			this.context = context;
 			em = cell.EditorManager;
-			this.ModifyBg (StateType.Normal, this.Style.White);
+			AddCssClass ("view");
+			DrawFunc = Draw;
 		}
 		
-		protected override bool OnExposeEvent (EventExpose evnt)
+		void Draw (DrawingArea area, Cairo.Context ctx, int width, int height)
 		{
-			bool res = base.OnExposeEvent (evnt);
 			cell.Initialize (this, em, context);
 			
-			Rectangle rect = Allocation;
+			var rect = new Gdk.Rectangle (0, 0, width, height);
 			rect.Inflate (-3, 0);// Add some margin
 
-			using (Cairo.Context ctx = CairoHelper.Create (GdkWindow)) {
-				cell.Render (GdkWindow, ctx, rect, StateType.Normal);
-			}
-			return res;
+			cell.Render (ctx, rect, StateFlags.Normal);
 		}
 	}
 	
-	class PropertyDialogueEditor: HBox, IPropertyEditor
+	class PropertyDialogueEditor: Box, IPropertyEditor
 	{
 		PropertyEditorCell cell;
 		
-		public PropertyDialogueEditor (PropertyEditorCell cell, ITypeDescriptorContext context)
+		public PropertyDialogueEditor (PropertyEditorCell cell, ITypeDescriptorContext context) : base (Orientation.Horizontal, 3)
 		{
 			this.cell = cell;
-			Spacing = 3;
-			PackStart (new CellRendererWidget (cell, context), true, true, 0);
+			var cellWidget = new CellRendererWidget (cell, context);
+			cellWidget.Hexpand = true;
+			Append (cellWidget);
 			Label buttonLabel = new Label ();
 			buttonLabel.UseMarkup = true;
-			buttonLabel.Xpad = 0; buttonLabel.Ypad = 0;
 			buttonLabel.Markup = "<span size=\"small\">...</span>";
-			Button dialogueButton = new Button (buttonLabel);
+			Button dialogueButton = new Button ();
+			dialogueButton.Child = buttonLabel;
 			dialogueButton.Clicked += DialogueButtonClicked;
-			PackStart (dialogueButton, false, false, 0);
-			this.ModifyBg (StateType.Normal, this.Style.White);
-			ShowAll ();
+			Append (dialogueButton);
+			AddCssClass ("view");
 		}
 		
 		void DialogueButtonClicked (object s, EventArgs args)

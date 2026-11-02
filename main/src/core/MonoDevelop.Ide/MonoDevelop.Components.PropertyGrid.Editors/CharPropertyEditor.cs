@@ -39,6 +39,7 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 		{
 			MaxLength = 1;
 			HasFrame = false;
+			Changed += (sender, e) => ValueChanged?.Invoke (this, EventArgs.Empty);
 		}
 
 		public void Initialize (EditSession session)
@@ -60,12 +61,6 @@ namespace MonoDevelop.Components.PropertyGrid.PropertyEditors
 				Text = value.ToString ();
 				last = (char) value;
 			}
-		}
-
-		protected override void OnChanged ()
-		{
-			if (ValueChanged != null)
-				ValueChanged (this, EventArgs.Empty);
 		}
 
 		public event EventHandler ValueChanged;

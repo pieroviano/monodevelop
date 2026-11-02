@@ -60,7 +60,7 @@ namespace MonoDevelop.Ide.CodeTemplates
 			string iconName = itemList[index].IconName;
 			if (string.IsNullOrEmpty (iconName))
 				return null;
-			return ImageService.GetIcon (iconName, Gtk.IconSize.Menu);
+			return ImageService.GetIcon (iconName, MonoDevelop.Components.StockIconSize.Menu);
 		}
 		
 		public int Count {

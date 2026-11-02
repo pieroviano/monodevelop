@@ -32,6 +32,7 @@ using MonoDevelop.Projects;
 using MonoDevelop.Core;
 
 using Gtk;
+using SearchEntry = MonoDevelop.Components.SearchEntry;
 using System.Collections.Generic;
 using MonoDevelop.Components;
 using MonoDevelop.Components.Commands;
@@ -131,7 +132,7 @@ namespace MonoDevelop.Ide.Projects
 		{
 			string txt = GLib.Markup.EscapeText (System.IO.Path.GetFileName (refInfo.Reference));
 			string secondaryTxt = GLib.Markup.EscapeText (System.IO.Path.GetFullPath (refInfo.HintPath));
-			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), System.IO.Path.GetFullPath (refInfo.Reference), refInfo, ImageService.GetIcon ("md-empty-file-icon", IconSize.Dnd));
+			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), System.IO.Path.GetFullPath (refInfo.Reference), refInfo, ImageService.GetIcon ("md-empty-file-icon", StockIconSize.Dnd));
 		}
 
 		TreeIter AddProjectReference (ProjectReference refInfo)
@@ -144,7 +145,7 @@ namespace MonoDevelop.Ide.Projects
 
 			string txt = GLib.Markup.EscapeText (System.IO.Path.GetFileName (refInfo.Reference));
 			string secondaryTxt = GLib.Markup.EscapeText (p.BaseDirectory.ToString ());
-			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), p.BaseDirectory.ToString (), refInfo, ImageService.GetIcon ("md-project", IconSize.Dnd));
+			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), p.BaseDirectory.ToString (), refInfo, ImageService.GetIcon ("md-project", StockIconSize.Dnd));
 		}
 
 		TreeIter AddPackageReference (ProjectReference refInfo)
@@ -156,24 +157,27 @@ namespace MonoDevelop.Ide.Projects
 				txt = GLib.Markup.EscapeText (txt.Substring (0, i));
 				secondaryTxt = GLib.Markup.EscapeText (refInfo.Reference.Substring (i + 1).Trim ());
 			}
-			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), refInfo.Reference, refInfo, ImageService.GetIcon ("md-package", IconSize.Dnd));
+			return refTreeStore.AppendValues (txt, secondaryTxt, GetTypeText (refInfo), refInfo.Reference, refInfo, ImageService.GetIcon ("md-package", StockIconSize.Dnd));
 		}
-
-		[DllImport ("libgtk-win32-2.0-0.dll", CallingConvention = CallingConvention.Cdecl)]
-		private static extern void gtk_notebook_set_action_widget (IntPtr notebook, IntPtr widget, int packType);
 
 		public SelectReferenceDialog ()
 		{
 			Build ();
 
 			combinedBox = new CombinedBox ();
-			combinedBox.Show ();
-			mainBook = new Notebook ();
+			mainBook = new Notebook { Vexpand = true, Hexpand = true };
 
-			gtk_notebook_set_action_widget (mainBook.Handle, combinedBox.Handle, (int)PackType.End);
+			mainBook.SetActionWidget (combinedBox, PackType.End);
 
-			alignment1.Add (mainBook);
-			mainBook.ShowAll ();
+			alignment1.Append (mainBook);
+
+			// Ctrl+F (Cmd+F on Mac) moves the focus to the filter entry
+			this.AddKeyPressHandler (HandleKeyPressed, phase: PropagationPhase.Capture);
+
+			Unmapped += (sender, e) => {
+				SaveRecentFiles ();
+				recentFiles = null;
+			};
 
 			filterEntry = combinedBox.FilterEntry;
 
@@ -209,47 +213,30 @@ namespace MonoDevelop.Ide.Projects
 			
 			//mainBook.RemovePage (mainBook.CurrentPage);
 			
-			HBox tab = new HBox (false, 3);
-//			tab.PackStart (new Image (ImageService.GetPixbuf (MonoDevelop.Ide.Gui.Stock.Reference, IconSize.Menu)), false, false, 0);
-			tab.PackStart (new Label (GettextCatalog.GetString ("_All")), true, true, 0);
-			tab.BorderWidth = 3;
-			tab.ShowAll ();
+			var tab = CreateTabLabel (GettextCatalog.GetString ("_All"));
 			mainBook.AppendPage (allRefPanel, tab);
 			
-			tab = new HBox (false, 3);
-//			tab.PackStart (new Image (ImageService.GetPixbuf (MonoDevelop.Ide.Gui.Stock.Package, IconSize.Menu)), false, false, 0);
-			tab.PackStart (new Label (GettextCatalog.GetString ("_Packages")), true, true, 0);
-			tab.BorderWidth = 3;
-			tab.ShowAll ();
+			tab = CreateTabLabel (GettextCatalog.GetString ("_Packages"));
 			mainBook.AppendPage (packageRefPanel, tab);
 			
-			tab = new HBox (false, 3);
-//			tab.PackStart (new Image (ImageService.GetPixbuf (MonoDevelop.Ide.Gui.Stock.Project, IconSize.Menu)), false, false, 0);
-			tab.PackStart (new Label (GettextCatalog.GetString ("Pro_jects")), true, true, 0);
-			tab.BorderWidth = 3;
-			tab.ShowAll ();
+			tab = CreateTabLabel (GettextCatalog.GetString ("Pro_jects"));
 			mainBook.AppendPage (projectRefPanel, tab);
 			
-			tab = new HBox (false, 3);
-//			tab.PackStart (new Image (ImageService.GetPixbuf (MonoDevelop.Ide.Gui.Stock.OpenFolder, IconSize.Menu)), false, false, 0);
-			tab.PackStart (new Label (GettextCatalog.GetString (".Net A_ssembly")), true, true, 0);
-			tab.BorderWidth = 3;
-			tab.ShowAll ();
+			tab = CreateTabLabel (GettextCatalog.GetString (".Net A_ssembly"));
 			mainBook.AppendPage (assemblyRefPanel, tab);
 			
 			mainBook.Page = 0;
 			
-			var w = selectedHeader.Child;
+			var w = selectedHeader.FirstChild;
 			selectedHeader.Remove (w);
 			HeaderBox header = new HeaderBox (1, 0, 1, 1);
 			header.SetPadding (6, 6, 6, 6);
 			header.GradientBackground = true;
-			header.Add (w);
-			selectedHeader.Add (header);
+			header.Child = w;
+			selectedHeader.Append (header);
 			
 			RemoveReferenceButton.CanFocus = true;
 			ReferencesTreeView.Selection.Changed += new EventHandler (OnChanged);
-			Child.ShowAll ();
 			OnChanged (null, null);
 			InsertFilterEntry ();
 		}
@@ -263,27 +250,30 @@ namespace MonoDevelop.Ide.Projects
 			};
 		}
 
+		static Box CreateTabLabel (string text)
+		{
+			var tab = new Box (Orientation.Horizontal, 3);
+			tab.MarginStart = tab.MarginEnd = tab.MarginTop = tab.MarginBottom = 3;
+			tab.Append (new Label (text) { UseUnderline = true, Hexpand = true });
+			return tab;
+		}
+
 		void HandleFilterEntryActivated (object sender, EventArgs e)
 		{
-			mainBook.HasFocus = true;
+			mainBook.GrabFocus ();
 			mainBook.ChildFocus (DirectionType.TabForward);
 		}
 
-		protected override void OnShown ()
-		{
-			base.OnShown ();
-		}
-		
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		bool HandleKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			bool complete;
-			var accels = KeyBindingManager.AccelsFromKey (evnt, out complete);
+			var accels = KeyBindingManager.AccelsFromKey (keyval, keycode, state, out complete);
 			if (complete && accels.Any (a => a.Equals (combinedBox.SearchKeyShortcut))) {
-				filterEntry.HasFocus = true;
+				filterEntry.GrabFocusEntry ();
 				return false;
 			}
 
-			return base.OnKeyPressEvent (evnt);
+			return false;
 		}
 
 		void OnChanged (object o, EventArgs e)
@@ -340,7 +330,7 @@ namespace MonoDevelop.Ide.Projects
 		protected void RemoveReference (object sender, EventArgs e)
 		{
 			TreeIter iter;
-			TreeModel mdl;
+			ITreeModel mdl;
 			if (ReferencesTreeView.Selection.GetSelected (out mdl, out iter)) {
 				ProjectReference pref = (ProjectReference)refTreeStore.GetValue (iter, ProjectReferenceColumn);
 				foreach (var p in panels)
@@ -359,12 +349,6 @@ namespace MonoDevelop.Ide.Projects
 					}
 				}
 			}
-		}
-
-		protected void OnReferencesTreeViewKeyReleaseEvent (object o, Gtk.KeyReleaseEventArgs args)
-		{
-			if (args.Event.Key == Gdk.Key.Delete)
-				RemoveReference (null, null);
 		}
 
 		protected void OnReferencesTreeViewRowActivated (object o, Gtk.RowActivatedArgs args)
@@ -466,22 +450,15 @@ namespace MonoDevelop.Ide.Projects
 				sw.WriteLine (f);
 		}
 		
-		protected override void OnHidden ()
+		public override void Destroy ()
 		{
-			base.OnHidden ();
 			SaveRecentFiles ();
 			recentFiles = null;
-		}
-		
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
-			SaveRecentFiles ();
-			recentFiles = null;
+			base.Destroy ();
 		}
 	}
 
-	class CombinedBox: Gtk.EventBox
+	class CombinedBox: Gtk.Box
 	{
 		SearchEntry filterEntry;
 		KeyboardShortcut searchShortcut;
@@ -490,7 +467,7 @@ namespace MonoDevelop.Ide.Projects
 			get { return filterEntry; }
 		}
 
-		public CombinedBox ()
+		public CombinedBox () : base (Orientation.Horizontal, 0)
 		{
 			filterEntry = new SearchEntry ();
 			filterEntry.WidthRequest = 180;
@@ -499,8 +476,7 @@ namespace MonoDevelop.Ide.Projects
 			filterEntry.Entry.CanFocus = true;
 			filterEntry.RoundedShape = true;
 			filterEntry.HasFrame = true;
-			filterEntry.Parent = this;
-			filterEntry.Show ();
+			Append (filterEntry);
 
 			SearchKeyShortcut = new KeyboardShortcut (
 				Gdk.Key.f, Platform.IsMac? Gdk.ModifierType.MetaMask : Gdk.ModifierType.ControlMask
@@ -516,42 +492,6 @@ namespace MonoDevelop.Ide.Projects
 			}
 		}
 
-		protected override void ForAll (bool include_internals, Callback callback)
-		{
-			base.ForAll (include_internals, callback);
-			if (filterEntry != null)
-				callback (filterEntry);
-		}
-
-		protected override void OnRemoved (Widget widget)
-		{
-			if (widget == filterEntry)
-				filterEntry = null;
-			else
-				base.OnRemoved (widget);
-		}
-
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			allocation.Y -= 2;
-			base.OnSizeAllocated (allocation);
-			RepositionFilter ();
-		}
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			requisition = Child?.SizeRequest () ?? Requisition.Zero;
-			var entryRequest = filterEntry.SizeRequest ();
-			requisition.Width += entryRequest.Width;
-			requisition.Height = Math.Max (requisition.Height, entryRequest.Height);
-		}
-		
-		void RepositionFilter ()
-		{
-			var req = filterEntry.SizeRequest ();
-			int h = Math.Min (Allocation.Height, req.Height);
-			filterEntry.SizeAllocate (new Gdk.Rectangle (Allocation.Width - req.Width - 1, 0, req.Width, h));
-		}
 	}
 
 	class CustomSelectedReferenceCellRenderer : CellRendererText
@@ -584,18 +524,8 @@ namespace MonoDevelop.Ide.Projects
 			}
 		}
 
-		protected override void Render (Gdk.Drawable window, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, Gdk.Rectangle expose_area, CellRendererState flags)
+		protected override void OnSnapshot (Snapshot snapshot, Widget widget, Gdk.Rectangle background_area, Gdk.Rectangle cell_area, CellRendererState flags)
 		{
-			StateType st = StateType.Normal;
-			if ((flags & CellRendererState.Prelit) != 0)
-				st = StateType.Prelight;
-			if ((flags & CellRendererState.Focused) != 0)
-				st = StateType.Normal;
-			if ((flags & CellRendererState.Insensitive) != 0)
-				st = StateType.Insensitive;
-			if ((flags & CellRendererState.Selected) != 0)
-				st = widget.HasFocus ? StateType.Selected : Gtk.StateType.Active;
-
 			SetupLayout (widget, flags);
 
 			int w, h;
@@ -608,16 +538,30 @@ namespace MonoDevelop.Ide.Projects
 			int textPixelWidth = cell_area.Width - ((int)Xpad * 2) ;
 			layout.Width = (int)(textPixelWidth * Pango.Scale.PangoScale);
 
-			window.DrawLayout (widget.Style.TextGC (st), tx, ty, layout);
+			var color = CellRendererDrawing.GetTextColor (widget, flags);
+			snapshot.DrawCairo (cell_area, ctx => CellRendererDrawing.DrawLayout (ctx, color, tx, ty, layout));
 		}
 
-		public override void GetSize (Widget widget, ref Gdk.Rectangle cell_area, out int x_offset, out int y_offset, out int width, out int height)
+		protected override void OnGetPreferredHeight (Widget widget, out int minimum_size, out int natural_size)
 		{
-			base.GetSize (widget, ref cell_area, out x_offset, out y_offset, out width, out height);
+			base.OnGetPreferredHeight (widget, out minimum_size, out natural_size);
+			minimum_size = natural_size = GetLayoutHeight (widget);
+		}
+
+		protected override void OnGetPreferredHeightForWidth (Widget widget, int width, out int minimum_height, out int natural_height)
+		{
+			base.OnGetPreferredHeightForWidth (widget, width, out minimum_height, out natural_height);
+			minimum_height = natural_height = GetLayoutHeight (widget);
+		}
+
+		int GetLayoutHeight (Widget widget)
+		{
 			SetupLayout (widget);
 
 			int layoutWidth = 0;
+			int height;
 			layout.GetPixelSize (out layoutWidth, out height);
+			return height;
 		}
 
 		void SetupLayout (Widget widget, CellRendererState flags = 0)
@@ -640,11 +584,13 @@ namespace MonoDevelop.Ide.Projects
 			layout.SetMarkup (newmarkup);
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
-			if (layout != null)
+			if (disposing && layout != null) {
 				layout.Dispose ();
+				layout = null;
+			}
+			base.Dispose (disposing);
 		}
 	}
 }

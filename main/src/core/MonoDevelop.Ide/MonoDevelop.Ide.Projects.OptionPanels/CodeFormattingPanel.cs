@@ -268,7 +268,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 	}
 	
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class CodeFormattingPanelWidget : Gtk.Bin
+	partial class CodeFormattingPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		CodeFormattingPanel panel;
 		Gtk.ListStore store;
@@ -329,7 +329,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		static readonly string customPolicyText = GettextCatalog.GetString ("(Custom)");
 		
-		void OnSetPolicyData (Gtk.TreeViewColumn treeColumn, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void OnSetPolicyData (Gtk.TreeViewColumn treeColumn, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			MimeTypePanelData mt = (MimeTypePanelData) store.GetValue (iter, 0);
 
@@ -398,7 +398,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		void Fill ()
 		{
 			foreach (MimeTypePanelData mt in panel.GetMimeTypeData ()) {
-				store.AppendValues (mt, IdeServices.DesktopService.GetIconForType (mt.MimeType, Gtk.IconSize.Menu), mt.TypeDescription);
+				store.AppendValues (mt, IdeServices.DesktopService.GetIconForType (mt.MimeType, StockIconSize.Menu), mt.TypeDescription);
 			}
 		}
 		
@@ -420,9 +420,9 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		{
 			AddMimeTypeDialog dlg = new AddMimeTypeDialog (panel.GetItemMimeTypes ());
 			try {
-				if (MessageService.RunCustomDialog (dlg, this.Toplevel as Gtk.Window) == (int) Gtk.ResponseType.Ok) {
+				if (MessageService.RunCustomDialog (dlg, Root as Gtk.Window) == (int) Gtk.ResponseType.Ok) {
 					MimeTypePanelData mt = panel.AddGlobalMimeType (dlg.MimeType);
-					store.AppendValues (mt, IdeServices.DesktopService.GetIconForType (mt.MimeType, Gtk.IconSize.Menu), mt.TypeDescription);
+					store.AppendValues (mt, IdeServices.DesktopService.GetIconForType (mt.MimeType, StockIconSize.Menu), mt.TypeDescription);
 				}
 			} finally {
 				dlg.Destroy ();
@@ -455,12 +455,14 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			buttonRemove.Sensitive = buttonEdit.Sensitive = false;
 		}
 
-		protected override void OnDestroyed()
+		protected override void Dispose (bool disposing)
 		{
-			store.Clear();
-			comboCell.Changed -= OnPolicySelectionChanged;
-			
-			base.OnDestroyed();
+			if (disposing) {
+				store.Clear ();
+				comboCell.Changed -= OnPolicySelectionChanged;
+			}
+
+			base.Dispose (disposing);
 		}
 	}
 }

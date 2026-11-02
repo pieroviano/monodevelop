@@ -24,41 +24,27 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
 
 using System;
 
 namespace MonoDevelop.Components.Commands
 {
-	internal class MenuToolButton: Gtk.ToolButton
+	/// <summary>Toolbar button that pops up a command menu below itself.</summary>
+	internal class MenuToolButton: Gtk.Button
 	{
-		Gtk.Menu menu;
+		readonly CommandMenu menu;
 		
-		public MenuToolButton (Gtk.Menu menu, string icon): base (icon)
+		public MenuToolButton (CommandMenu menu, string icon)
 		{
 			this.menu = menu;
-			Child.ButtonPressEvent += new Gtk.ButtonPressEventHandler (OnButtonPress);
+			AddCssClass ("flat");
 			
-			if (string.IsNullOrEmpty (icon)) {
-				this.Expand = false;
-				this.Homogeneous = false;
-				this.IconWidget = new Gtk.Arrow (Gtk.ArrowType.Down, Gtk.ShadowType.None);
-			}
-		}
-		
-		[GLib.ConnectBeforeAttribute]
-		void OnButtonPress (object sender, Gtk.ButtonPressEventArgs e)
-		{
-			menu.Popup (null, null, new Gtk.MenuPositionFunc (OnPosition), 3, Gtk.Global.CurrentEventTime);
-			e.RetVal = true;
-		}
-		
-		void OnPosition (Gtk.Menu menu, out int x, out int y, out bool pushIn)
-		{
-			this.ParentWindow.GetOrigin (out x, out y);
-			x += this.Allocation.X;
-			y += this.Allocation.Y + this.Allocation.Height;
-			pushIn = true;
+			if (string.IsNullOrEmpty (icon))
+				IconName = "pan-down-symbolic";
+			else
+				Child = new ImageView (icon, StockIconSize.Menu);
+
+			Clicked += (s, e) => this.menu.Popup (this, 0, Height);
 		}
 	}
 }

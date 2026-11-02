@@ -58,8 +58,6 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			this.Build ();
 			this.Title = BrandingService.ApplicationName;
 			this.componentsWindowParent = parent; 
-			HasSeparator = false;
-			ActionArea.Hide ();
 			DefaultHeight = 5;
 			
 			btnCancel.Visible = allowCancel;
@@ -160,8 +158,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		{
 			progressBar.Fraction = 1;
 			
-			btnCancel.Hide ();
-			btnClose.Show ();
+			btnCancel.Visible = false;
+			btnClose.Visible = true;
 
 			if (errors)
 				label.Text = GettextCatalog.GetString ("Operation completed with errors.");
@@ -179,9 +177,7 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		bool UpdateSize ()
 		{
-			int w, h;
-			GetSize (out w, out h);
-			Resize (w, 1);
+			SetDefaultSize (Width, 1);
 			return false;
 		}
 		

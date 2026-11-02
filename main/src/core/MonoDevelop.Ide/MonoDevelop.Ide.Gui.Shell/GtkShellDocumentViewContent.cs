@@ -41,7 +41,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 		GtkDocumentToolbar bottomToolbar;
 		PathBar pathBar;
 		Func<CancellationToken,Task<Control>> contentLoader;
-		VBox box;
+		Gtk.Box box;
 		IPathedDocument pathDoc;
 		IPathedDocument pathDocPending;
 		Gtk.Widget viewControl;
@@ -53,8 +53,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 			if (kind == DocumentToolbarKind.Top) {
 				if (topToolbar == null) {
 					topToolbar = new GtkDocumentToolbar ();
-					box.PackStart (topToolbar.Container, false, false, 0);
-					box.ReorderChild (topToolbar.Container, 0);
+					box.Prepend (topToolbar.Container);
 					topToolbar.Visible = true;
 					HidePathBar ();
 				}
@@ -62,7 +61,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 			} else {
 				if (bottomToolbar == null) {
 					bottomToolbar = new GtkDocumentToolbar ();
-					box.PackStart (bottomToolbar.Container, false, false, 0);
+					box.Append (bottomToolbar.Container);
 					bottomToolbar.Visible = true;
 				}
 				return bottomToolbar;
@@ -77,10 +76,11 @@ namespace MonoDevelop.Ide.Gui.Shell
 		protected override async Task OnLoad (CancellationToken cancellationToken)
 		{
 			if (box == null) {
-				box = new VBox ();
-				box.Accessible.SetShouldIgnore (true);
-				Add (box);
-				box.Show ();
+				box = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+				box.SetShouldIgnore (true);
+				box.Hexpand = true;
+				box.Vexpand = true;
+				Child = box;
 			}
 			var control = await contentLoader (cancellationToken);
 			if (cancellationToken.IsCancellationRequested)
@@ -91,9 +91,13 @@ namespace MonoDevelop.Ide.Gui.Shell
 			}
 			if (control != null) {
 				viewControl = control.GetNativeWidget<Gtk.Widget> ();
-				box.PackStart (viewControl, true, true, 0);
+				viewControl.Hexpand = true;
+				viewControl.Vexpand = true;
+				// the content goes after the top toolbar/path bar and before the bottom toolbar
 				if (bottomToolbar != null)
-					box.ReorderChild (bottomToolbar.Container, box.Children.Length - 1);
+					box.InsertChildAfter (viewControl, ((Gtk.Widget)bottomToolbar.Container).PrevSibling);
+				else
+					box.Append (viewControl);
 			}
 			if (pathDocPending != null) {
 				ShowPathBar (pathDocPending);
@@ -132,9 +136,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 
 			if (pathBar == null) {
 				pathBar = new PathBar (pathDoc.CreatePathWidget);
-				box.PackStart (pathBar, false, true, 0);
-				box.ReorderChild (pathBar, 0);
-				pathBar.Show ();
+				box.Prepend (pathBar);
 			}
 			pathBar.SetPath (pathDoc.CurrentPath);
 		}
@@ -144,7 +146,7 @@ namespace MonoDevelop.Ide.Gui.Shell
 			DetachPathedDocument ();
 
 			if (pathBar != null) {
-				pathBar.Destroy ();
+				box?.Remove (pathBar);
 				pathBar = null;
 			}
 		}

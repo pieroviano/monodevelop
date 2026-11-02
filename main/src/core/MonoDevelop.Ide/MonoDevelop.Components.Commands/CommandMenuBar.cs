@@ -24,35 +24,97 @@
 // LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
 
-using Gtk;
+using System;
+using System.Collections.Generic;
+using MonoDevelop.Core;
 
 namespace MonoDevelop.Components.Commands
 {
-	class CommandMenuBar: Gtk.MenuBar
+	/// <summary>
+	/// Main menu bar (GTK 4: a <see cref="Gtk.PopoverMenuBar"/>). Menu models are snapshots of the command state,
+	/// so the model is rebuilt whenever the user is about to interact with the bar (pointer enters it, Alt/F10 pressed).
+	/// </summary>
+	class CommandMenuBar: Gtk.Box
 	{
-		CommandManager manager;
+		readonly CommandManager manager;
+		readonly CommandEntrySet entrySet;
+		readonly Gtk.PopoverMenuBar bar;
+		readonly List<KeyValuePair<int, KeyValuePair<string, CommandMenu>>> extraMenus = new List<KeyValuePair<int, KeyValuePair<string, CommandMenu>>> ();
+		DateTime lastRebuild = DateTime.MinValue;
 
-		public CommandMenuBar (CommandManager manager)
+		public CommandMenuBar (CommandManager manager, CommandEntrySet entrySet): base (Gtk.Orientation.Horizontal, 0)
 		{
 			this.manager = manager;
+			this.entrySet = entrySet;
+			bar = new Gtk.PopoverMenuBar (new GLib.Menu ());
+			bar.Hexpand = true;
+			Append (bar);
+
+			this.AddMotionHandler (null, (x, y) => RebuildIfIdle ());
+			this.AddKeyPressHandler ((key, code, state) => {
+				if (key == (uint)Gdk.Key.F10 || key == (uint)Gdk.Key.Alt_L || key == (uint)Gdk.Key.Alt_R || (state & Gdk.ModifierType.AltMask) != 0)
+					RebuildIfIdle ();
+				return false;
+			}, null, Gtk.PropagationPhase.Capture);
+			Mapped += (s, e) => RebuildIfIdle ();
+			Rebuild ();
 		}
 		
 		internal CommandManager CommandManager {
 			get { return manager; }
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		/// <summary>Inserts a menu (e.g. the application menu) as an additional top level menu at the given position.</summary>
+		public void InsertMenu (int position, string label, CommandMenu menu)
 		{
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
-				context.SetSourceColor (Style.Light (StateType.Normal).ToCairoColor ());
-				context.Paint ();
-			}
+			extraMenus.Add (new KeyValuePair<int, KeyValuePair<string, CommandMenu>> (position, new KeyValuePair<string, CommandMenu> (label, menu)));
+			Rebuild ();
+		}
 
-			foreach (Gtk.Widget child in Children)
-				(this as Gtk.Container).PropagateExpose (child, evnt);
+		void RebuildIfIdle ()
+		{
+			if ((DateTime.Now - lastRebuild).TotalMilliseconds < 500 || HasOpenPopover (bar))
+				return;
+			Rebuild ();
+		}
+
+		static bool HasOpenPopover (Gtk.Widget widget)
+		{
+			for (var child = widget.FirstChild; child != null; child = child.NextSibling) {
+				if (child is Gtk.Popover popover && popover.Visible)
+					return true;
+				if (HasOpenPopover (child))
+					return true;
+			}
 			return false;
+		}
+
+		void Rebuild ()
+		{
+			lastRebuild = DateTime.Now;
+			manager.RegisterUserInteraction ();
+			var context = new CommandMenuContext (manager, null, CommandSource.MainMenu);
+			var scope = context.BeginScope (true);
+			int index = 0;
+			foreach (CommandEntry entry in entrySet) {
+				AddExtraMenus (context, index, false);
+				entry.AddToMenu (context);
+				index++;
+			}
+			AddExtraMenus (context, index, true);
+			var model = context.EndScope (scope);
+
+			bar.MenuModel = model;
+			InsertActionGroup (CommandMenuContext.ActionPrefix, context.Actions);
+		}
+
+		void AddExtraMenus (CommandMenuContext context, int position, bool atEnd)
+		{
+			foreach (var extra in extraMenus) {
+				if (extra.Key == position || (atEnd && extra.Key > position))
+					context.AddSubmenu (extra.Value.Key, extra.Value.Value.Build (context), IconId.Null, true);
+			}
 		}
 	}
 }

@@ -49,17 +49,18 @@ using MonoDevelop.Ide.TypeSystem;
 
 namespace MonoDevelop.Ide.FindInFiles
 {
-	class SearchResultWidget : HBox, ILocationList
+	class SearchResultWidget : Gtk.Box, ILocationList
 	{
 		ListStore store;
 
-		readonly ToolButton buttonStop;
+		readonly Gtk.Button buttonStop;
 
-		readonly ToggleToolButton buttonPin;
-		
+		readonly Gtk.ToggleButton buttonPin;
+		readonly ImageView pinImage;
+
 		const int SearchResultColumn = 0;
 		const int DidReadColumn      = 1;
-		
+
 		EditorTheme highlightStyle;
 
 		internal EditorTheme HighlightStyle {
@@ -68,7 +69,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			}
 		}
 
-		ScrolledWindow scrolledwindowLogView; 
+		ScrolledWindow scrolledwindowLogView;
 		PadTreeView treeviewSearchResults;
 		Label labelStatus;
 		TextView textviewLog;
@@ -89,49 +90,59 @@ namespace MonoDevelop.Ide.FindInFiles
 		}
 
 		public bool AllowReuse {
-			get { 
-				return !buttonStop.Sensitive && !buttonPin.Active; 
+			get {
+				return !buttonStop.Sensitive && !buttonPin.Active;
 			}
 		}
-		
-		public SearchResultWidget ()
+
+		static Gtk.Button CreateToolbarButton (string icon, string tooltip, out ImageView image)
 		{
-			var vbox = new VBox ();
-			var toolbar = new Toolbar () {
-				Orientation = Orientation.Vertical,
-				IconSize = IconSize.Menu,
-				ToolbarStyle = ToolbarStyle.Icons,
+			image = new ImageView (icon, StockIconSize.Menu);
+			return new Gtk.Button {
+				Child = image,
+				HasFrame = false,
+				TooltipText = tooltip,
 			};
-			this.PackStart (vbox, true, true, 0);
-			this.PackStart (toolbar, false, false, 0);
+		}
+
+		public SearchResultWidget () : base (Gtk.Orientation.Horizontal, 0)
+		{
+			var vbox = new Gtk.Box (Gtk.Orientation.Vertical, 0) { Hexpand = true };
+			var toolbar = new Gtk.Box (Gtk.Orientation.Vertical, 0);
+			toolbar.AddCssClass ("toolbar");
+			Append (vbox);
+			Append (toolbar);
 			labelStatus = new Label () {
 				Xalign = 0,
 				Justify = Justification.Left,
 			};
-			var hpaned = new HPaned ();
-			vbox.PackStart (hpaned, true, true, 0);
-			vbox.PackStart (labelStatus, false, false, 0);
+			var hpaned = new Paned (Gtk.Orientation.Horizontal) { Vexpand = true };
+			vbox.Append (hpaned);
+			vbox.Append (labelStatus);
 			var resultsScroll = new CompactScrolledWindow ();
-			hpaned.Pack1 (resultsScroll, true, true);
+			hpaned.StartChild = resultsScroll;
+			hpaned.ResizeStartChild = true;
+			hpaned.ShrinkStartChild = true;
 			scrolledwindowLogView = new CompactScrolledWindow ();
-			hpaned.Pack2 (scrolledwindowLogView, true, true);
+			hpaned.EndChild = scrolledwindowLogView;
+			hpaned.ResizeEndChild = true;
+			hpaned.ShrinkEndChild = true;
 			textviewLog = new TextView () {
 				Editable = false,
 			};
-			scrolledwindowLogView.Add (textviewLog);
-			
+			scrolledwindowLogView.Child = textviewLog;
+
 			store = new ListStore (typeof (SearchResult),
 				typeof (bool) // didRead
 				);
-			
+
 			treeviewSearchResults = new PadTreeView () {
 				Model = store,
 				HeadersClickable = true,
-				RulesHint = true,
 			};
 
 			treeviewSearchResults.Selection.Mode = Gtk.SelectionMode.Multiple;
-			resultsScroll.Add (treeviewSearchResults);
+			resultsScroll.Child = treeviewSearchResults;
 
 			var projectColumn = new TreeViewColumn {
 				Resizable = true,
@@ -162,7 +173,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			var fileNamePixbufRenderer = new CellRendererImage ();
 			fileNameColumn.PackStart (fileNamePixbufRenderer, false);
 			fileNameColumn.SetCellDataFunc (fileNamePixbufRenderer, FileIconDataFunc);
-			
+
 			fileNameColumn.PackStart (renderer, true);
 			fileNameColumn.SetCellDataFunc (renderer, FileNameDataFunc);
 			treeviewSearchResults.AppendColumn (fileNameColumn);
@@ -187,37 +198,64 @@ namespace MonoDevelop.Ide.FindInFiles
 			store.SetSortFunc (3, CompareFilePaths);
 
 			treeviewSearchResults.RowActivated += TreeviewSearchResultsRowActivated;
-			
-			buttonStop = new ToolButton (new ImageView (Gui.Stock.Stop, Gtk.IconSize.Menu), null) { Sensitive = false };
-			buttonStop.Clicked += ButtonStopClicked;
-			buttonStop.TooltipText = GettextCatalog.GetString ("Stop");
-			toolbar.Insert (buttonStop, -1);
 
-			var buttonClear = new ToolButton (new ImageView (Gui.Stock.Clear, Gtk.IconSize.Menu), null);
+			buttonStop = CreateToolbarButton (Gui.Stock.Stop, GettextCatalog.GetString ("Stop"), out _);
+			buttonStop.Sensitive = false;
+			buttonStop.Clicked += ButtonStopClicked;
+			toolbar.Append (buttonStop);
+
+			var buttonClear = CreateToolbarButton (Gui.Stock.Clear, GettextCatalog.GetString ("Clear results"), out _);
 			buttonClear.Clicked += ButtonClearClicked;
-			buttonClear.TooltipText = GettextCatalog.GetString ("Clear results");
-			toolbar.Insert (buttonClear, -1);
-			
-			var buttonOutput = new ToggleToolButton ();
-			buttonOutput.IconWidget = new ImageView (Gui.Stock.OutputIcon, Gtk.IconSize.Menu);
-			buttonOutput.Clicked += ButtonOutputClicked;
-			buttonOutput.TooltipText = GettextCatalog.GetString ("Show output");
-			toolbar.Insert (buttonOutput, -1);
-			
-			buttonPin = new ToggleToolButton ();
-			buttonPin.IconWidget = new ImageView (Gui.Stock.PinUp, Gtk.IconSize.Menu);
-			buttonPin.Clicked += ButtonPinClicked;
-			buttonPin.TooltipText = GettextCatalog.GetString ("Pin results pad");
-			toolbar.Insert (buttonPin, -1);
+			toolbar.Append (buttonClear);
+
+			var buttonOutput = new Gtk.ToggleButton {
+				Child = new ImageView (Gui.Stock.OutputIcon, StockIconSize.Menu),
+				HasFrame = false,
+				TooltipText = GettextCatalog.GetString ("Show output"),
+			};
+			buttonOutput.Toggled += ButtonOutputClicked;
+			toolbar.Append (buttonOutput);
+
+			pinImage = new ImageView (Gui.Stock.PinUp, StockIconSize.Menu);
+			buttonPin = new Gtk.ToggleButton {
+				Child = pinImage,
+				HasFrame = false,
+				TooltipText = GettextCatalog.GetString ("Pin results pad"),
+			};
+			buttonPin.Toggled += ButtonPinClicked;
+			toolbar.Append (buttonPin);
 
 			// store.SetSortColumnId (3, SortType.Ascending);
-			ShowAll ();
-			
-			scrolledwindowLogView.Hide ();
+
+			scrolledwindowLogView.Visible = false;
 			treeviewSearchResults.FixedHeightMode = true;
 
 			UpdateStyles ();
 			IdeApp.Preferences.ColorScheme.Changed += UpdateStyles;
+		}
+
+		Gdk.RGBA baseColor;
+
+		/// <summary>Background colour of the results list (the GTK 2 <c>Style.Base</c> colour).</summary>
+		internal Gdk.RGBA BaseColor {
+			get { return baseColor; }
+		}
+
+		void UpdateBaseColor ()
+		{
+			Gdk.RGBA color;
+			if (treeviewSearchResults.StyleContext.LookupColor ("theme_base_color", out color)) {
+				baseColor = color;
+			} else {
+				bool light = IdeApp.Preferences.UserInterfaceTheme == Theme.Light;
+				baseColor = new Gdk.RGBA { Red = light ? 1 : 0.15f, Green = light ? 1 : 0.15f, Blue = light ? 1 : 0.15f, Alpha = 1 };
+			}
+		}
+
+		protected override void OnRealized ()
+		{
+			base.OnRealized ();
+			UpdateBaseColor ();
 		}
 
 		void UpdateStyles (object sender = null, EventArgs e = null)
@@ -225,6 +263,8 @@ namespace MonoDevelop.Ide.FindInFiles
 			highlightStyle = SyntaxHighlightingService.GetEditorTheme (IdeApp.Preferences.ColorScheme);
 			if (!highlightStyle.FitsIdeTheme (IdeApp.Preferences.UserInterfaceTheme))
 				highlightStyle = SyntaxHighlightingService.GetDefaultColorStyle (Ide.IdeApp.Preferences.UserInterfaceTheme);
+
+			UpdateBaseColor ();
 
 			if (IsRealized) {
 				store.Foreach ((model, path, iter) => {
@@ -236,12 +276,12 @@ namespace MonoDevelop.Ide.FindInFiles
 
 		void ButtonPinClicked (object sender, EventArgs e)
 		{
-			buttonPin.StockId = buttonPin.Active? Gui.Stock.PinDown : Gui.Stock.PinUp;
+			pinImage.Image = ImageService.GetIcon (buttonPin.Active ? Gui.Stock.PinDown : Gui.Stock.PinUp, StockIconSize.Menu);
 		}
 
 		void ButtonOutputClicked (object sender, EventArgs e)
 		{
-			if (((ToggleToolButton)sender).Active) {
+			if (((Gtk.ToggleButton)sender).Active) {
 				scrolledwindowLogView.Show ();
 			} else {
 				scrolledwindowLogView.Hide ();
@@ -275,7 +315,6 @@ namespace MonoDevelop.Ide.FindInFiles
 			newStore.SetSortColumnId (2, SortType.Ascending); 
 			Reset ();
 			buttonStop.Sensitive = true;
-			treeviewSearchResults.FreezeChildNotify ();
 		}
 		
 		ListStore newStore;
@@ -286,7 +325,6 @@ namespace MonoDevelop.Ide.FindInFiles
 			store = newStore;
 			newStore = null;
 			treeviewSearchResults.Model = store;
-			treeviewSearchResults.ThawChildNotify ();
 		}
 
 		public void FocusPad ()
@@ -308,13 +346,13 @@ namespace MonoDevelop.Ide.FindInFiles
 			textviewLog.Buffer.Clear ();
 		}
 		
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			Reset ();
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
-		internal static Color AdjustColor (Color baseColor, Color color)
+		internal static Gdk.RGBA AdjustColor (Gdk.RGBA baseColor, Gdk.RGBA color)
 		{
 			double b1 = HslColor.Brightness (color);
 			double b2 = HslColor.Brightness (baseColor);
@@ -341,7 +379,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			// This is a workaround for Bug 559804 - Strings in search result pad are near-invisible
 			// On mac it's not possible to get the white background color with the Base or Background
 			// methods. If this bug is fixed or a better work around is found - remove this hack.
-			Color baseColor = Platform.IsMac ?treeviewSearchResults.Style.Light (treeviewSearchResults.State) : treeviewSearchResults.Style.Base (treeviewSearchResults.State);
+			var baseColor = this.baseColor;
 			
 			while (idx > 0) {
 				idx += "foreground=\"".Length;
@@ -353,9 +391,9 @@ namespace MonoDevelop.Ide.FindInFiles
 				offset = idx + 7;
 				string colorStr = markup.Substring (idx, 7);
 				
-				Color color = Color.Zero;
+				var color = new Gdk.RGBA { Alpha = 1 };
 
-				if (Color.Parse(colorStr, ref color))
+				if (color.Parse (colorStr))
 					colorStr = ColorToPangoMarkup(AdjustColor(baseColor, color));
 
 				result.Append (colorStr);
@@ -364,11 +402,11 @@ namespace MonoDevelop.Ide.FindInFiles
 			result.Append (markup, offset, markup.Length - offset);
 			return result.ToString ();
 		}
-		public static string ColorToPangoMarkup (Gdk.Color color)
+		public static string ColorToPangoMarkup (Gdk.RGBA color)
 		{
-			return string.Format ("#{0:X2}{1:X2}{2:X2}", color.Red >> 8, color.Green >> 8, color.Blue >> 8);
+			return string.Format ("#{0:X2}{1:X2}{2:X2}", (int)Math.Round (color.Red * 255), (int)Math.Round (color.Green * 255), (int)Math.Round (color.Blue * 255));
 		}
-		void DoPopupMenu (Gdk.EventButton evt)
+		void DoPopupMenu (ClickInfo evt)
 		{ 
 			IdeApp.CommandService.ShowContextMenu (this.treeviewSearchResults, evt, new CommandEntrySet {
 				new CommandEntry (ViewCommands.Open),
@@ -382,7 +420,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			labelStatus.Text = text;
 		}
 		
-		static void FileIconDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		static void FileIconDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -390,7 +428,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			var searchResult = (SearchResult)model.GetValue (iter, SearchResultColumn);
 			if (searchResult == null)
 				return;
-			fileNamePixbufRenderer.Image = IdeServices.DesktopService.GetIconForFile (searchResult.FileName, IconSize.Menu);
+			fileNamePixbufRenderer.Image = IdeServices.DesktopService.GetIconForFile (searchResult.FileName, StockIconSize.Menu);
 		}
 
 		static string MarkupText (string text, bool didRead)
@@ -398,7 +436,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			return string.Format ("<span weight=\"{1}\">{0}</span>", GLib.Markup.EscapeText (text), didRead ? "normal" : "bold");
 		}
 		
-		void FileNameDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		void FileNameDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -410,19 +448,19 @@ namespace MonoDevelop.Ide.FindInFiles
 			fileNameRenderer.Markup = MarkupText (System.IO.Path.GetFileName (searchResult.FileName) + ":" + searchResult.GetLineNumber (this), didRead);
 		}
 		
-		int CompareLineNumbers (TreeModel model, TreeIter first, TreeIter second)
+		int CompareLineNumbers (ITreeModel model, TreeIter first, TreeIter second)
 		{
 			var loc1 = ((SearchResult)model.GetValue (first, SearchResultColumn)).GetLocation (this);
 			var loc2 = ((SearchResult)model.GetValue (second, SearchResultColumn)).GetLocation (this);
 			return loc1.Line.CompareTo (loc2.Line);
 		}
 		
-		static int DefaultSortFunc (TreeModel model, TreeIter first, TreeIter second)
+		static int DefaultSortFunc (ITreeModel model, TreeIter first, TreeIter second)
 		{
 			return 0;
 		}
 
-		static int CompareFileNames (TreeModel model, TreeIter first, TreeIter second)
+		static int CompareFileNames (ITreeModel model, TreeIter first, TreeIter second)
 		{
 			var searchResult1 = (SearchResult)model.GetValue (first, SearchResultColumn);
 			var searchResult2 = (SearchResult)model.GetValue (second, SearchResultColumn);
@@ -436,7 +474,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			}
 		}
 
-		static int CompareProjectFileNames (TreeModel model, TreeIter first, TreeIter second)
+		static int CompareProjectFileNames (ITreeModel model, TreeIter first, TreeIter second)
 		{
 			var searchResult1 = (SearchResult)model.GetValue (first, SearchResultColumn);
 			var searchResult2 = (SearchResult)model.GetValue (second, SearchResultColumn);
@@ -447,7 +485,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			return string.Compare (System.IO.Path.GetFileName (searchResult1.Projects [0].FileName), System.IO.Path.GetFileName (searchResult2.Projects [0].FileName), StringComparison.Ordinal);
 		}
 
-		static int CompareFilePaths (TreeModel model, TreeIter first, TreeIter second)
+		static int CompareFilePaths (ITreeModel model, TreeIter first, TreeIter second)
 		{
 			var searchResult1 = (SearchResult)model.GetValue (first, SearchResultColumn);
 			var searchResult2 = (SearchResult)model.GetValue (second, SearchResultColumn);
@@ -457,7 +495,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			return System.IO.Path.GetDirectoryName (searchResult1.FileName).CompareTo (System.IO.Path.GetDirectoryName (searchResult2.FileName));
 		}
 		
-		void ResultPathDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		void ResultPathDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -481,7 +519,7 @@ namespace MonoDevelop.Ide.FindInFiles
 			pathRenderer.Markup = MarkupText (directory, didRead);
 		}
 
-		static void ResultProjectIconDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		static void ResultProjectIconDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -490,13 +528,13 @@ namespace MonoDevelop.Ide.FindInFiles
 			if (searchResult == null)
 				return;
 			if (searchResult.Projects.Count > 0) {
-				fileNamePixbufRenderer.Image = ImageService.GetIcon (searchResult.Projects [0].StockIcon).WithSize (Gtk.IconSize.Menu);
+				fileNamePixbufRenderer.Image = ImageService.GetIcon (searchResult.Projects [0].StockIcon).WithSize (StockIconSize.Menu);
 			} else {
 				fileNamePixbufRenderer.Image = null;
 			}
 		}
 
-		static void ResultProjectDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		static void ResultProjectDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -514,7 +552,7 @@ namespace MonoDevelop.Ide.FindInFiles
 		}
 
 
-		void ResultTextDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		void ResultTextDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			if (TreeIter.Zero.Equals (iter))
 				return;
@@ -626,7 +664,7 @@ namespace MonoDevelop.Ide.FindInFiles
 		
 		public void CopySelection ()
 		{
-			TreeModel model;
+			ITreeModel model;
 			var sb = new StringBuilder ();
 			foreach (TreePath p in treeviewSearchResults.Selection.GetSelectedRows (out model)) {
 				TreeIter iter;
@@ -643,11 +681,9 @@ namespace MonoDevelop.Ide.FindInFiles
 					LoggingService.LogInternalError ("Error while getting copy data from search results", e);
 				}
 			}
-			Clipboard clipboard = Clipboard.Get (Atom.Intern ("CLIPBOARD", false));
-			clipboard.Text = sb.ToString ();
-			
-			clipboard = Clipboard.Get (Atom.Intern ("PRIMARY", false));
-			clipboard.Text = sb.ToString ();
+			// Copy to both the regular and the primary selection clipboards.
+			ClipboardHelper.SetText (sb.ToString ());
+			ClipboardHelper.SetText (sb.ToString (), true);
 		}
 		
 		public string ItemName {
@@ -734,9 +770,9 @@ namespace MonoDevelop.Ide.FindInFiles
 
 	public static class PangoHelper
 	{
-		public static string ColorToPangoMarkup (Gdk.Color color)
+		public static string ColorToPangoMarkup (Gdk.RGBA color)
 		{
-			return string.Format ("#{0:X2}{1:X2}{2:X2}", color.Red >> 8, color.Green >> 8, color.Blue >> 8);
+			return string.Format ("#{0:X2}{1:X2}{2:X2}", (int)Math.Round (color.Red * 255), (int)Math.Round (color.Green * 255), (int)Math.Round (color.Blue * 255));
 		}
 
 		public static string ColorMarkupBackground (string textMarkup, int startIndex, int endIndex, HslColor searchColor)

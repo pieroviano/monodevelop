@@ -55,7 +55,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
        	}
 	}
 
-	partial class CombineEntryConfigurationsPanelWidget : Gtk.Bin 
+	partial class CombineEntryConfigurationsPanelWidget : MonoDevelop.Components.BinWidget 
 	{
 		TreeStore store;
 		ConfigurationData configData;
@@ -96,7 +96,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		void OnCopyConfiguration (object sender, EventArgs args)
 		{
-			Gtk.TreeModel foo;
+			Gtk.ITreeModel foo;
 			Gtk.TreeIter iter;
 			if (!configsList.Selection.GetSelected (out foo, out iter))
 				return;
@@ -126,7 +126,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 
 		void OnRemoveConfiguration (object sender, EventArgs args)
 		{
-			Gtk.TreeModel foo;
+			Gtk.ITreeModel foo;
 			Gtk.TreeIter iter;
 			if (!configsList.Selection.GetSelected (out foo, out iter))
 				return;
@@ -140,7 +140,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			var dlg = new DeleteConfigDialog ();
 			
 			try {
-				if (MessageService.RunCustomDialog (dlg, Toplevel as Gtk.Window)== (int) Gtk.ResponseType.Yes) {
+				if (MessageService.RunCustomDialog (dlg, Root as Gtk.Window)== (int) Gtk.ResponseType.Yes) {
 					configData.RemoveConfiguration (cc.Id, dlg.DeleteChildren);
 					store.Remove (ref iter);
 				}
@@ -152,7 +152,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 		
 		void OnRenameConfiguration (object sender, EventArgs args)
 		{
-			Gtk.TreeModel foo;
+			Gtk.ITreeModel foo;
 			Gtk.TreeIter iter;
 			if (!configsList.Selection.GetSelected (out foo, out iter))
 				return;
@@ -164,7 +164,7 @@ namespace MonoDevelop.Ide.Projects.OptionPanels
 			try {
 				bool done = false;
 				do {
-					if (MessageService.RunCustomDialog (dlg, Toplevel as Gtk.Window) == (int) Gtk.ResponseType.Ok) {
+					if (MessageService.RunCustomDialog (dlg, Root as Gtk.Window) == (int) Gtk.ResponseType.Ok) {
 						var newConf = configData.RenameConfiguration (cc.Id, dlg.ConfigName, dlg.RenameChildren);
 						store.SetValue (iter, 0, newConf);
 						store.SetValue (iter, 1, newConf.Id);

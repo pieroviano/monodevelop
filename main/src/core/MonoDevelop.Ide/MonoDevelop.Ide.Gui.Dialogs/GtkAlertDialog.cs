@@ -27,6 +27,7 @@
 //
 
 using System;
+using System.Collections.Generic;
 using System.Text;
 using Gtk;
 using MonoDevelop.Core;
@@ -44,10 +45,12 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		AlertButton resultButton = null;
 		AlertButton[] buttons;
 		
-		Gtk.HBox  hbox  = new HBox ();
+		Gtk.Box hbox = DesignerLayout.HBox (12);
 		ImageView image;
 		Gtk.Label label = new Label ();
-		VBox labelsBox = new VBox (false, 6);
+		Gtk.Box labelsBox = DesignerLayout.VBox (6);
+		List<Gtk.Button> actionButtons = new List<Gtk.Button> ();
+		Gtk.Box buttonBar;
 		
 		public AlertButton ResultButton {
 			get {
@@ -59,23 +62,21 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 		
 		void Init ()
 		{
-			VBox.PackStart (hbox);
-			hbox.PackStart (labelsBox, true, true, 0);
-			labelsBox.PackStart (label, true, true, 0);
+			DesignerLayout.Pack (ContentArea, hbox);
+			DesignerLayout.Pack (hbox, labelsBox, true);
+			DesignerLayout.Pack (labelsBox, label, true);
 				
 			// Table 3.1
 			this.Title        = "";
-			this.BorderWidth  = 6;
 			//this.Type         = WindowType.Toplevel;
 			this.Resizable    = false;
-			this.HasSeparator = false;
 			
 			// Table 3.2
-			this.VBox.Spacing = 12;
+			DesignerLayout.Margin (this.ContentArea, 6);
+			this.ContentArea.Spacing = 12;
 			
 			// Table 3.3
-			this.hbox.Spacing     = 12;
-			this.hbox.BorderWidth = 6;
+			DesignerLayout.Margin (this.hbox, 6);
 
 			// Table 3.5
 			this.label.UseMarkup = true;
@@ -111,9 +112,8 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			if (!string.IsNullOrEmpty (message.Icon)) {
 				image = new ImageView ();
 				image.Yalign   = 0.00f;
-				image.Image = ImageService.GetIcon (message.Icon, IconSize.Dialog);
-				hbox.PackStart (image, false, false, 0);
-				hbox.ReorderChild (image, 0);
+				image.Image = ImageService.GetIcon (message.Icon, StockIconSize.Dialog);
+				hbox.Prepend (image);
 			}
 			
 			StringBuilder markup = new StringBuilder (@"<span weight=""bold"" size=""larger"">");
@@ -130,50 +130,53 @@ namespace MonoDevelop.Ide.Gui.Dialogs
 			label.Selectable = true;
 			label.CanFocus = false;
 			
+			// The buttons notify the message and close the dialog themselves, so they are not response action widgets
+			buttonBar = DialogButtonBar.Add (this);
 			foreach (AlertButton button in message.Buttons) {
-				Button newButton = new Button ();
-				newButton.Label        = button.Label;
-				newButton.UseUnderline = true;
-				newButton.UseStock     = button.IsStockButton;
-				if (!String.IsNullOrEmpty (button.Icon))
-					newButton.Image = new ImageView (button.Icon, IconSize.Button);
+				Button newButton = DesignerLayout.Button (button.Label);
+				if (!String.IsNullOrEmpty (button.Icon)) {
+					var content = DesignerLayout.HBox (6);
+					DesignerLayout.Pack (content, new ImageView (button.Icon, StockIconSize.Button));
+					DesignerLayout.Pack (content, new Label (button.Label) { UseUnderline = true });
+					newButton.Label = null;
+					newButton.Child = content;
+				}
 				newButton.Clicked += ButtonClicked;
-				ActionArea.Add (newButton);
+				actionButtons.Add (newButton);
+				DesignerLayout.Pack (buttonBar, newButton);
 			}
 			
 			foreach (var op in message.Options) {
-				CheckButton check = new CheckButton (op.Text);
+				CheckButton check = new CheckButton { Label = op.Text };
 				check.Active = op.Value;
-				labelsBox.PackStart (check, false, false, 0);
+				DesignerLayout.Pack (labelsBox, check);
 				check.Toggled += delegate {
 					message.SetOptionValue (op.Id, check.Active);
 				};
 			}
 			
 			if (message.AllowApplyToAll) {
-				CheckButton check = new CheckButton (GettextCatalog.GetString ("Apply to all"));
-				labelsBox.PackStart (check, false, false, 0);
+				CheckButton check = new CheckButton { Label = GettextCatalog.GetString ("Apply to all") };
+				DesignerLayout.Pack (labelsBox, check);
 				check.Toggled += delegate {
 					ApplyToAll = check.Active;
 				};
 			}
 			
-			//don't show this yet, let the consumer decide when
-			this.Child.ShowAll ();
 		}
 		
 		public void FocusButton (int buttonNumber)
 		{
 			if (buttonNumber == -1)
-				buttonNumber = ActionArea.Children.Length - 1;
-			ActionArea.Children[buttonNumber].GrabFocus ();
+				buttonNumber = actionButtons.Count - 1;
+			actionButtons [buttonNumber].GrabFocus ();
 		}
 
 		void ButtonClicked (object sender, EventArgs e) 
 		{
 			Gtk.Button clickButton = (Gtk.Button)sender;
 			foreach (AlertButton alertButton in buttons) {
-				if (clickButton.Label == alertButton.Label) {
+				if (clickButton == actionButtons [Array.IndexOf (buttons, alertButton)]) {
 					resultButton = alertButton;
 					break;
 				}

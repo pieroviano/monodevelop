@@ -39,7 +39,6 @@ using System.Collections;
 using System.ComponentModel;
 
 using Gtk;
-using Gdk;
 using MonoDevelop.Core;
 using MonoDevelop.Components.PropertyGrid.PropertyEditors;
 using System.Collections.Generic;
@@ -51,24 +50,25 @@ namespace MonoDevelop.Components.PropertyGrid
 {
 	[System.ComponentModel.Category("MonoDevelop.Components")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public class PropertyGrid: Gtk.VBox, IPropertyGrid
+	public class PropertyGrid: Gtk.Box, IPropertyGrid
 	{
 		object currentObject;
 		object[] propertyProviders;
 
 		PropertyGridTable tree;
-		HSeparator helpSeparator;
-		HSeparator toolbarSeparator;
-		VPaned vpaned;
+		Separator helpSeparator;
+		Separator toolbarSeparator;
+		Paned vpaned;
 		
 		IToolbarProvider toolbar;
-		RadioButton catButton;
-		RadioButton alphButton;
+		ToggleButton catButton;
+		ToggleButton alphButton;
 
 		string descTitle, descText;
 		Label descTitleLabel;
 		TextView descTextView;
 		Gtk.Widget descFrame;
+		TextTag descTextFontTag;
 		
 		EditorManager editorManager;
 		
@@ -82,41 +82,39 @@ namespace MonoDevelop.Components.PropertyGrid
 		{
 		}
 		
-		internal PropertyGrid (EditorManager editorManager)
+		internal PropertyGrid (EditorManager editorManager) : base (Orientation.Vertical, 0)
 		{
 			this.editorManager = editorManager;
 			
 			#region Toolbar
 			
 			PropertyGridToolbar tb = new PropertyGridToolbar ();
-			base.PackStart (tb, false, false, 0);
+			base.Append (tb);
 			toolbar = tb;
 			
-			catButton = new RadioButton ((Gtk.RadioButton)null);
+			catButton = new ToggleButton ();
 			catButton.Name = "MonoDevelop.PropertyGridToolbar.GtkRadioButton";
-			catButton.DrawIndicator = false;
-			catButton.Relief = ReliefStyle.None;
-			catButton.Image = new ImageView (MonoDevelop.Ide.Gui.Stock.GroupByCategory, IconSize.Menu);
-			catButton.Image.Show ();
+			catButton.HasFrame = false;
+			catButton.Child = new ImageView (MonoDevelop.Ide.Gui.Stock.GroupByCategory, StockIconSize.Menu);
 			catButton.TooltipText = GettextCatalog.GetString ("Sort in categories");
 			catButton.Toggled += new EventHandler (toolbarClick);
 			toolbar.Insert (catButton, 0);
 			
-			alphButton = new RadioButton (catButton);
+			alphButton = new ToggleButton ();
+			alphButton.Group = catButton;
 			alphButton.Name = "MonoDevelop.PropertyGridToolbar.GtkRadioButton";
-			alphButton.DrawIndicator = false;
-			alphButton.Relief = ReliefStyle.None;
-			alphButton.Image = new ImageView (MonoDevelop.Ide.Gui.Stock.SortAlphabetically, IconSize.Menu);
-			alphButton.Image.Show ();
+			alphButton.HasFrame = false;
+			alphButton.Child = new ImageView (MonoDevelop.Ide.Gui.Stock.SortAlphabetically, StockIconSize.Menu);
 			alphButton.TooltipText = GettextCatalog.GetString ("Sort alphabetically");
-			alphButton.Clicked += new EventHandler (toolbarClick);
+			alphButton.Toggled += new EventHandler (toolbarClick);
 			toolbar.Insert (alphButton, 1);
 			
 			catButton.Active = true;
 			
 			#endregion
 
-			vpaned = new VPaned ();
+			vpaned = new Paned (Orientation.Vertical);
+			vpaned.Vexpand = true;
 
 			tree = new PropertyGridTable (editorManager, this);
 			tree.Changed += delegate {
@@ -124,27 +122,28 @@ namespace MonoDevelop.Components.PropertyGrid
 			};
 
 			CompactScrolledWindow sw = new CompactScrolledWindow ();
-			sw.AddWithViewport (tree);
-			((Gtk.Viewport)sw.Child).ShadowType = Gtk.ShadowType.None;
-			sw.ShadowType = Gtk.ShadowType.None;
+			sw.Child = tree;
+			sw.HasFrame = false;
+			sw.Vexpand = true;
 			sw.HscrollbarPolicy = PolicyType.Never;
 			sw.VscrollbarPolicy = PolicyType.Automatic;
 
-			VBox tbox = new VBox ();
-			toolbarSeparator = new HSeparator ();
+			var tbox = new Box (Orientation.Vertical, 0);
+			toolbarSeparator = new Separator (Orientation.Horizontal);
 			toolbarSeparator.Visible = true;
-			tbox.PackStart (toolbarSeparator, false, false, 0);
-			tbox.PackStart (sw, true, true, 0);
-			helpSeparator = new HSeparator ();
-			tbox.PackStart (helpSeparator, false, false, 0);
-			helpSeparator.NoShowAll = true;
-			vpaned.Pack1 (tbox, true, true);
+			tbox.Append (toolbarSeparator);
+			tbox.Append (sw);
+			helpSeparator = new Separator (Orientation.Horizontal);
+			helpSeparator.Visible = false;
+			tbox.Append (helpSeparator);
+			vpaned.StartChild = tbox;
+			vpaned.ResizeStartChild = true;
+			vpaned.ShrinkStartChild = true;
 			
 			AddPropertyTab (new DefaultPropertyTab ());
 			AddPropertyTab (new EventPropertyTab ());
 
-			base.PackEnd (vpaned);
-			base.FocusChain = new Gtk.Widget [] { vpaned };
+			base.Append (vpaned);
 			
 			Populate (saveEditSession: false);
 			UpdateTabs ();
@@ -157,12 +156,11 @@ namespace MonoDevelop.Components.PropertyGrid
 			PropertyGridToolbar t = toolbar as PropertyGridToolbar;
 			if (t == null)
 				throw new InvalidOperationException ("Custom toolbar provider already set");
-			Remove (t);
+			base.Remove (t);
 			foreach (Widget w in t.Children) {
 				t.Remove (w);
 				toolbarProvider.Insert (w, -1);
 			}
-			t.Destroy ();
 			toolbarSeparator.Hide ();
 			toolbar = toolbarProvider;
 			UpdateTabs ();
@@ -183,19 +181,21 @@ namespace MonoDevelop.Components.PropertyGrid
 		
 		void toolbarClick (object sender, EventArgs e)
 		{
-			if (sender == alphButton)
-				PropertySort = PropertySort.Alphabetical;
-			else if (sender == catButton)
-				PropertySort = PropertySort.Categorized;
+			if (sender == alphButton || sender == catButton) {
+				// radio group: only react to the button that became active
+				if (!((ToggleButton) sender).Active)
+					return;
+				PropertySort = sender == alphButton ? PropertySort.Alphabetical : PropertySort.Categorized;
+			}
 			else {
 				TabRadioToolButton button = (TabRadioToolButton) sender;
-				if (selectedTab == button.Tab) return;
+				if (!button.Active || selectedTab == button.Tab) return;
 				selectedTab = button.Tab;
 				Populate (saveEditSession: true);
 			}
 			// If the tree is re-populated while a value is being edited, the focus that the value editor had
 			// is not returned back to the tree. We need to explicitly get it.
-			tree.GrabFocus ();
+			tree?.GrabFocus ();
 		}
 		
 		public PropertySort PropertySort {
@@ -216,27 +216,28 @@ namespace MonoDevelop.Components.PropertyGrid
 		}
 		
 		TabRadioToolButton firstTab;
-		SeparatorToolItem tabSectionSeparator;
+		Separator tabSectionSeparator;
 		
 		private void AddPropertyTab (PropertyTab tab)
 		{
 			TabRadioToolButton rtb;
 			if (propertyTabs.Count == 0) {
 				selectedTab = tab;
-				rtb = new TabRadioToolButton (null);
+				rtb = new TabRadioToolButton ();
 				rtb.Active = true;
 				firstTab = rtb;
-				toolbar.Insert (tabSectionSeparator = new SeparatorToolItem (), FirstTabIndex - 1);
+				toolbar.Insert (tabSectionSeparator = new Separator (Orientation.Vertical), FirstTabIndex - 1);
 			}
 			else
-				rtb = new TabRadioToolButton (firstTab);
+				rtb = new TabRadioToolButton ();
+				rtb.Group = firstTab;
 			
 			//load image from PropertyTab's bitmap
 			var icon = tab.GetIcon ();
 			if (icon != null)
-				rtb.Image = new ImageView (icon);
+				rtb.Child = new ImageView (icon);
 			else
-				rtb.Image = new ImageView (MonoDevelop.Ide.ImageService.GetIcon (Stock.MissingImage, IconSize.Menu));
+				rtb.Child = new ImageView (MonoDevelop.Ide.ImageService.GetIcon ("gtk-missing-image", StockIconSize.Menu));
 			
 			rtb.Tab = tab;
 			rtb.TooltipText = tab.TabName;
@@ -339,11 +340,6 @@ namespace MonoDevelop.Components.PropertyGrid
 			set { toolbar.Visible = toolbarSeparator.Visible = value; }
 		}
 		
-		public ShadowType ShadowType {
-			get { return tree.ShadowType; }
-			set { tree.ShadowType = value; }
-		}
-		
 		#region Hel Pane
 		
 		public bool ShowHelp
@@ -369,35 +365,40 @@ namespace MonoDevelop.Components.PropertyGrid
 		
 		void AddHelpPane ()
 		{
-			VBox desc = new VBox (false, 0);
+			var desc = new Box (Orientation.Vertical, 0);
 
 			descTitleLabel = new Label ();
-			descTitleLabel.SetAlignment(0, 0);
-			descTitleLabel.SetPadding (5, 2);
+			descTitleLabel.Xalign = 0;
+			descTitleLabel.Yalign = 0;
+			descTitleLabel.MarginStart = descTitleLabel.MarginEnd = 5;
+			descTitleLabel.MarginTop = descTitleLabel.MarginBottom = 2;
 			descTitleLabel.UseMarkup = true;
-			desc.PackStart (descTitleLabel, false, false, 0);
+			desc.Append (descTitleLabel);
 
 			ScrolledWindow textScroll = new ScrolledWindow ();
-			textScroll.HscrollbarPolicy = PolicyType.Never;
-			textScroll.VscrollbarPolicy = PolicyType.Automatic;
-			
-			desc.PackEnd (textScroll, true, true, 0);
+			textScroll.SetPolicy (PolicyType.Never, PolicyType.Automatic);
+			textScroll.Vexpand = true;
+			desc.Append (textScroll);
 			
 			//TODO: Use label, but wrapping seems dodgy.
 			descTextView = new TextView ();
-			descTextView.WrapMode = WrapMode.Word;
+			descTextView.WrapMode = Gtk.WrapMode.Word;
 			descTextView.WidthRequest = 1;
 			descTextView.HeightRequest = 70;
 			descTextView.Editable = false;
 			descTextView.LeftMargin = 5;
 			descTextView.RightMargin = 5;
-			descTextView.ModifyFont (IdeServices.FontService.SansFont.CopyModified (Ide.Gui.Styles.FontScale11));
+			descTextFontTag = new TextTag ("help-font") {
+				FontDesc = IdeServices.FontService.SansFont.CopyModified (Ide.Gui.Styles.FontScale11)
+			};
+			descTextView.Buffer.TagTable.Add (descTextFontTag);
 			
-			textScroll.Add (descTextView);
+			textScroll.Child = descTextView;
 			
 			descFrame = desc;
-			vpaned.Pack2 (descFrame, false, true);
-			descFrame.ShowAll ();
+			vpaned.EndChild = descFrame;
+			vpaned.ResizeEndChild = false;
+			vpaned.ShrinkEndChild = true;
 			UpdateHelp ();
 		}
 		
@@ -412,9 +413,10 @@ namespace MonoDevelop.Components.PropertyGrid
 		{
 			if (!ShowHelp)
 				return;
-			descTextView.Buffer.Clear ();
-			if (descText != null)
-				descTextView.Buffer.InsertAtCursor (descText);
+			descTextView.Buffer.Text = descText ?? string.Empty;
+			TextIter start, end;
+			descTextView.Buffer.GetBounds (out start, out end);
+			descTextView.Buffer.ApplyTag (descTextFontTag, start, end);
 			descTitleLabel.Markup = descTitle != null?
 				"<b>" + descTitle + "</b>" : string.Empty;
 		}
@@ -434,25 +436,39 @@ namespace MonoDevelop.Components.PropertyGrid
 
 		public interface IToolbarProvider
 		{
+			/// <summary>Inserts <paramref name="w"/> at position <paramref name="pos"/> (-1 appends).</summary>
 			void Insert (Widget w, int pos);
 			Widget[] Children { get; }
-			void ShowAll ();
 			bool Visible { get; set; }
 		}
 		
-		class PropertyGridToolbar: HBox, IToolbarProvider
+		class PropertyGridToolbar: Box, IToolbarProvider
 		{
-			public PropertyGridToolbar ()
+			public PropertyGridToolbar () : base (Orientation.Horizontal, 3)
 			{
-				Spacing = 3;
 			}
 			
 			public void Insert (Widget w, int pos)
 			{
-				PackStart (w, false, false, 0);
-				if (pos != -1) {
-					Box.BoxChild bc = (Box.BoxChild) this [w];
-					bc.Position = pos;
+				if (pos <= 0 && pos != -1) {
+					Prepend (w);
+					return;
+				}
+				var previous = FirstChild;
+				for (int i = 1; pos != -1 && previous != null && i < pos; i++)
+					previous = previous.NextSibling;
+				if (pos == -1 || previous == null)
+					Append (w);
+				else
+					InsertChildAfter (w, previous);
+			}
+
+			public Widget[] Children {
+				get {
+					var list = new List<Widget> ();
+					for (var c = FirstChild; c != null; c = c.NextSibling)
+						list.Add (c);
+					return list.ToArray ();
 				}
 			}
 		}
@@ -460,13 +476,12 @@ namespace MonoDevelop.Components.PropertyGrid
 		#endregion
 	}
 	
-	class TabRadioToolButton: RadioButton
+	class TabRadioToolButton: ToggleButton
 	{
-		public TabRadioToolButton (RadioButton group): base (group)
+		public TabRadioToolButton ()
 		{
-			DrawIndicator = false;
-			Relief = ReliefStyle.None;
-			NoShowAll = true;
+			HasFrame = false;
+			Visible = false;
 			Name = "MonoDevelop.PropertyGridToolbar.GtkRadioButton";
 		}
 		

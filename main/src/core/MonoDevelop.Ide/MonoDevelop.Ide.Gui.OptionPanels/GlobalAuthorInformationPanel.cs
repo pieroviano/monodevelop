@@ -50,7 +50,7 @@ namespace MonoDevelop.Ide.Gui.OptionPanels
 		}
 	}
 	
-	partial class GlobalAuthorInformationPanelWidget : Gtk.Bin
+	partial class GlobalAuthorInformationPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		
 		public GlobalAuthorInformationPanelWidget()

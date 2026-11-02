@@ -85,7 +85,7 @@ namespace MonoDevelop.Components.DockNotebook
 
 				// value is in the TabStrip's coordinate space, whereas we need to set the button in the tab space.
 				cocoaFrame.X = (int)value.X;// - allocation.X;
-				int halfParentHeight = (int)(strip.Allocation.Height / 2);
+				int halfParentHeight = strip.Height / 2;
 				double dy = value.Y - halfParentHeight;
 				cocoaFrame.Y = (int) ((halfParentHeight + dy) - ((int)value.Height / 2));
 				cocoaFrame.Width = (int) value.Width;

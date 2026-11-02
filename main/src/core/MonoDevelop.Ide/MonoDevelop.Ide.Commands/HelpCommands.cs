@@ -113,7 +113,7 @@ namespace MonoDevelop.Ide.Commands
 		void DumpGtkWidget (Gtk.Widget widget, int indent = 0)
 		{
 			string spacer = new string (' ', indent);
-			Console.WriteLine ($"{spacer} {widget.Accessible.Name} - {widget.GetType ()}");
+			Console.WriteLine ($"{spacer} {widget.Name} - {widget.GetType ()}");
 			if (widget.GetType () == typeof (Gtk.Label)) {
 				var label = (Gtk.Label)widget;
 				Console.WriteLine ($"{spacer}   {label.Text}");
@@ -122,10 +122,11 @@ namespace MonoDevelop.Ide.Commands
 				Console.WriteLine ($"{spacer}   {button.Label}");
 			}
 
-			var container = widget as Gtk.Container;
-			if (container != null) {
-				var children = container.Children;
-				Console.WriteLine ($"{spacer}   Number of children: {children.Length}");
+			var children = new System.Collections.Generic.List<Gtk.Widget> ();
+			for (var child = widget.FirstChild; child != null; child = child.NextSibling)
+				children.Add (child);
+			if (children.Count > 0) {
+				Console.WriteLine ($"{spacer}   Number of children: {children.Count}");
 
 				foreach (var child in children) {
 					DumpGtkWidget (child, indent + 3);
@@ -136,7 +137,7 @@ namespace MonoDevelop.Ide.Commands
 		protected override void Run ()
 		{
 			var windows = Gtk.Window.ListToplevels ();
-			Console.WriteLine ($"---------\nNumber of windows: {windows}");
+			Console.WriteLine ($"---------\nNumber of windows: {windows.Length}");
 			foreach (var window in windows) {
 				Console.WriteLine ($"Window: {window.Title} - {window.GetType ()}");
 				DumpGtkWidget (window);

@@ -32,7 +32,7 @@ using System.Text;
 
 namespace MonoDevelop.Ide.Projects
 {
-	class NewProjectOptionsWidget : Bin
+	class NewProjectOptionsWidget : MonoDevelop.Components.BinWidget
 	{
 		Entry nameEntry;
 		FileEntry locationEntry;
@@ -47,23 +47,18 @@ namespace MonoDevelop.Ide.Projects
 		
 		public NewProjectOptionsWidget ()
 		{
-			BinContainer.Attach (this);
-			
-			AttachOptions fill = AttachOptions.Fill;
-			AttachOptions expand = AttachOptions.Expand | fill;
-			AttachOptions shrink = AttachOptions.Shrink;
-			
-			var table = new Table (5, 3, false) {
+			var table = new Grid {
 				ColumnSpacing = 4,
 				RowSpacing = 4,
 			};
-			uint row = 0;
+			int row = 0;
 			
 			var header = new Label (GettextCatalog.GetString ("<b>Project Options</b>")) {
 				Xalign = 0,
 				UseMarkup = true,
 			};
-			table.Attach (header, 0, 3, row, row + 1, expand, shrink, 0, 0);
+			header.Hexpand = true;
+			table.Attach (header, 0, row, 3, 1);
 			
 			row++;
 			
@@ -74,8 +69,9 @@ namespace MonoDevelop.Ide.Projects
 				MnemonicWidget = nameEntry,
 				Xalign = 0,
 			};
-			table.Attach (nameLabel, 0, 1, row, row+1, fill, shrink, 0, 0);
-			table.Attach (nameEntry, 1, 3, row, row+1, expand, shrink, 0, 0);
+			table.Attach (nameLabel, 0, row, 1, 1);
+			nameEntry.Hexpand = true;
+			table.Attach (nameEntry, 1, row, 2, 1);
 			
 			row++;
 			
@@ -88,8 +84,9 @@ namespace MonoDevelop.Ide.Projects
 				MnemonicWidget = locationEntry,
 				Xalign = 0,
 			};
-			table.Attach (locationLabel, 0, 1, row, row+1, fill, shrink, 0, 0);
-			table.Attach (locationEntry, 1, 3, row, row+1, expand, shrink, 0, 0);
+			table.Attach (locationLabel, 0, row, 1, 1);
+			locationEntry.Hexpand = true;
+			table.Attach (locationEntry, 1, row, 2, 1);
 			
 			solutionNameEntry = new Entry ();
 			solutionNameEntry.Sensitive = false;
@@ -101,7 +98,8 @@ namespace MonoDevelop.Ide.Projects
 				MnemonicWidget = solutionNameEntry,
 				Xalign = 0,
 			};
-			createSolutionDirectoryCheck = new CheckButton (GettextCatalog.GetString ("_Create directory for solution")) {
+			createSolutionDirectoryCheck = new CheckButton {
+				Label = GettextCatalog.GetString ("_Create directory for solution"),
 				UseUnderline = true,
 			};
 			createSolutionDirectoryCheck.Toggled += delegate {
@@ -111,19 +109,19 @@ namespace MonoDevelop.Ide.Projects
 			
 			row++;
 			
-			table.Attach (solutionNameLabel, 0, 1, row, row+1, fill, shrink, 0, 0);
-			table.Attach (solutionNameEntry, 1, 2, row, row+1, expand, shrink, 0, 0);
-			table.Attach (createSolutionDirectoryCheck, 2, 3, row, row+1, fill, shrink, 0, 0);
+			table.Attach (solutionNameLabel, 0, row, 1, 1);
+			solutionNameEntry.Hexpand = true;
+			table.Attach (solutionNameEntry, 1, row, 1, 1);
+			table.Attach (createSolutionDirectoryCheck, 2, row, 1, 1);
 			
 			row++;
 			
 			saveInLabel = new Label () {
 				Xalign = 0,
 			};
-			table.Attach (saveInLabel, 1, 3, row, row+1, fill, shrink, 0, 0);
+			table.Attach (saveInLabel, 1, row, 2, 1);
 			
-			table.ShowAll ();
-			this.Add (table);
+			Child = table;
 		}
 
 		void NameChanged (object sender, EventArgs e)

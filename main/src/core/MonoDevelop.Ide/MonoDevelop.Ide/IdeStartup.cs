@@ -660,7 +660,7 @@ namespace MonoDevelop.Ide
 				var info = new AlertButton (GettextCatalog.GetString ("More Information"));
 				var cont = new AlertButton (GettextCatalog.GetString ("Continue Anyway"));
 				while (true) {
-					var res = MessageService.GenericAlert (Gtk.Stock.DialogWarning, message, BrandingService.BrandApplicationName (detail), info, cont, close);
+					var res = MessageService.GenericAlert (MonoDevelop.Ide.Gui.GtkStock.DialogWarning, message, BrandingService.BrandApplicationName (detail), info, cont, close);
 					if (res == close) {
 						LoggingService.LogInternalError ("SCPlugin detected", new Exception ("SCPlugin detected. Closing."));
 						return false;
