@@ -25,45 +25,24 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
-using Gdk;
 using Xwt.Motion;
 
 namespace MonoDevelop.Components
 {
-	public class PopoverWidget: Gtk.EventBox, IAnimatable
+	/// <summary>Widget drawing the <see cref="PopoverWindowTheme"/> chrome (border, arrow, pager, shadow) around its content.</summary>
+	public class PopoverWidget: ContainerWidget, IAnimatable
 	{
 		PopoverWindowTheme theme;
 
 		PopupPosition position;
-		Gtk.Alignment alignment;
-
-		Gdk.Size targetSize;
-		Gdk.Size paintSize;
-
-		bool disableSizeCheck;
+		readonly BinWidget alignment;
 
 		const int MinArrowSpacing = 5;
 
 		public PopoverWidget ()
 		{
-			AppPaintable = true;
-			VisibleWindow = false;
-
-			alignment = new Alignment (0, 0, 1f, 1f);
-			alignment.Show ();
-			Add (alignment);
-
-			disableSizeCheck = false;
-
-			SizeRequested += (object o, SizeRequestedArgs args) => {
-				if (this.AnimationIsRunning("Resize") && !disableSizeCheck) {
-					Gtk.Requisition result = new Gtk.Requisition ();
-					result.Width  = Math.Max (args.Requisition.Width, Math.Max (Allocation.Width, targetSize.Width));
-					result.Height = Math.Max (args.Requisition.Height, Math.Max (Allocation.Height, targetSize.Height));
-					args.Requisition = result;
-				}
-			};
+			alignment = new BinWidget ();
+			AddChild (alignment);
 
 			UpdatePadding ();
 		}
@@ -85,9 +64,11 @@ namespace MonoDevelop.Components
 				if (theme == value)
 					return;
 
-				theme.RedrawNeeded -= OnRedrawNeeded;
+				if (theme != null)
+					theme.RedrawNeeded -= OnRedrawNeeded;
 				theme = value;
-				theme.RedrawNeeded += OnRedrawNeeded;
+				if (theme != null)
+					theme.RedrawNeeded += OnRedrawNeeded;
 
 				UpdatePadding ();
 				QueueDraw ();
@@ -99,78 +80,44 @@ namespace MonoDevelop.Components
 			set { Theme.ShowArrow = value; }
 		}
 
-		public Gtk.Alignment ContentBox {
+		/// <summary>Content container: set its <c>Child</c> (GTK 2: <c>Gtk.Alignment.Add</c>).</summary>
+		public BinWidget ContentBox {
 			get { return alignment; }
 		}
 
 		public PopupPosition PopupPosition {
 			get { return position; }
-			set { Theme.TargetPosition = position = value; }
+			set {
+				Theme.TargetPosition = position = value;
+				UpdatePadding ();
+			}
 		}
 		
+		/// <summary>GTK 4: size changes are not animated any more; queues a resize.</summary>
 		public void AnimatedResize ()
 		{
-			if (!EnableAnimation || !GtkUtil.ScreenSupportsARGB ()) {
-				QueueResize();
-				return;
-			}
-
-			disableSizeCheck = true;
-			Gtk.Requisition sizeReq = Gtk.Requisition.Zero;
-			// use OnSizeRequested instead of SizeRequest to bypass internal GTK caching
-			OnSizeRequested (ref sizeReq);
-			disableSizeCheck = false;
-
-			Gdk.Size size = new Gdk.Size (sizeReq.Width, sizeReq.Height);
-
-			// ensure that our apint area is big enough for our padding
-			if (paintSize.Width <= 15 || paintSize.Height <= 15)
-				paintSize = size;
-
-			targetSize = size;
-			Gdk.Size start = paintSize;
-			Func<double, Gdk.Size> transform = x => new Gdk.Size ((int)(start.Width + (size.Width - start.Width) * x),
-			                                                     (int)(start.Height + (size.Height - start.Height) * x));
-			this.Animate ("Resize",
-			              transform,
-			              s => paintSize = s,
-			              length: 150,
-			              easing: Easing.SinInOut,
-			              finished: (x, aborted) => { if (!aborted) MaybeReanimate(); });
 			QueueResize ();
 		}
 
-		protected override void OnDestroyed ()
+		protected override void OnUnrealized ()
 		{
 			this.AbortAnimation ("Resize");
-			base.OnDestroyed ();
+			base.OnUnrealized ();
 		}
 
-		void MaybeReanimate ()
-		{
-			disableSizeCheck = true;
-			Gtk.Requisition sizeReq = Gtk.Requisition.Zero;
-			OnSizeRequested (ref sizeReq);
-			disableSizeCheck = false;
-
-			if (sizeReq.Width == paintSize.Width && sizeReq.Height == paintSize.Height)
-				QueueResize ();
-			else
-				AnimatedResize (); //Desired size changed mid animation
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
 			if ((position & PopupPosition.Top) != 0 || (position & PopupPosition.Bottom) != 0)
-				theme.ArrowOffset = Allocation.Width / 2;
+				Theme.ArrowOffset = Width / 2;
 			else
-				theme.ArrowOffset = Allocation.Height / 2;
+				Theme.ArrowOffset = Height / 2;
 
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
+			var border = BorderAllocation;
+			snapshot.DrawCairo (this, context => {
 				context.Save ();
-				Theme.SetBorderPath (context, BorderAllocation, position);
+				Theme.SetBorderPath (context, border, position);
 				context.Clip ();
-				OnDrawContent (evnt, context); // Draw content first so we can easily clip it
+				OnDrawContent (context); // Draw content first so we can easily clip it
 				context.Restore ();
 
 
@@ -179,36 +126,41 @@ namespace MonoDevelop.Components
 				if (Theme.DrawPager) {
 					Theme.RenderPager (context, 
 					                   PangoContext,
-					                   BorderAllocation);
+					                   border);
 				}
 
-				Theme.RenderShadow (context, BorderAllocation, position);
+				Theme.RenderShadow (context, border, position);
 				context.Restore ();
-			}
-			return base.OnExposeEvent (evnt);
+			});
+			base.OnSnapshot (snapshot);
 		}
 
-		protected virtual void OnDrawContent (Gdk.EventExpose evnt, Cairo.Context context)
+		/// <summary>Draws the background (already clipped to the border path); (0,0) is the widget origin.</summary>
+		protected virtual void OnDrawContent (Cairo.Context context)
 		{
-			Theme.RenderBackground (context, new Gdk.Rectangle (Allocation.X, Allocation.Y, paintSize.Width, paintSize.Height));
+			Theme.RenderBackground (context, new Gdk.Rectangle (0, 0, Width, Height));
 		}
 
 		void UpdatePadding ()
 		{
-			uint top,left,bottom,right;
-			top = left = bottom = right = (uint)Theme.Padding + 1;
+			if (alignment == null)
+				return;
+			int top,left,bottom,right;
+			top = left = bottom = right = Theme.Padding + 1;
 
 			if (ShowArrow) {
 				if ((position & PopupPosition.Top) != 0)
-					top += (uint)Theme.ArrowLength;
+					top += Theme.ArrowLength;
 				else if ((position & PopupPosition.Bottom) != 0)
-					bottom += (uint)Theme.ArrowLength;
+					bottom += Theme.ArrowLength;
 				else if ((position & PopupPosition.Left) != 0)
-					left += (uint)Theme.ArrowLength;
+					left += Theme.ArrowLength;
 				else if ((position & PopupPosition.Right) != 0)
-					right += (uint)Theme.ArrowLength;
+					right += Theme.ArrowLength;
 			}
-			alignment.SetPadding (top, bottom, left, right);
+			var p = new Gtk.Border { Top = (short)top, Bottom = (short)bottom, Left = (short)left, Right = (short)right };
+			if (!p.Equals (alignment.Padding))
+				alignment.Padding = p;
 		}
 
 		void OnRedrawNeeded (object sender, EventArgs args)
@@ -217,15 +169,7 @@ namespace MonoDevelop.Components
 			QueueDraw ();
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
-		{
-			if (!this.AnimationIsRunning ("Resize"))
-				paintSize = new Gdk.Size (allocation.Width, allocation.Height);
-
-			base.OnSizeAllocated (allocation);
-		}
-
-		protected Rectangle ChildAllocation {
+		protected Gdk.Rectangle ChildAllocation {
 			get {
 				var rect = BorderAllocation;
 				rect.Inflate (-Theme.Padding - 1, -Theme.Padding - 1);
@@ -233,9 +177,9 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		Rectangle BorderAllocation {
+		Gdk.Rectangle BorderAllocation {
 			get {
-				var rect = new Gdk.Rectangle (Allocation.X, Allocation.Y, paintSize.Width, paintSize.Height);
+				var rect = new Gdk.Rectangle (0, 0, Width, Height);
 				if (ShowArrow) {
 					if ((position & PopupPosition.Top) != 0) {
 						rect.Y += Theme.ArrowLength;
@@ -254,6 +198,6 @@ namespace MonoDevelop.Components
 				}
 				return rect;
 			}
-		}	}
+		}
+	}
 }
-

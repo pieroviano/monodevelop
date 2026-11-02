@@ -27,42 +27,39 @@
 //
 
 
+using System;
 using MonoDevelop.Ide;
-using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
-	public abstract class TooltipWindow : Gtk.Window
+	/// <summary>
+	/// Tooltip popup. GTK 4 cannot position toplevels: this is a non-modal <see cref="Gtk.Popover"/>; set its
+	/// <c>Child</c> and show it with <see cref="ShowPopup"/> (anchor widget + area in anchor coordinates).
+	/// </summary>
+	public abstract class TooltipWindow : Gtk.Popover
 	{
 		WindowTransparencyDecorator decorator;
 		
 		public string LinkColor {
 			get {
-				var color = HslColor.GenerateHighlightColors (Style.Background (State), Style.Text (State), 3)[2];
+				HslColor color = Ide.Gui.Styles.LinkForegroundColor;
 				return color.ToPangoString ();
 			}
 		}
 		
-		protected TooltipWindow () : base (Gtk.WindowType.Popup)
+		protected TooltipWindow ()
 		{
-			this.SkipPagerHint = true;
-			this.SkipTaskbarHint = true;
-			this.Decorated = false;
-			this.BorderWidth = 2;
-			this.TypeHint = WindowTypeHint.Tooltip;
-			this.AllowShrink = false;
-			this.AllowGrow = false;
-			this.Title = "tooltip"; // fixes the annoying '** Message: ATK_ROLE_TOOLTIP object found, but doesn't look like a tooltip.** Message: ATK_ROLE_TOOLTIP object found, but doesn't look like a tooltip.'
-			
-			//fake widget name for stupid theme engines
-			this.Name = "gtk-tooltip";
+			Autohide = false;
+			HasArrow = false;
+			CanFocus = false;
 		}
 		
+		/// <summary>GTK 4 keeps popovers on screen itself; kept for API compatibility.</summary>
 		public bool NudgeVertical {
 			get; set;
 		}
 		
+		/// <summary>GTK 4 keeps popovers on screen itself; kept for API compatibility.</summary>
 		public bool NudgeHorizontal {
 			get; set;
 		}
@@ -72,86 +69,32 @@ namespace MonoDevelop.Components
 			set {
 				if (value && decorator == null)
 					decorator = WindowTransparencyDecorator.Attach (this);
-				else if (!value && decorator != null)
+				else if (!value && decorator != null) {
 					decorator.Detach ();
+					decorator = null;
+				}
 			}
 		}
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+
+		/// <summary>Anchors the tooltip to <paramref name="anchor"/>, pointing at <paramref name="area"/> (anchor coordinates), and shows it.</summary>
+		public void ShowPopup (Gtk.Widget anchor, Gdk.Rectangle area, Gtk.PositionType position = Gtk.PositionType.Bottom)
 		{
-			int winWidth, winHeight;
-			this.GetSize (out winWidth, out winHeight);
-			Gtk.Style.PaintFlatBox (Style, this.GdkWindow, StateType.Normal, ShadowType.Out, evnt.Area, this, "tooltip", 0, 0, winWidth, winHeight);
-			foreach (var child in this.Children)
-				this.PropagateExpose (child, evnt);
-			return false;
+			if (anchor == null)
+				throw new ArgumentNullException (nameof (anchor));
+			this.Reparent (anchor);
+			this.ShowAt (area, position);
 		}
-		
-		protected override void OnDestroyed ()
+
+		/// <summary>Pops the tooltip down and detaches it from its anchor.</summary>
+		public override void Destroy ()
 		{
-			base.OnDestroyed ();
-			if (decorator != null) {
+			if (decorator != null) {
 				decorator.Detach ();
-				decorator = null;
+				decorator = null;
 			}
+			if (Handle != IntPtr.Zero && Visible)
+				Popdown ();
+			base.Destroy ();
 		}
-		
-		
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			if (NudgeHorizontal || NudgeVertical) {
-				int x, y;
-				this.GetPosition (out x, out y);
-				int oldY = y, oldX = x;
-				const int edgeGap = 2;
-				
-//				int w = allocation.Width;
-//				
-//				if (fitWidthToScreen && (x + w >= screenW - edgeGap)) {
-//					int fittedWidth = screenW - x - edgeGap;
-//					if (fittedWidth < minFittedWidth) {
-//						x -= (minFittedWidth - fittedWidth);
-//						fittedWidth = minFittedWidth;
-//					}
-//					LimitWidth (fittedWidth);
-//				}
-				
-				Xwt.Rectangle geometry = IdeServices.DesktopService.GetUsableMonitorGeometry (Screen.Number, Screen.GetMonitorAtPoint (x, y));
-				int left = (int)geometry.Left;
-				int top = (int)geometry.Top;
-				int width = (int)geometry.Width;
-				int height = (int)geometry.Height;
-				if (NudgeHorizontal) {
-					if (allocation.Width <= geometry.Width && x + allocation.Width >= geometry.Left + geometry.Width - edgeGap)
-						x = left + (width - allocation.Width - edgeGap);
-					if (x <= left + edgeGap)
-						x = left + edgeGap;
-				}
-				
-				if (NudgeVertical) {
-					if (allocation.Height <= geometry.Height && y + allocation.Height >= geometry.Top + geometry.Height - edgeGap)
-						y = top + (height - allocation.Height - edgeGap);
-					if (y <= top + edgeGap)
-						y = top + edgeGap;
-				}
-				
-				if (y != oldY || x != oldX)
-					Move (x, y);
-			}
-			
-			base.OnSizeAllocated (allocation);
-		}
-		
-//		void LimitWidth (int width)
-//		{
-//			if (Child is MonoDevelop.Components.FixedWidthWrapLabel) 
-//				((MonoDevelop.Components.FixedWidthWrapLabel)Child).MaxWidth = width - 2 * (int)this.BorderWidth;
-//			
-//			int childWidth = Child.SizeRequest ().Width;
-//			if (childWidth < width)
-//				WidthRequest = childWidth;
-//			else
-//				WidthRequest = width;
-//		}
 	}
 }

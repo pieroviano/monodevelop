@@ -29,7 +29,6 @@
 using System;
 using System.Collections.Generic;
 using Gtk;
-using Gdk;
 using Cairo;
 
 namespace MonoDevelop.Components.Theming
@@ -72,10 +71,10 @@ namespace MonoDevelop.Components.Theming
 
 		protected virtual void OnColorsRefreshed ()
 		{
-			selection_fill = colors.GetWidgetColor (GtkColorClass.Dark, StateType.Active);
-			selection_stroke = colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected);
+			selection_fill = colors.GetWidgetColor (GtkColorClass.Dark, StateFlags.Active);
+			selection_stroke = colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected);
 			
-			view_fill = colors.GetWidgetColor (GtkColorClass.Base, StateType.Normal);
+			view_fill = colors.GetWidgetColor (GtkColorClass.Base, StateFlags.Normal);
 			view_fill_transparent = view_fill;
 			view_fill_transparent.A = 0;
 		}
@@ -100,7 +99,7 @@ namespace MonoDevelop.Components.Theming
 
 		public void DrawFrameBackground (Cairo.Context cr, Gdk.Rectangle alloc, bool baseColor)
 		{
-			DrawFrameBackground (cr, alloc, baseColor ? colors.GetWidgetColor (GtkColorClass.Base, StateType.Normal) : colors.GetWidgetColor (GtkColorClass.Background, StateType.Normal));
+			DrawFrameBackground (cr, alloc, baseColor ? colors.GetWidgetColor (GtkColorClass.Base, StateFlags.Normal) : colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Normal));
 		}
 
 		public void DrawFrameBackground (Cairo.Context cr, Gdk.Rectangle alloc, Cairo.Color color)
@@ -127,7 +126,7 @@ namespace MonoDevelop.Components.Theming
 
 		public void DrawListBackground (Cairo.Context cr, Gdk.Rectangle alloc, bool baseColor)
 		{
-			DrawListBackground (cr, alloc, baseColor ? colors.GetWidgetColor (GtkColorClass.Base, StateType.Normal) : colors.GetWidgetColor (GtkColorClass.Background, StateType.Normal));
+			DrawListBackground (cr, alloc, baseColor ? colors.GetWidgetColor (GtkColorClass.Base, StateFlags.Normal) : colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Normal));
 		}
 
 		public abstract void DrawListBackground (Cairo.Context cr, Gdk.Rectangle alloc, Cairo.Color color);
@@ -142,7 +141,7 @@ namespace MonoDevelop.Components.Theming
 
 		public void DrawColumnHighlight (Cairo.Context cr, Gdk.Rectangle alloc)
 		{
-			DrawColumnHighlight (cr, alloc, colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected));
+			DrawColumnHighlight (cr, alloc, colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected));
 		}
 
 		public abstract void DrawColumnHighlight (Cairo.Context cr, Gdk.Rectangle alloc, Cairo.Color color);
@@ -154,7 +153,7 @@ namespace MonoDevelop.Components.Theming
 
 		public void DrawRowSelection (Cairo.Context cr, int x, int y, int width, int height, bool filled)
 		{
-			DrawRowSelection (cr, x, y, width, height, filled, true, colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected), CairoCorners.All);
+			DrawRowSelection (cr, x, y, width, height, filled, true, colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected), CairoCorners.All);
 		}
 
 		public void DrawRowSelection (Cairo.Context cr, int x, int y, int width, int height, bool filled, bool stroked, Cairo.Color color)
@@ -164,7 +163,7 @@ namespace MonoDevelop.Components.Theming
 
 		public void DrawRowCursor (Cairo.Context cr, int x, int y, int width, int height)
 		{
-			DrawRowCursor (cr, x, y, width, height, colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected));
+			DrawRowCursor (cr, x, y, width, height, colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected));
 		}
 
 		public void DrawRowCursor (Cairo.Context cr, int x, int y, int width, int height, Cairo.Color color)

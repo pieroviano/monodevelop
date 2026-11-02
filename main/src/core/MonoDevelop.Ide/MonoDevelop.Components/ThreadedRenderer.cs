@@ -61,22 +61,17 @@ namespace MonoDevelop.Ide
 		}
 
 		int TargetWidth {
-			get { return (int)(owner.Allocation.Width * Scale); }
+			get { return (int)(owner.Width * Scale); }
 		}
 
 		int TargetHeight {
-			get { return (int)(owner.Allocation.Height * Scale); }
+			get { return (int)(owner.Height * Scale); }
 		}
 
 		void UpdateScale ()
 		{
-			if (MonoDevelop.Core.Platform.IsMac) {
-				using (var similar = Gdk.CairoHelper.Create (owner.GdkWindow)) {
-					Scale = QuartzSurface.GetRetinaScale (similar);
-				}
-			} else {
-				Scale = 1;
-			}
+			// GTK 4: the widget's surface scale replaces the Quartz retina probe.
+			Scale = Math.Max (1, owner.ScaleFactor);
 		}
 
 		public void QueueThreadedDraw (Action<Cairo.Context> drawCallback)
@@ -89,11 +84,10 @@ namespace MonoDevelop.Ide
 			UpdateScale ();
 
 			if (surface == null || surface.Height != TargetHeight || surface.Width != TargetWidth) {
-				using (var similar = Gdk.CairoHelper.Create (owner.GdkWindow)) {
-					if (surface != null)
-						surface.Dispose ();
-					surface = new SurfaceWrapper (similar, TargetWidth, TargetHeight);
-				}
+				// GTK 4 has no per-widget GdkWindow to create a similar surface from: use an image surface.
+				if (surface != null)
+					surface.Dispose ();
+				surface = new SurfaceWrapper (null, TargetWidth, TargetHeight);
 			}
 			runningSignal.Reset ();
 			this.OnDraw (drawCallback);
@@ -109,7 +103,8 @@ namespace MonoDevelop.Ide
 
 			runningSignal.Wait ();
 			context.Scale (1 / Scale, 1 / Scale);
-			surface.Surface.Show (context, owner.Allocation.X * Scale, owner.Allocation.Y * Scale);
+			// GTK 4 snapshot contexts are in widget coordinates (no allocation offset).
+			surface.Surface.Show (context, 0, 0);
 			context.Scale (Scale, Scale);
 			return true;
 		}

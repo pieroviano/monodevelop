@@ -27,8 +27,8 @@
 //
 
 using System;
-using Cairo;
 using Gtk;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components.Theming
 {
@@ -43,11 +43,20 @@ namespace MonoDevelop.Components.Theming
 		Foreground
 	}
 
+	/// <summary>
+	/// GTK 2 style color table (light/mid/dark/base/text/bg/fg per state). GTK 4 cannot query theme colors
+	/// other than the foreground (<see cref="Widget.StyleColor"/>), so the table is derived from the widget
+	/// foreground and MonoDevelop's <see cref="Styles"/> palette, and refreshed when either changes.
+	/// </summary>
 	class GtkColors
 	{
+		// States of the GTK 2 table: Normal, Active, Prelight, Selected, Insensitive.
+		static readonly StateFlags[] states = { StateFlags.Normal, StateFlags.Active, StateFlags.Prelight, StateFlags.Selected, StateFlags.Insensitive };
+
 		private Cairo.Color[] gtk_colors;
 		private Widget widget;
 		private bool refreshing = false;
+		private bool listeningStyles;
 
 		public event EventHandler Refreshed;
 
@@ -58,17 +67,21 @@ namespace MonoDevelop.Components.Theming
 					return;
 				} else if (widget != null) {
 					widget.Realized -= OnWidgetRealized;
-					widget.StyleSet -= OnWidgetStyleSet;
+					widget.Unrealized -= OnWidgetUnrealized;
+					ListenStyles (false);
 				}
-				
+
 				widget = value;
-				
+				if (widget == null)
+					return;
+
 				if (widget.IsRealized) {
+					ListenStyles (true);
 					RefreshColors ();
 				}
-				
+
 				widget.Realized += OnWidgetRealized;
-				widget.StyleSet += OnWidgetStyleSet;
+				widget.Unrealized += OnWidgetUnrealized;
 			}
 		}
 
@@ -76,23 +89,54 @@ namespace MonoDevelop.Components.Theming
 		{
 		}
 
+		void ListenStyles (bool listen)
+		{
+			if (listen == listeningStyles)
+				return;
+			listeningStyles = listen;
+			if (listen)
+				Styles.Changed += OnStylesChanged;
+			else
+				Styles.Changed -= OnStylesChanged;
+		}
+
 		private void OnWidgetRealized (object o, EventArgs args)
 		{
+			ListenStyles (true);
 			RefreshColors ();
 		}
 
-		private void OnWidgetStyleSet (object o, StyleSetArgs args)
+		private void OnWidgetUnrealized (object o, EventArgs args)
+		{
+			ListenStyles (false);
+		}
+
+		private void OnStylesChanged (object o, EventArgs args)
 		{
 			RefreshColors ();
 		}
 
-		public Cairo.Color GetWidgetColor (GtkColorClass @class, StateType state)
+		static int StateIndex (StateFlags state)
+		{
+			// The most specific flag wins, as in GTK 2 where a widget was in exactly one state.
+			if ((state & StateFlags.Insensitive) != 0)
+				return 4;
+			if ((state & StateFlags.Selected) != 0)
+				return 3;
+			if ((state & StateFlags.Active) != 0)
+				return 1;
+			if ((state & StateFlags.Prelight) != 0)
+				return 2;
+			return 0;
+		}
+
+		public Cairo.Color GetWidgetColor (GtkColorClass @class, StateFlags state)
 		{
 			if (gtk_colors == null) {
 				RefreshColors ();
 			}
-			
-			return gtk_colors[(int)@class * ((int)StateType.Insensitive + 1) + (int)state];
+
+			return gtk_colors[(int)@class * states.Length + StateIndex (state)];
 		}
 
 		public void RefreshColors ()
@@ -100,55 +144,70 @@ namespace MonoDevelop.Components.Theming
 			if (refreshing) {
 				return;
 			}
-			
+
 			refreshing = true;
-			
-			int sn = (int)StateType.Insensitive + 1;
+
+			int sn = states.Length;
 			int cn = (int)GtkColorClass.Foreground + 1;
-			
+
 			if (gtk_colors == null) {
 				gtk_colors = new Cairo.Color[sn * cn];
 			}
-			
+
 			for (int c = 0, i = 0; c < cn; c++) {
 				for (int s = 0; s < sn; s++,i++) {
-					Gdk.Color color = Gdk.Color.Zero;
-					
-					if (widget != null && widget.IsRealized) {
-						switch ((GtkColorClass)c) {
-						case GtkColorClass.Light:
-							color = widget.Style.LightColors[s];
-							break;
-						case GtkColorClass.Mid:
-							color = widget.Style.MidColors[s];
-							break;
-						case GtkColorClass.Dark:
-							color = widget.Style.DarkColors[s];
-							break;
-						case GtkColorClass.Base:
-							color = widget.Style.BaseColors[s];
-							break;
-						case GtkColorClass.Text:
-							color = widget.Style.TextColors[s];
-							break;
-						case GtkColorClass.Background:
-							color = widget.Style.Backgrounds[s];
-							break;
-						case GtkColorClass.Foreground:
-							color = widget.Style.Foregrounds[s];
-							break;
-						}
-					} else {
-						color = new Gdk.Color (0, 0, 0);
-					}
-					
-					gtk_colors[c * sn + s] = CairoExtensions.GdkColorToCairoColor (color);
+					gtk_colors[c * sn + s] = widget != null && widget.IsRealized
+						? ComputeColor ((GtkColorClass)c, states [s])
+						: new Cairo.Color (0, 0, 0);
 				}
 			}
-			
+
 			OnRefreshed ();
-			
+
 			refreshing = false;
+		}
+
+		Cairo.Color ComputeColor (GtkColorClass @class, StateFlags state)
+		{
+			bool selected = state == StateFlags.Selected;
+			bool insensitive = state == StateFlags.Insensitive;
+
+			Cairo.Color bg = Styles.BackgroundColor.ToCairoColor ();
+			if (selected)
+				bg = Styles.BaseSelectionBackgroundColor.ToCairoColor ();
+			else if (state == StateFlags.Active)
+				bg = CairoExtensions.ColorShade (bg, 0.9);
+			else if (state == StateFlags.Prelight)
+				bg = CairoExtensions.ColorShade (bg, 1.05);
+
+			switch (@class) {
+			case GtkColorClass.Light:
+				return CairoExtensions.ColorShade (bg, 1.3);
+			case GtkColorClass.Dark:
+				return CairoExtensions.ColorShade (bg, 0.7);
+			case GtkColorClass.Mid:
+				return CairoExtensions.AlphaBlend (CairoExtensions.ColorShade (bg, 1.3), CairoExtensions.ColorShade (bg, 0.7), 0.5);
+			case GtkColorClass.Background:
+				return bg;
+			case GtkColorClass.Base:
+				if (selected)
+					return Styles.BaseSelectionBackgroundColor.ToCairoColor ();
+				if (insensitive)
+					return Styles.BackgroundColor.ToCairoColor ();
+				return Styles.BaseBackgroundColor.ToCairoColor ();
+			case GtkColorClass.Text:
+				if (selected)
+					return Styles.BaseSelectionTextColor.ToCairoColor ();
+				if (insensitive)
+					return Styles.SecondaryTextColor.ToCairoColor ();
+				return Styles.BaseForegroundColor.ToCairoColor ();
+			default: // Foreground
+				if (selected)
+					return Styles.BaseSelectionTextColor.ToCairoColor ();
+				if (insensitive)
+					return Styles.SecondaryTextColor.ToCairoColor ();
+				return widget.StyleColor.ToCairoColor ();
+			}
 		}
 
 		protected virtual void OnRefreshed ()

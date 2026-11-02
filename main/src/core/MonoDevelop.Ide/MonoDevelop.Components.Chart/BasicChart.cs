@@ -28,8 +28,6 @@
 
 using System;
 using System.Collections;
-using Gtk;
-using Gdk;
 using MonoDevelop.Ide.Fonts;
 using MonoDevelop.Ide;
 
@@ -42,6 +40,7 @@ namespace MonoDevelop.Components.Chart
 		public BasicChart ()
 		{
 			widget = new ChartWidget ();
+			widget.Initialize (this);
 		}
 
 		protected override object CreateNativeWidget<T> ()
@@ -154,7 +153,7 @@ namespace MonoDevelop.Components.Chart
 		}
 	}
 
-	class ChartWidget : DrawingArea
+	class ChartWidget : CairoWidget
 	{
 		double startX, endX;
 		double startY, endY;
@@ -192,7 +191,8 @@ namespace MonoDevelop.Components.Chart
 
 		public ChartWidget ()
 		{
-			this.Events = EventMask.ButtonPressMask | EventMask.ButtonReleaseMask | EventMask.PointerMotionMask; 
+			this.AddClickHandler (OnButtonPressed, OnButtonReleased);
+			this.AddMotionHandler (OnPointerMotion);
 			selectionStart = new ChartCursor ();
 			selectionStart.Visible = false;
 			selectionEnd = new ChartCursor ();
@@ -450,15 +450,52 @@ namespace MonoDevelop.Components.Chart
 			return (((double) minTickStep) * (GetEnd (ad) - GetStart (ad))) / (double) GetAreaSize (ad);
 		}
 		
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
+		static readonly Cairo.Color black = new Cairo.Color (0, 0, 0);
+		static readonly Cairo.Color white = new Cairo.Color (1, 1, 1);
+		int rwidth, rheight;
+
+		static Cairo.Color ToCairo (Gdk.RGBA c)
 		{
-			Gdk.Window win = GdkWindow;
-			int rwidth, rheight;
-			
-			Cairo.Context ctx = CairoHelper.Create (win);
-			
-			win.GetSize (out rwidth, out rheight);
-			
+			return new Cairo.Color (c.Red, c.Green, c.Blue, c.Alpha);
+		}
+
+		static void StrokeRectangle (Cairo.Context ctx, Cairo.Color color, int x, int y, int w, int h)
+		{
+			// Same pixels as the GTK 2 unfilled gdk_draw_rectangle: a 1px outline of a (w+1)x(h+1) area.
+			ctx.Rectangle (x + 0.5, y + 0.5, w, h);
+			ctx.SetSourceColor (color);
+			ctx.LineWidth = 1;
+			ctx.Stroke ();
+		}
+
+		static void FillRectangle (Cairo.Context ctx, Cairo.Color color, int x, int y, int w, int h)
+		{
+			ctx.Rectangle (x, y, w, h);
+			ctx.SetSourceColor (color);
+			ctx.Fill ();
+		}
+
+		static void DrawLine (Cairo.Context ctx, Cairo.Color color, int x1, int y1, int x2, int y2)
+		{
+			ctx.MoveTo (x1 + 0.5, y1 + 0.5);
+			ctx.LineTo (x2 + 0.5, y2 + 0.5);
+			ctx.SetSourceColor (color);
+			ctx.LineWidth = 1;
+			ctx.Stroke ();
+		}
+
+		static void DrawLayout (Cairo.Context ctx, Cairo.Color color, int x, int y, Pango.Layout layout)
+		{
+			ctx.MoveTo (x, y);
+			ctx.SetSourceColor (color);
+			Pango.CairoHelper.ShowLayout (ctx, layout);
+		}
+
+		protected override void OnDraw (Cairo.Context ctx, int rwidth, int rheight)
+		{
+			this.rwidth = rwidth;
+			this.rheight = rheight;
+						
 			if (autoStartY || autoEndY) {
 				double nstartY = double.MaxValue;
 				double nendY = double.MinValue;
@@ -546,8 +583,7 @@ namespace MonoDevelop.Components.Chart
 				ctx.SetSourceColor (backroundColor);
 				ctx.Fill ();
 			}
-//			win.DrawRectangle (Style.WhiteGC, true, left - 1, top - 1, width + 2, height + 2);
-			win.DrawRectangle (Style.BlackGC, false, left - AreaBorderWidth, top - AreaBorderWidth, width + AreaBorderWidth*2, height + AreaBorderWidth*2);
+			StrokeRectangle (ctx, black, left - AreaBorderWidth, top - AreaBorderWidth, width + AreaBorderWidth*2, height + AreaBorderWidth*2);
 			
 			// Draw selected area
 			
@@ -558,18 +594,13 @@ namespace MonoDevelop.Components.Chart
 				if (sx > ex) {
 					int tmp = sx; sx = ex; ex = tmp;
 				}
-				using (Gdk.GC sgc = new Gdk.GC (GdkWindow)) {
-					sgc.RgbFgColor = new Color (225, 225, 225);
-					win.DrawRectangle (sgc, true, sx, top, ex - sx, height + 1);
-				}
+				FillRectangle (ctx, new Cairo.Color (225 / 255.0, 225 / 255.0, 225 / 255.0), sx, top, ex - sx, height + 1);
 			}
 			
 			// Draw axes
 			
-			Gdk.GC gc = Style.BlackGC;
-			
 			foreach (Axis ax in axis)
-				DrawAxis (win, gc, ax);
+				DrawAxis (ctx, black, ax);
 			
 			// Draw values
 			foreach (Serie serie in series)
@@ -578,15 +609,12 @@ namespace MonoDevelop.Components.Chart
 
 			// Draw cursors
 			foreach (ChartCursor cursor in cursors)
-				DrawCursor (cursor);
+				DrawCursor (ctx, cursor);
 			
 			// Draw cursor labels
 			foreach (ChartCursor cursor in cursors)
 				if (cursor.ShowValueLabel)
-					DrawCursorLabel (cursor);
-			
-			((IDisposable)ctx).Dispose ();
-			return true;
+					DrawCursorLabel (ctx, cursor);
 		}
 		
 		void GetValueRange (AxisDimension ad, out double min, out double max)
@@ -605,7 +633,7 @@ namespace MonoDevelop.Components.Chart
 			}
 		}
 		
-		void DrawAxis (Gdk.Window win, Gdk.GC gc, Axis ax)
+		void DrawAxis (Cairo.Context ctx, Cairo.Color gc, Axis ax)
 		{
 			double minStep = GetMinTickStep (ax.Dimension);
 			
@@ -616,17 +644,15 @@ namespace MonoDevelop.Components.Chart
 			TickEnumerator enumBig = ax.GetTickEnumerator (minStep * 2);
 			
 			if (enumBig == null) {
-				DrawTicks (win, gc, enumSmall, ax.Position, ax.Dimension, ax.TickSize, ax.ShowLabels);
+				DrawTicks (ctx, gc, enumSmall, ax.Position, ax.Dimension, ax.TickSize, ax.ShowLabels);
 			} else {
-				DrawTicks (win, gc, enumSmall, ax.Position, ax.Dimension, ax.TickSize / 2, false);
-				DrawTicks (win, gc, enumBig, ax.Position, ax.Dimension, ax.TickSize, ax.ShowLabels);
+				DrawTicks (ctx, gc, enumSmall, ax.Position, ax.Dimension, ax.TickSize / 2, false);
+				DrawTicks (ctx, gc, enumBig, ax.Position, ax.Dimension, ax.TickSize, ax.ShowLabels);
 			}
 		}
 		
-		void DrawTicks (Gdk.Window win, Gdk.GC gc, TickEnumerator e, AxisPosition pos, AxisDimension ad, int tickSize, bool showLabels)
+		void DrawTicks (Cairo.Context ctx, Cairo.Color gc, TickEnumerator e, AxisPosition pos, AxisDimension ad, int tickSize, bool showLabels)
 		{
-			int rwidth, rheight;
-			win.GetSize (out rwidth, out rheight);
 			
 			Pango.Layout layout = null;
 			
@@ -687,20 +713,20 @@ namespace MonoDevelop.Components.Chart
 					if (isTop) {
 						if (showLabels) {
 							if (labelFits)
-								win.DrawLayout (gc, px - (tw/2), top - AreaBorderWidth - th, layout);
+								DrawLayout (ctx, gc, px - (tw/2), top - AreaBorderWidth - th, layout);
 							else
 								tick = tick / 2;
 						}
-						win.DrawLine (gc, px, top, px, top + tick);
+						DrawLine (ctx, gc, px, top, px, top + tick);
 					}
 					else {
 						if (showLabels) {
 							if (labelFits)
-								win.DrawLayout (gc, px - (tw/2), top + height + AreaBorderWidth, layout);
+								DrawLayout (ctx, gc, px - (tw/2), top + height + AreaBorderWidth, layout);
 							else
 								tick = tick / 2;
 						}
-						win.DrawLine (gc, px, top + height, px, top + height - tick);
+						DrawLine (ctx, gc, px, top + height, px, top + height - tick);
 					}
 				}
 				else {
@@ -718,20 +744,20 @@ namespace MonoDevelop.Components.Chart
 					if (isTop) {
 						if (showLabels) {
 							if (labelFits)
-								win.DrawLayout (gc, left + width + AreaBorderWidth + 1, py - (th/2), layout);
+								DrawLayout (ctx, gc, left + width + AreaBorderWidth + 1, py - (th/2), layout);
 							else
 								tick = tick / 2;
 						}
-						win.DrawLine (gc, left + width, py, left + width - tick, py);
+						DrawLine (ctx, gc, left + width, py, left + width - tick, py);
 					}
 					else {
 						if (showLabels) {
 							if (labelFits)
-								win.DrawLayout (gc, left - AreaBorderWidth - tw - 1, py - (th/2), layout);
+								DrawLayout (ctx, gc, left - AreaBorderWidth - tw - 1, py - (th/2), layout);
 							else
 								tick = tick / 2;
 						}
-						win.DrawLine (gc, left, py, left + tick, py);
+						DrawLine (ctx, gc, left, py, left + tick, py);
 					}
 				}
 			}
@@ -800,6 +826,7 @@ namespace MonoDevelop.Components.Chart
 		
 		void DrawSerie (Cairo.Context ctx, Serie serie)
 		{
+			ctx.Save ();
 			ctx.NewPath ();
 			ctx.Rectangle (left, top, width + 1, height + 1);
 			ctx.Clip ();
@@ -832,38 +859,38 @@ namespace MonoDevelop.Components.Chart
 			}
 			
 			ctx.Stroke ();
+			ctx.Restore ();
 		}
-		
-		void DrawCursor (ChartCursor cursor)
-		{
-			using (Gdk.GC gc = new Gdk.GC (GdkWindow)) {
-				gc.RgbFgColor = cursor.Color;
 
+		void DrawCursor (Cairo.Context ctx, ChartCursor cursor)
+		{
+			var color = ToCairo (cursor.Color);
+			{
 				int x, y;
 				GetPoint (cursor.Value, cursor.Value, out x, out y);
 
 				if (cursor.Dimension == AxisDimension.X) {
 					int cy = top - AreaBorderWidth - 1;
-					Point [] ps = new Point [4];
-					ps [0] = new Point (x, cy);
-					ps [1] = new Point (x + (cursor.HandleSize / 2), cy - cursor.HandleSize + 1);
-					ps [2] = new Point (x - (cursor.HandleSize / 2), cy - cursor.HandleSize + 1);
-					ps [3] = ps [0];
-					GdkWindow.DrawPolygon (gc, false, ps);
+					ctx.MoveTo (x + 0.5, cy + 0.5);
+					ctx.LineTo (x + (cursor.HandleSize / 2) + 0.5, cy - cursor.HandleSize + 1 + 0.5);
+					ctx.LineTo (x - (cursor.HandleSize / 2) + 0.5, cy - cursor.HandleSize + 1 + 0.5);
+					ctx.ClosePath ();
+					ctx.SetSourceColor (color);
+					ctx.LineWidth = 1;
 					if (activeCursor == cursor)
-						GdkWindow.DrawPolygon (gc, true, ps);
-					GdkWindow.DrawLine (gc, x, top, x, top + height);
+						ctx.FillPreserve ();
+					ctx.Stroke ();
+					DrawLine (ctx, color, x, top, x, top + height);
 				} else {
 					throw new NotSupportedException ();
 				}
 			}
 		}
-		
-		void DrawCursorLabel (ChartCursor cursor)
-		{
-			using (Gdk.GC gc = new Gdk.GC (GdkWindow)) {
-				gc.RgbFgColor = cursor.Color;
 
+		void DrawCursorLabel (Cairo.Context ctx, ChartCursor cursor)
+		{
+			var color = ToCairo (cursor.Color);
+			{
 				int x, y;
 				GetPoint (cursor.Value, cursor.Value, out x, out y);
 
@@ -891,9 +918,9 @@ namespace MonoDevelop.Components.Chart
 						int tt = top + 4;
 						if (tl + tw + 2 >= left + width) tl = left + width - tw - 1;
 						if (tl < left + 1) tl = left + 1;
-						GdkWindow.DrawRectangle (Style.WhiteGC, true, tl - 1, tt - 1, tw + 2, th + 2);
-						GdkWindow.DrawRectangle (Style.BlackGC, false, tl - 2, tt - 2, tw + 3, th + 3);
-						GdkWindow.DrawLayout (gc, tl, tt, layout);
+						FillRectangle (ctx, white, tl - 1, tt - 1, tw + 2, th + 2);
+						StrokeRectangle (ctx, black, tl - 2, tt - 2, tw + 3, th + 3);
+						DrawLayout (ctx, color, tl, tt, layout);
 						layout.Dispose ();
 					}
 				} else {
@@ -970,9 +997,9 @@ namespace MonoDevelop.Components.Chart
 			}
 		}
 		
-		protected override bool OnButtonPressEvent (Gdk.EventButton ev)
+		void OnButtonPressed (ClickInfo ev)
 		{
-			if (!ev.TriggersContextMenu () && ev.Button == 1) {
+			if (!ev.IsContextMenuTrigger && ev.Button == 1) {
 				foreach (ChartCursor cursor in cursors) {
 					int cx, cy;
 					GetPoint (cursor.Value, cursor.Value, out cx, out cy);
@@ -1007,25 +1034,23 @@ namespace MonoDevelop.Components.Chart
 				}
 				
 				if (draggingCursor)
-					return true;
+					ev.Claim ();
 			}
-			return base.OnButtonPressEvent (ev);
 		}
-		
-		protected override bool OnButtonReleaseEvent (EventButton e)
+
+		void OnButtonReleased (ClickInfo e)
 		{
 			if (draggingCursor) {
 				draggingCursor = false;
 				activeCursor.ShowValueLabel = false;
 			}
-			return base.OnButtonReleaseEvent (e);
 		}
-		
-		protected override bool OnMotionNotifyEvent (EventMotion e)
+
+		void OnPointerMotion (double ex, double ey)
 		{
 			if (draggingCursor) {
 				double x, y;
-				GetValue ((int)e.X, (int)e.Y, out x, out y);
+				GetValue ((int)ex, (int)ey, out x, out y);
 				
 				if (activeCursor.Dimension == AxisDimension.X) {
 					if (x < startX) x = startX;
@@ -1037,16 +1062,14 @@ namespace MonoDevelop.Components.Chart
 					else if (y > endY) y = endY;
 					activeCursor.Value = y;
 				}
-				return true;
 			}
-			return base.OnMotionNotifyEvent (e);
 		}
-		
-		protected override void OnSizeAllocated (Gdk.Rectangle rect)
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
 			xrangeChanged = true;
 			yrangeChanged = true;
-			base.OnSizeAllocated (rect);
+			base.OnSizeAllocate (width, height, baseline);
 		}
 	}
 	

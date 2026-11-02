@@ -29,58 +29,40 @@
 
 using System;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Collections.Generic;
 
 namespace MonoDevelop.Components
 {
 	public static class HelperMethods
 	{
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_show_layout (IntPtr cr, IntPtr layout);
-
 		public static void ShowLayout (this Cairo.Context cr, Pango.Layout layout)
 		{
-			pango_cairo_show_layout (cr == null ? IntPtr.Zero : cr.Handle, layout == null ? IntPtr.Zero : layout.Handle);
+			Pango.CairoHelper.ShowLayout (cr, layout);
 		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern IntPtr pango_cairo_create_layout (IntPtr cr);
 
 		public static Pango.Layout CreateLayout (this Cairo.Context cr)
 		{
-			IntPtr raw_ret = pango_cairo_create_layout (cr == null ? IntPtr.Zero : cr.Handle);
-			return GLib.Object.GetObject (raw_ret, true) as Pango.Layout;
+			return Pango.CairoHelper.CreateLayout (cr);
 		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_layout_path (IntPtr cr, IntPtr layout);
 
 		public static void LayoutPath (this Cairo.Context cr, Pango.Layout layout)
 		{
-			pango_cairo_layout_path (cr == null ? IntPtr.Zero : cr.Handle, layout == null ? IntPtr.Zero : layout.Handle);
+			Pango.CairoHelper.LayoutPath (cr, layout);
 		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_context_set_resolution (IntPtr pango_context, double dpi);
 
 		public static void ContextSetResolution (this Pango.Context context, double dpi)
 		{
-			pango_cairo_context_set_resolution (context == null ? IntPtr.Zero : context.Handle, dpi);
+			Pango.CairoHelper.ContextSetResolution (context, dpi);
 		}
 
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern IntPtr pango_layout_get_context (IntPtr layout);
-
-		public static string GetColorString (Gdk.Color color)
+		public static string GetColorString (Gdk.RGBA color)
 		{
-			return string.Format ("#{0:X02}{1:X02}{2:X02}", color.Red / 256, color.Green / 256, color.Blue / 256);
+			return string.Format ("#{0:X02}{1:X02}{2:X02}", (int)(color.Red * 255), (int)(color.Green * 255), (int)(color.Blue * 255));
 		}
 
 		public static Pango.Context LayoutGetContext (this Pango.Layout layout)
 		{
-			IntPtr handle = pango_layout_get_context (layout.Handle);
-			return handle.Equals (IntPtr.Zero) ? null : GLib.Object.GetObject (handle) as Pango.Context;
+			return layout.Context;
 		}
 
 		public static double GetPixelBaseline (this Pango.Layout layout)

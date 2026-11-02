@@ -34,11 +34,10 @@ namespace MonoDevelop.Components
 {
 	[System.ComponentModel.Category("MonoDevelop.Components")]
 	[System.ComponentModel.ToolboxItem (true)]
-	public class MenuButtonEntry : Gtk.HBox
+	public class MenuButtonEntry : Gtk.Box
 	{
 		Gtk.Entry entry;
 		Gtk.Button button;
-		bool isOpen;
 		List<string[]> options = new List<string[]> ();
 		
 		CommandManager manager;
@@ -59,8 +58,9 @@ namespace MonoDevelop.Components
 		
 		public MenuButtonEntry (Gtk.Entry entry, Gtk.Button button)
 		{
+			Orientation = Gtk.Orientation.Horizontal;
 			if (entry == null) entry = new Gtk.Entry ();
-			if (button == null) button = new Gtk.Button (new Gtk.Arrow (Gtk.ArrowType.Right, Gtk.ShadowType.Out));
+			if (button == null) button = new Gtk.Button { IconName = "pan-end-symbolic" };
 			
 			this.entry = entry;
 			this.button = button;
@@ -68,10 +68,14 @@ namespace MonoDevelop.Components
 			manager = new CommandManager ();
 			manager.RegisterGlobalHandler (this);
 			
-			if (entry.Parent == null)
-				PackStart (entry, true, true, 0);
-			if (button.Parent == null)
-				PackStart (button, false, false, 2);
+			if (entry.Parent == null) {
+				entry.Hexpand = true;
+				Append (entry);
+			}
+			if (button.Parent == null) {
+				button.MarginStart = button.MarginEnd = 2;
+				Append (button);
+			}
 			
 			ActionCommand cmd = new ActionCommand ("InsertOption", "InsertOption", null);
 			cmd.CommandArray = true;
@@ -80,14 +84,6 @@ namespace MonoDevelop.Components
 			entrySet.AddItem ("InsertOption");
 			
 			button.Clicked += ShowQuickInsertMenu;
-			button.StateChanged += ButtonStateChanged;
-		}
-
-		void ButtonStateChanged (object o, Gtk.StateChangedArgs args)
-		{
-			//while the menu's open, make sure the button looks depressed
-			if (isOpen && button.State != Gtk.StateType.Active)
-				button.State = Gtk.StateType.Active;
 		}
 		
 		public void AddOption (string name, string value)
@@ -119,30 +115,8 @@ namespace MonoDevelop.Components
 		
 		public void ShowQuickInsertMenu (object sender, EventArgs args)
 		{
-			var menu = manager.CreateMenu (entrySet);
-			
-			//FIXME: taken from MonoDevelop.Components.MenuButton. should share this.
-			
-			isOpen = true;
-			
-			//make sure the button looks depressed
-			Gtk.ReliefStyle oldRelief = button.Relief;
-			button.Relief = Gtk.ReliefStyle.Normal;
-			
-			//clean up after the menu's done
-			menu.Hidden += delegate {
-				button.Relief = oldRelief ;
-				isOpen = false;
-				button.State = Gtk.StateType.Normal;
-				
-				//FIXME: for some reason the menu's children don't get activated if we destroy 
-				//directly here, so use a timeout to delay it
-				GLib.Timeout.Add (100, delegate {
-					menu.Destroy ();
-					return false;
-				});
-			};
-			menu.Popup (null, null, PositionFunc, 0, Gtk.Global.CurrentEventTime);
+			// GTK 4: the command menu is a popover anchored below the button (GTK places and flips it).
+			manager.ShowContextMenu (button, 0, button.Height, entrySet, this);
 		}
 		
 		[CommandHandler ("InsertOption")]
@@ -173,31 +147,13 @@ namespace MonoDevelop.Components
 			set { entry.Text = value; }
 		}
 		
-		//FIXME: taken from MonoDevelop.Components.MenuButton. should share this.
-		void PositionFunc (Gtk.Menu mn, out int x, out int y, out bool push_in)
+		protected override void Dispose (bool disposing)
 		{
-			button.GdkWindow.GetOrigin (out x, out y);
-			Gdk.Rectangle rect = button.Allocation;
-			x += rect.X;
-			y += rect.Y + rect.Height;
-			
-			//if the menu would be off the bottom of the screen, "drop" it upwards
-			if (y + mn.Requisition.Height > button.Screen.Height) {
-				y -= mn.Requisition.Height;
-				y -= rect.Height;
-			}
-			
-			//let GTK reposition the menu if it still doesn't fit on the screen
-			push_in = true;
-		}
-
-		protected override void OnDestroyed ()
-		{
-			if (manager != null) {
+			if (disposing && manager != null) {
 				manager.Dispose ();
 				manager = null;
 			}
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 	}
 }

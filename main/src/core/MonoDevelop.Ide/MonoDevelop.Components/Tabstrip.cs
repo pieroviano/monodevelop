@@ -24,12 +24,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing.Design;
-using Cairo;
-using Gtk;
 using System.Linq;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Core;
@@ -40,7 +38,7 @@ using MonoDevelop.Ide.Gui.Shell;
 
 namespace MonoDevelop.Components
 {
-	class Tabstrip : DrawingArea
+	class Tabstrip : CairoWidget
 	{
 		readonly List<Tab> tabs = new List<Tab> ();
 		readonly List<Cairo.PointD> tabSizes = new List<Cairo.PointD> ();
@@ -77,15 +75,21 @@ namespace MonoDevelop.Components
 		
 		public Tabstrip ()
 		{
-			Accessible.SetRole (AtkCocoa.Roles.AXTabGroup);
-			Events |= Gdk.EventMask.ButtonPressMask | Gdk.EventMask.PointerMotionMask | Gdk.EventMask.LeaveNotifyMask | Gdk.EventMask.FocusChangeMask;
+			this.SetRole (AtkCocoa.Roles.AXTabGroup);
 			CanFocus = true;
+			Focusable = true;
+
+			this.AddMotionHandler (OnMotion, OnMotion, OnLeave);
+			this.AddClickHandler (OnPressed);
+			this.AddFocusHandler (QueueDraw, () => FocusedTab = -1);
+			this.AddKeyPressHandler (OnKeyPressed);
 		}
-		
-		protected override void OnDestroyed ()
+
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
-			tabs.ForEach (t => t.Dispose ());
+			if (disposing)
+				tabs.ForEach (t => t.Dispose ());
+			base.Dispose (disposing);
 		}
 		
 		public void AddTab (Tab tab)
@@ -115,7 +119,7 @@ namespace MonoDevelop.Components
 
 			tab.Allocation = GetBounds (tab);
 			if (tab.Accessible != null) {
-				Accessible.AddAccessibleElement (tab.Accessible);
+				this.AddAccessibleElement (tab.Accessible);
 				tab.AccessibilityPressed += OnTabPressed;
 				UpdateAccessibilityTabs ();
 			}
@@ -147,7 +151,7 @@ namespace MonoDevelop.Components
 			QueueResize ();
 
 			if (tab.Accessible != null) {
-				Accessible.RemoveAccessibleElement (tab.Accessible);
+				this.RemoveAccessibleElement (tab.Accessible);
 				tab.AccessibilityPressed -= OnTabPressed;
 				UpdateAccessibilityTabs ();
 			}
@@ -165,7 +169,7 @@ namespace MonoDevelop.Components
 				tab.Active = tab.Visible;
 
 			if (oldTab.Accessible != null) {
-				Accessible.RemoveAccessibleElement (oldTab.Accessible);
+				this.RemoveAccessibleElement (oldTab.Accessible);
 				oldTab.AccessibilityPressed -= OnTabPressed;
 				UpdateAccessibilityTabs ();
 			}
@@ -176,7 +180,7 @@ namespace MonoDevelop.Components
 
 			tab.Allocation = GetBounds (tab);
 			if (tab.Accessible != null) {
-				Accessible.AddAccessibleElement (tab.Accessible);
+				this.AddAccessibleElement (tab.Accessible);
 				tab.AccessibilityPressed += OnTabPressed;
 				UpdateAccessibilityTabs ();
 			}
@@ -233,7 +237,7 @@ namespace MonoDevelop.Components
 				tab.Allocation = GetBounds (tab);
 			}
 
-			Accessible.SetTabs (proxies.ToArray ());
+			this.SetTabs (proxies.ToArray ());
 		}
 
 		Cairo.Rectangle GetBounds (Tab tab)
@@ -249,16 +253,16 @@ namespace MonoDevelop.Components
 				if (t.Visible && t.TabPosition == tab.TabPosition)
 					distance += tabSizes[i].X - spacerWidth;
 			}
-			return new Cairo.Rectangle (tab.TabPosition == TabPosition.Left ? distance : Allocation.Width - distance - tabSizes[idx].X,
+			return new Cairo.Rectangle (tab.TabPosition == TabPosition.Left ? distance : Width - distance - tabSizes[idx].X,
 				0,
 				tabSizes[idx].X,
 				tabSizes[idx].Y);
 		}
 		
-		protected override bool OnMotionNotifyEvent (Gdk.EventMotion evnt)
+		void OnMotion (double x, double y)
 		{
-			mx = evnt.X;
-			my = evnt.Y;
+			mx = x;
+			my = y;
 			var oldHoverTab = hoverTab;
 			hoverTab = null;
 			
@@ -272,20 +276,12 @@ namespace MonoDevelop.Components
 				}
 			}
 			
-			if (hoverTab != oldHoverTab && oldHoverTab != null) {
-				var oldBounds = GetBounds (oldHoverTab);
-				QueueDrawArea ((int)oldBounds.X, (int)oldBounds.Y, (int)oldBounds.Width, (int)oldBounds.Height);
-			}
-			
-			if (hoverTab != null) {
-				var bounds = GetBounds (hoverTab);
-				QueueDrawArea ((int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height);
-			}
-			
-			return base.OnMotionNotifyEvent (evnt);
+			// GTK 4 always redraws the whole widget
+			if (hoverTab != null || hoverTab != oldHoverTab)
+				QueueDraw ();
 		}
 		
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+		void OnPressed (ClickInfo click)
 		{
 			if (hoverTab != null) {
 				try {
@@ -294,52 +290,55 @@ namespace MonoDevelop.Components
 					LoggingService.LogInternalError (ex);	
 				}
 			}
-			return base.OnButtonPressEvent (evnt);
 		}
 		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
+		void OnLeave ()
 		{
 			if (hoverTab != null) {
-				var bounds = GetBounds (hoverTab);
 				hoverTab = null;
-				QueueDrawArea ((int)bounds.X, (int)bounds.Y, (int)bounds.Width, (int)bounds.Height);
+				QueueDraw ();
 			}
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 		
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			requisition.Height = (int)Math.Ceiling (tabSizes.Max (p => p.Y));
-			requisition.Width = tabs.Count == 0 ? 10 : tabs.Where (t => t.Visible).Sum (t => (int)Math.Ceiling (t.Size.X));
+			if (orientation == Gtk.Orientation.Vertical)
+				minimum = tabSizes.Count == 0 ? 0 : (int)Math.Ceiling (tabSizes.Max (p => p.Y));
+			else
+				minimum = tabs.Count == 0 ? 10 : tabs.Where (t => t.Visible).Sum (t => (int)Math.Ceiling (t.Size.X));
+			natural = minimum;
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			using (var cr = Gdk.CairoHelper.Create (evnt.Window)) {
-				cr.Rectangle (0, 0, Allocation.Width, Allocation.Height);
-				cr.SetSourceColor (Styles.SubTabBarBackgroundColor.ToCairoColor ());
-				cr.Fill ();
+			base.OnSizeAllocate (width, height, baseline);
+			UpdateAccessibilityTabs ();
+		}
 
-				Tab active = null;
-				for (int i = tabs.Count; i --> 0;) {
-					if (i == ActiveTab) {
-						active = tabs [i];
-						continue;
-					}
-					var tab = tabs[i];
-					if (!tab.Visible)
-						continue;
-					var bounds = GetBounds (tab);
-					tab.HoverPosition = tab == hoverTab ? new Cairo.PointD (mx - bounds.X, my) : new Cairo.PointD (-1, -1);
-					tab.Draw (cr, bounds);
-				}
+		protected override void OnDraw (Cairo.Context cr, int width, int height)
+		{
+			cr.Rectangle (0, 0, width, height);
+			cr.SetSourceColor (Styles.SubTabBarBackgroundColor.ToCairoColor ());
+			cr.Fill ();
 
-				if (active != null && active.Visible) {
-					active.Draw (cr, GetBounds (active));
+			Tab active = null;
+			for (int i = tabs.Count; i --> 0;) {
+				if (i == ActiveTab) {
+					active = tabs [i];
+					continue;
 				}
+				var tab = tabs[i];
+				if (!tab.Visible)
+					continue;
+				var bounds = GetBounds (tab);
+				tab.HoverPosition = tab == hoverTab ? new Cairo.PointD (mx - bounds.X, my) : new Cairo.PointD (-1, -1);
+				tab.Draw (cr, bounds);
 			}
 
-			return base.OnExposeEvent (evnt);
+			if (active != null && active.Visible) {
+				active.Draw (cr, GetBounds (active));
+			}
 		}
 
 		int focusedTab = -1;
@@ -361,14 +360,14 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (Gtk.DirectionType direction)
 		{
 			bool ret = true;
 			var newFocusedTab = FocusedTab;
 
 			switch (direction) {
-			case DirectionType.TabForward:
-			case DirectionType.Right:
+			case Gtk.DirectionType.TabForward:
+			case Gtk.DirectionType.Right:
 				do {
 					newFocusedTab++;
 				} while (newFocusedTab < tabs.Count && !tabs [newFocusedTab].Visible);
@@ -379,8 +378,8 @@ namespace MonoDevelop.Components
 				}
 				break;
 
-			case DirectionType.TabBackward:
-			case DirectionType.Left:
+			case Gtk.DirectionType.TabBackward:
+			case Gtk.DirectionType.Left:
 				if (newFocusedTab <= -1) {
 					newFocusedTab = tabs.Count;
 				}
@@ -406,24 +405,20 @@ namespace MonoDevelop.Components
 			return ret;
 		}
 
-		protected override bool OnFocusInEvent (Gdk.EventFocus evnt)
+		// GTK 2 Widget.Activate (Return/space on the focused tab)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			QueueDraw ();
-			return base.OnFocusInEvent (evnt);
-		}
-
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
-		{
-			FocusedTab = -1;
-			return base.OnFocusOutEvent (evnt);
-		}
-
-		protected override void OnActivate ()
-		{
-			if (FocusedTab >= 0 && FocusedTab < tabs.Count) {
-				ActiveTab = FocusedTab;
+			switch ((Gdk.Key)keyval) {
+			case Gdk.Key.Return:
+			case Gdk.Key.KP_Enter:
+			case Gdk.Key.space:
+				if (FocusedTab >= 0 && FocusedTab < tabs.Count) {
+					ActiveTab = FocusedTab;
+					return true;
+				}
+				break;
 			}
-			base.OnActivate ();
+			return false;
 		}
 	}
 
@@ -576,7 +571,7 @@ namespace MonoDevelop.Components
 			if (layout != null)
 				layout.Dispose ();
 
-			layout = PangoUtil.CreateLayout (parent);
+			layout = parent.CreatePangoLayout (null);
 			layout.FontDescription = IdeServices.FontService.SansFont.CopyModified (Styles.FontScale11);
 			layout.SetText (label ?? "");
 			layout.Alignment = Pango.Alignment.Center;

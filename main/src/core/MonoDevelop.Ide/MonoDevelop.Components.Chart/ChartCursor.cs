@@ -27,7 +27,6 @@
 //
 
 using System;
-using Gdk;
 
 namespace MonoDevelop.Components.Chart
 {
@@ -35,7 +34,7 @@ namespace MonoDevelop.Components.Chart
 	{
 		double val;
 		internal AxisDimension Dimension;
-		Gdk.Color color;
+		Gdk.RGBA color = new Gdk.RGBA { Alpha = 1 };
 		int handleSize = 6;
 		bool visible = true;
 		bool showValueLabel;
@@ -51,7 +50,7 @@ namespace MonoDevelop.Components.Chart
 			set { visible = value; OnLayoutChanged (); }
 		}
 		
-		public Gdk.Color Color {
+		public Gdk.RGBA Color {
 			get { return color; }
 			set { color = value; OnLayoutChanged (); }
 		}

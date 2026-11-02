@@ -5,17 +5,14 @@
 //
 
 using System;
-using System.Drawing;
-using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
-	public class TabLabel : HBox
+	public class TabLabel : Gtk.Box
 	{
-		private Label title;
+		private Gtk.Label title;
 		private ImageView icon;
-		private EventBox titleBox;
+		private Gtk.Widget titleBox;
 		private static Xwt.Drawing.Image closeImage;
 
 		static TabLabel ()
@@ -31,41 +28,31 @@ namespace MonoDevelop.Components
 		{
 		}
 
-		public TabLabel (Label label, ImageView icon) : base (false, 0)
+		public TabLabel (Gtk.Label label, ImageView icon) : base (Gtk.Orientation.Horizontal, 0)
 		{
 			this.title = label;
 			this.icon = icon;
-			icon.Xpad = 2;
+			icon.MarginStart = icon.MarginEnd = 2;
+			Append (icon);
 
-			EventBox eventBox = new EventBox ();
-			eventBox.BorderWidth = 0;
-			eventBox.VisibleWindow = false;
-			eventBox.Add (icon);
-			this.PackStart (eventBox, false, true, 0);
+			titleBox = title;
+			title.Hexpand = true;
+			Append (title);
 
-			titleBox = new EventBox ();
-			titleBox.VisibleWindow = false;
-			titleBox.Add (title);
-			this.PackStart (titleBox, true, true, 0);
-
-			Gtk.Rc.ParseString ("style \"MonoDevelop.TabLabel.CloseButton\" {\n GtkButton::inner-border = {0,0,0,0}\n }\n");
-			Gtk.Rc.ParseString ("widget \"*.MonoDevelop.TabLabel.CloseButton\" style  \"MonoDevelop.TabLabel.CloseButton\"\n");
-			Button button = new Button ();
-			button.CanDefault = false;
-			var closeIcon = new Xwt.ImageView (closeImage).ToGtkWidget ();
-			button.Image = closeIcon;
-			button.Relief = ReliefStyle.None;
-			button.BorderWidth = 0;
-			button.Clicked += new EventHandler(ButtonClicked);
+			var button = new Gtk.Button ();
+			button.HasFrame = false;
+			button.AddCssClass ("flat");
+			if (closeImage != null)
+				button.Child = new Xwt.ImageView (closeImage).ToGtkWidget ();
+			button.Clicked += ButtonClicked;
 			button.Name = "MonoDevelop.TabLabel.CloseButton";
-			this.PackStart (button, false, true, 0);
-			this.ClearFlag (WidgetFlags.CanFocus);
-			this.BorderWidth = 0;
+			button.FocusOnClick = false;
+			Append (button);
 
-			this.ShowAll ();
+			this.AddClickHandler (null, OnReleased, 2);
 		}
 
-		public Label Label
+		public Gtk.Label Label
 		{
 			get { return title; }
 			set { title = value; }
@@ -84,18 +71,15 @@ namespace MonoDevelop.Components
 			titleBox.TooltipText = tip;
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
+		void OnReleased (ClickInfo click)
 		{
-			if (evnt.Button == 2 && CloseClicked != null)
-			{
-				CloseClicked(this, null);
-				return true;
+			if (CloseClicked != null) {
+				click.Claim ();
+				CloseClicked (this, null);
 			}
-
-			return false;
 		}
 
-		private void ButtonClicked(object o, EventArgs eventArgs)
+		private void ButtonClicked (object o, EventArgs eventArgs)
 		{
 			if (CloseClicked != null)
 			{

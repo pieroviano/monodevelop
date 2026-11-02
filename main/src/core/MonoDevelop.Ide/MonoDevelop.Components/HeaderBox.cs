@@ -23,24 +23,27 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
-using Gtk;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components
 {
-	public class HeaderBox: Bin
+	/// <summary>
+	/// Single-child box with border lines (margins) and inner padding; set the content with <see cref="BinWidget.Child"/>.
+	/// </summary>
+	public class HeaderBox: BinWidget
 	{
-		Gtk.Widget child;
 		int topMargin;
 		int bottomMargin;
 		int leftMargin;
 		int rightMargin;
-		
+
 		int topPadding;
 		int bottomPadding;
 		int leftPadding;
 		int rightPadding;
-		Gdk.Color? backgroundColor;
+		Gdk.RGBA? backgroundColor;
 		bool showTopShadow;
 		bool useChildBackgroundColor;
 		int shadowSize = 3;
@@ -49,26 +52,38 @@ namespace MonoDevelop.Components
 		public HeaderBox ()
 		{
 		}
-		
+
 		public HeaderBox (int topMargin, int bottomMargin, int leftMargin, int rightMargin)
 		{
 			SetMargins (topMargin, bottomMargin, leftMargin, rightMargin);
 		}
-		
+
 		public void SetMargins (int topMargin, int bottomMargin, int leftMargin, int rightMargin)
 		{
 			this.topMargin = topMargin;
 			this.bottomMargin = bottomMargin;
 			this.leftMargin = leftMargin;
 			this.rightMargin = rightMargin;
+			UpdatePadding ();
 		}
-		
+
 		public void SetPadding (int topPadding, int bottomPadding, int leftPadding, int rightPadding)
 		{
 			this.topPadding = topPadding;
 			this.bottomPadding = bottomPadding;
 			this.leftPadding = leftPadding;
 			this.rightPadding = rightPadding;
+			UpdatePadding ();
+		}
+
+		void UpdatePadding ()
+		{
+			Padding = new Gtk.Border {
+				Left = (short)(leftMargin + leftPadding),
+				Right = (short)(rightMargin + rightPadding),
+				Top = (short)(topMargin + topPadding),
+				Bottom = (short)(bottomMargin + bottomPadding),
+			};
 		}
 
 		public bool ShowTopShadow {
@@ -98,12 +113,12 @@ namespace MonoDevelop.Components
 				QueueDraw ();
 			}
 		}
-		
+
 		public bool GradientBackground { get; set; }
 
-		public Gdk.Color? BorderColor { get; set; }
+		public Gdk.RGBA? BorderColor { get; set; }
 
-		public Gdk.Color? BackgroundColor {
+		public Gdk.RGBA? BackgroundColor {
 			get { return backgroundColor; }
 			set {
 				backgroundColor = value;
@@ -121,115 +136,69 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		protected override void OnAdded (Widget widget)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			base.OnAdded (widget);
-			child = widget;
+			int width = Width, height = Height;
+			if (width <= 0 || height <= 0)
+				return;
+
+			snapshot.DrawCairo (this, DrawBackground);
+			base.OnSnapshot (snapshot);
+			snapshot.DrawCairo (this, DrawBorders);
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		void DrawBackground (Cairo.Context cr)
 		{
-			if (child != null) {
-				requisition = child.SizeRequest ();
-				requisition.Width += leftMargin + rightMargin + leftPadding + rightPadding;
-				requisition.Height += topMargin + bottomMargin + topPadding + bottomPadding;
-			} else {
-				requisition.Width = 0;
-				requisition.Height = 0;
-			}
-		}
-
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			if (allocation.Width > leftMargin + rightMargin + leftPadding + rightPadding) {
-				allocation.X += leftMargin + leftPadding;
-				allocation.Width -= leftMargin + rightMargin + leftPadding + rightPadding;
-			}
-			if (allocation.Height > topMargin + bottomMargin + topPadding + bottomPadding) {
-				allocation.Y += topMargin + topPadding;
-				allocation.Height -= topMargin + bottomMargin + topPadding + bottomPadding;
-			}
-			if (child != null)
-				child.SizeAllocate (allocation);
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			Gdk.Rectangle rect;
-			
+			int width = Width, height = Height;
 			if (GradientBackground) {
-				rect = new Gdk.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
-				var gcol = Style.Background (Gtk.StateType.Normal).ToXwtColor ();
-				
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (GdkWindow)) {
-					cr.NewPath ();
-					cr.MoveTo (rect.X, rect.Y);
-					cr.RelLineTo (rect.Width, 0);
-					cr.RelLineTo (0, rect.Height);
-					cr.RelLineTo (-rect.Width, 0);
-					cr.RelLineTo (0, -rect.Height);
-					cr.ClosePath ();
-
-					// FIXME: VV: Remove gradient features
-					using (Cairo.Gradient pat = new Cairo.LinearGradient (rect.X, rect.Y, rect.X, rect.Bottom)) {
-						pat.AddColorStop (0, gcol.ToCairoColor ());
-						gcol.Light -= 0.1;
-						if (gcol.Light < 0)
-							gcol.Light = 0;
-						pat.AddColorStop (1, gcol.ToCairoColor ());
-						cr.SetSource (pat);
-						cr.FillPreserve ();
-					}
+				var gcol = Styles.BackgroundColor;
+				cr.Rectangle (0, 0, width, height);
+				// FIXME: VV: Remove gradient features
+				using (Cairo.Gradient pat = new Cairo.LinearGradient (0, 0, 0, height)) {
+					pat.AddColorStop (0, gcol.ToCairoColor ());
+					gcol.Light -= 0.1;
+					if (gcol.Light < 0)
+						gcol.Light = 0;
+					pat.AddColorStop (1, gcol.ToCairoColor ());
+					cr.SetSource (pat);
+					cr.Fill ();
 				}
 			} else if (BackgroundColor != null) {
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (GdkWindow)) {
-					cr.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
-					cr.SetSourceColor (BackgroundColor.Value.ToCairoColor ());
-					cr.Fill ();
-				}
+				cr.Rectangle (0, 0, width, height);
+				cr.SetSourceColor (BackgroundColor.Value.ToCairoColor ());
+				cr.Fill ();
 			} else if (useChildBackgroundColor && Child != null) {
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (GdkWindow)) {
-					cr.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
-					cr.SetSourceColor (Child.Style.Base (StateType.Normal).ToCairoColor ());
-					cr.Fill ();
-				}
+				// GTK 4 cannot query a widget's theme background: use the IDE base (entry/list) background
+				cr.Rectangle (0, 0, width, height);
+				cr.SetSourceColor (Styles.BaseBackgroundColor.ToCairoColor ());
+				cr.Fill ();
 			}
-			
-			bool res = base.OnExposeEvent (evnt);
-			
-			var borderColor = new Gdk.GC (GdkWindow);
-			borderColor.RgbFgColor = BorderColor != null ? BorderColor.Value : Style.Dark (Gtk.StateType.Normal);
+		}
 
-			rect = Allocation;
-			for (int n=0; n<topMargin; n++)
-				GdkWindow.DrawLine (borderColor, rect.X, rect.Y + n, rect.Right - 1, rect.Y + n);
-			
-			for (int n=0; n<bottomMargin; n++)
-				GdkWindow.DrawLine (borderColor, rect.X, rect.Bottom - n, rect.Right, rect.Bottom - n);
-			
-			for (int n=0; n<leftMargin; n++)
-				GdkWindow.DrawLine (borderColor, rect.X + n, rect.Y, rect.X + n, rect.Bottom);
-			
-			for (int n=0; n<rightMargin; n++)
-				GdkWindow.DrawLine (borderColor, rect.Right - n, rect.Y, rect.Right - n, rect.Bottom);
+		void DrawBorders (Cairo.Context cr)
+		{
+			int width = Width, height = Height;
+			cr.SetSourceColor (BorderColor != null ? BorderColor.Value.ToCairoColor () : Styles.BorderColor.ToCairoColor ());
+			if (topMargin > 0)
+				cr.Rectangle (0, 0, width, topMargin);
+			if (bottomMargin > 0)
+				cr.Rectangle (0, height - bottomMargin, width, bottomMargin);
+			if (leftMargin > 0)
+				cr.Rectangle (0, 0, leftMargin, height);
+			if (rightMargin > 0)
+				cr.Rectangle (width - rightMargin, 0, rightMargin, height);
+			cr.Fill ();
 
 			if (showTopShadow) {
 				// FIXME: VV: Remove gradient features
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (GdkWindow)) {
-					cr.Rectangle (Allocation.X, Allocation.Y, Allocation.Width, shadowSize);
-					using (Cairo.Gradient pat = new Cairo.LinearGradient (rect.X, rect.Y, rect.X, rect.Y + shadowSize)) {
-						pat.AddColorStop (0, new Cairo.Color (0, 0, 0, shadowStrengh));
-						pat.AddColorStop (1, new Cairo.Color (0, 0, 0, 0));
-						cr.SetSource (pat);
-						cr.Fill ();
-					}
+				cr.Rectangle (0, 0, width, shadowSize);
+				using (Cairo.Gradient pat = new Cairo.LinearGradient (0, 0, 0, shadowSize)) {
+					pat.AddColorStop (0, new Cairo.Color (0, 0, 0, shadowStrengh));
+					pat.AddColorStop (1, new Cairo.Color (0, 0, 0, 0));
+					cr.SetSource (pat);
+					cr.Fill ();
 				}
 			}
-
-			borderColor.Dispose ();
-			return res;
 		}
 	}
 }
-

@@ -23,34 +23,39 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
 
-using Gtk;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Core;
 
 namespace MonoDevelop.Components
 {
-	public class RestartPanel : Table
+	public class RestartPanel : Gtk.Grid
 	{
 		public event EventHandler<EventArgs> RestartRequested;
 
-		public RestartPanel () : base (2, 3, false)
+		public RestartPanel ()
 		{
 			RowSpacing = 6;
 			ColumnSpacing = 6;
 
-			var btnRestart = new Button () {
+			var btnRestart = new Gtk.Button () {
 				Label = GettextCatalog.GetString ("Restart {0}", BrandingService.ApplicationName),
-				CanFocus = true, UseUnderline = true
+				CanFocus = true, UseUnderline = true,
+				Halign = Gtk.Align.Start,
 			};
-			Attach (btnRestart, 1, 2, 1, 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			Attach (btnRestart, 1, 1, 1, 1);
 
-			var imageRestart = new ImageView ("md-information", IconSize.Menu);
-			Attach (imageRestart, 0, 1, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			var imageRestart = new ImageView ("md-information", StockIconSize.Menu) {
+				Valign = Gtk.Align.Start,
+			};
+			Attach (imageRestart, 0, 0, 1, 1);
 
-			var labelRestart = new Label (GettextCatalog.GetString ("These preferences will take effect next time you start {0}", BrandingService.ApplicationName));
-			Attach (labelRestart, 1, 3, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			var labelRestart = new Gtk.Label (GettextCatalog.GetString ("These preferences will take effect next time you start {0}", BrandingService.ApplicationName)) {
+				Xalign = 0,
+			};
+			Attach (labelRestart, 1, 0, 2, 1);
 
 			imageRestart.SetCommonAccessibilityAttributes ("IDEStyleOptionsPanel.RestartImage", "",
 			                                               GettextCatalog.GetString ("A restart is required before these changes take effect"));

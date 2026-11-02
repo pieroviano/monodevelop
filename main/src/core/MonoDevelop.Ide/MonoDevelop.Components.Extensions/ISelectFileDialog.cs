@@ -250,13 +250,12 @@ namespace MonoDevelop.Components.Extensions
 			if (defaultGtkFilter != null)
 				fdiag.Filter = defaultGtkFilter;
 			
-			fdiag.Destroyed += CaptureDefaultFilter;
+			// GTK 4 has no ::destroy: capture the chosen filter when the dialog responds.
+			fdiag.Response += (sender, e) => CaptureDefaultFilter (fdiag);
 		}
 
-		[GLib.ConnectBefore]
-		void CaptureDefaultFilter (object sender, EventArgs e)
+		void CaptureDefaultFilter (FileSelector fsel)
 		{
-			FileSelector fsel = (FileSelector) sender;
 			if (fsel.Filter == null)
 				return;
 			var name = fsel.Filter.Name;
@@ -277,7 +276,6 @@ namespace MonoDevelop.Components.Extensions
 		{
 			fdiag.Title = Title;
 			fdiag.Action = Action.ToGtkAction ();
-			fdiag.LocalOnly = true;
 			fdiag.SelectMultiple = SelectMultiple;
 			fdiag.TransientFor = TransientFor;
 			

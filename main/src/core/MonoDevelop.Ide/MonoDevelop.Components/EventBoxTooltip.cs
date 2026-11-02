@@ -25,100 +25,93 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-using Gtk;
 using System;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Ide.Tasks;
 using MonoDevelop.Ide;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
+	/// <summary>
+	/// Shows a <see cref="TooltipPopoverWindow"/> while the pointer is over (or the focus is in) a widget.
+	/// GTK 4: works with any widget (GTK 2 required an EventBox); pointer/focus tracking uses event controllers.
+	/// </summary>
 	public class EventBoxTooltip : IDisposable
 	{
-		EventBox eventBox;
+		Gtk.Widget eventBox;
 		TooltipPopoverWindow tooltipWindow;
 		ImageView image;
-		Pixbuf normalPixbuf;
-		Pixbuf activePixbuf;
+		Xwt.Drawing.Image normalImage;
+		Xwt.Drawing.Image activeImage;
 		string tip;
 		bool mouseOver;
+		Gtk.EventControllerMotion motionController;
+		Gtk.EventControllerFocus focusController;
 
-		public Atk.Object Accessible {
+		public Gtk.IAccessible Accessible {
 			get {
-				return eventBox.Accessible;
+				return eventBox;
 			}
 		}
 
 		/// <summary>
-		/// The EventBox should have Visible set to false otherwise the tooltip pop window
+		/// The widget should have Visible set to false otherwise the tooltip pop window
 		/// will have the wrong location.
 		/// </summary>
-		public EventBoxTooltip (EventBox eventBox)
+		public EventBoxTooltip (Gtk.Widget eventBox)
 		{
-			this.eventBox = eventBox;
+			this.eventBox = eventBox ?? throw new ArgumentNullException (nameof (eventBox));
+			eventBox.Focusable = true;
 			eventBox.CanFocus = true;
 
-			eventBox.EnterNotifyEvent += HandleEnterNotifyEvent;
-			eventBox.LeaveNotifyEvent += HandleLeaveNotifyEvent;
-			eventBox.FocusInEvent += HandleFocusInEvent;
-			eventBox.FocusOutEvent += HandleFocusOutEvent;
+			motionController = eventBox.AddMotionHandler (null, HandleEnterNotifyEvent, HandleLeaveNotifyEvent);
+			focusController = eventBox.AddFocusHandler (HandleFocusInEvent, HandleFocusOutEvent);
 
-			image = eventBox.Child as ImageView;
+			image = eventBox as ImageView ?? eventBox.FirstChild as ImageView;
 
-			if (image != null) {
-				normalPixbuf = image.Image.ToPixbuf ();
-				activePixbuf = normalPixbuf.ColorShiftPixbuf ();
+			if (image?.Image != null) {
+				normalImage = image.Image;
+				var pixbuf = normalImage.ToPixbuf ();
+				activeImage = pixbuf?.ColorShiftPixbuf ().ToXwtImage () ?? normalImage;
 			}
-
-			eventBox.FocusGrabbed += (sender, e) => {
-				if (image != null)
-					image.Image = activePixbuf.ToXwtImage ();
-			};
-
-			eventBox.Focused += (o, args) => {
-				if (image != null)
-					image.Image = normalPixbuf.ToXwtImage ();
-			};
 
 			Position = PopupPosition.TopLeft;
 
-			// Accessibility: Disguise this eventbox as a label
-			eventBox.Accessible.SetRole (AtkCocoa.Roles.AXStaticText);
-			eventBox.CanFocus = true;
+			// Accessibility: Disguise this widget as a label
+			eventBox.SetRole (AtkCocoa.Roles.AXStaticText);
 		}
 
-		[GLib.ConnectBefore]
-		void HandleLeaveNotifyEvent (object sender, EventArgs e)
+		void HandleLeaveNotifyEvent ()
 		{
 			mouseOver = false;
 			HideTooltip ();
 		}
 
-		[GLib.ConnectBefore]
-		void HandleEnterNotifyEvent (object sender, EventArgs e)
+		void HandleEnterNotifyEvent (double x, double y)
 		{
 			mouseOver = true;
 			ShowTooltip ();
 		}
 
-		[GLib.ConnectBefore]
-		void HandleFocusOutEvent (object sender, EventArgs e)
+		void HandleFocusOutEvent ()
 		{
+			if (image != null && normalImage != null)
+				image.Image = normalImage;
 			mouseOver = false;
 			HideTooltip ();
 		}
 
-		[GLib.ConnectBefore]
-		void HandleFocusInEvent (object sender, EventArgs e)
+		void HandleFocusInEvent ()
 		{
+			if (image != null && activeImage != null)
+				image.Image = activeImage;
 			mouseOver = true;
 			ShowTooltip ();
 		}
 
 		void UpdateAccessibility ()
 		{
-			eventBox.Accessible.SetLabel (tip);
+			eventBox.SetLabel (tip);
 		}
 
 		bool ShowTooltip ()
@@ -132,7 +125,7 @@ namespace MonoDevelop.Components
 				else
 					tooltipWindow.Text = tip;
 				tooltipWindow.Severity = Severity;
-				var rect = new Gdk.Rectangle (0, 0, eventBox.Allocation.Width, eventBox.Allocation.Height + 5);
+				var rect = new Gdk.Rectangle (0, 0, eventBox.Width, eventBox.Height + 5);
 				tooltipWindow.ShowPopup (eventBox, rect, Position);
 			}
 			return false;
@@ -149,10 +142,14 @@ namespace MonoDevelop.Components
 		public void Dispose ()
 		{
 			HideTooltip ();
-			eventBox.EnterNotifyEvent -= HandleEnterNotifyEvent;
-			eventBox.LeaveNotifyEvent -= HandleLeaveNotifyEvent;
-			eventBox.FocusInEvent -= HandleFocusInEvent;
-			eventBox.FocusOutEvent -= HandleFocusOutEvent;
+			if (motionController != null) {
+				eventBox.RemoveController (motionController);
+				motionController = null;
+			}
+			if (focusController != null) {
+				eventBox.RemoveController (focusController);
+				focusController = null;
+			}
 		}
 
 		public string ToolTip {
@@ -178,4 +175,3 @@ namespace MonoDevelop.Components
 		public bool UseMarkup { get; set; }
 	}
 }
-

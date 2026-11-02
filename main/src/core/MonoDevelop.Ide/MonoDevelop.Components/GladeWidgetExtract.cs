@@ -34,52 +34,53 @@
 
 
 using System;
+using System.Runtime.CompilerServices;
 using Gtk;
-using Glade;
 
 using Assembly = System.Reflection.Assembly;
 
 namespace MonoDevelop.Components {
-	public abstract class GladeWidgetExtract : HBox {
+	/// <summary>
+	/// Hosts the child of a toplevel window defined in a UI definition (GTK 4: Gtk.Builder XML; libglade is gone).
+	/// </summary>
+	public abstract class GladeWidgetExtract : Box {
 		
-		Glade.XML glade;
+		Builder builder;
 		string dialog_name;
 		
-		private GladeWidgetExtract (string dialog_name) : base (false, 0)
+		private GladeWidgetExtract (string dialog_name) : base (Orientation.Horizontal, 0)
 		{
 			this.dialog_name = dialog_name;
 		}
 		
-		protected GladeWidgetExtract (string resource_name, string dialog_name) : this (dialog_name)
+		[MethodImpl (MethodImplOptions.NoInlining)]
+		protected GladeWidgetExtract (string resource_name, string dialog_name) : this (Assembly.GetCallingAssembly (), resource_name, dialog_name)
 		{
-			// we must do it from *here* otherwise, we get this assembly, not the caller
-			glade = new XML (Assembly.GetCallingAssembly (), resource_name, dialog_name, null);
-			Init ();
 		}
-		
 		
 		protected GladeWidgetExtract (Assembly assembly, string resource_name, string dialog_name) : this (dialog_name)
 		{
-			// we must do it from *here* otherwise, we get this assembly, not the caller
-			glade = new XML (assembly, resource_name, dialog_name, null);
+			builder = new Builder (assembly, resource_name, null);
 			Init ();
 		}
 		
+		/// <summary>Loads the UI definition from the file <paramref name="resource_name"/>.</summary>
 		protected GladeWidgetExtract (string resource_name, string dialog_name, string domain) : this (dialog_name)
 		{
-			// we must do it from *here* otherwise, we get this assembly, not the caller
-			glade = new XML (resource_name, dialog_name, domain);
+			builder = new Builder ();
+			builder.TranslationDomain = domain;
+			builder.AddFromFile (resource_name);
 			Init ();
 		}
 		
 		void Init ()
 		{
-			glade.Autoconnect (this);
+			builder.Autoconnect (this);
 			
-			Window win = (Window) glade [dialog_name];
+			var win = (Gtk.Window) builder.GetObject (dialog_name);
 			Widget child = win.Child;
-			
-			child.Reparent (this);
+			win.Child = null;
+			Append (child);
 			win.Destroy ();
 		}
 	}

@@ -27,224 +27,190 @@
  */
 
 using System;
-using Gtk;
 using MonoDevelop.Ide;
+using MonoDevelop.Ide.Gui;
 using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Components
 {
-    class HoverImageButton : EventBox
-    {
-        private static Gdk.Cursor hand_cursor = new Gdk.Cursor(Gdk.CursorType.Hand1);
+	class HoverImageButton : BinWidget
+	{
+		static Gdk.Cursor hand_cursor;
 
-        private IconSize icon_size = IconSize.Menu;
-        private string [] icon_names = { "image-missing", Stock.MissingImage };
-		private Xwt.Drawing.Image normal_pixbuf;
-		private Xwt.Drawing.Image active_pixbuf;
-		private ImageView image;
-        private bool is_hovering;
-        private bool is_pressed;
+		StockIconSize icon_size = StockIconSize.Menu;
+		string [] icon_names = { "image-missing" };
+		Xwt.Drawing.Image normal_pixbuf;
+		Xwt.Drawing.Image active_pixbuf;
+		ImageView image;
+		bool is_hovering;
+		bool is_pressed;
 
-        private bool draw_focus = true;
+		bool draw_focus = true;
 
-        private event EventHandler clicked;
+		event EventHandler clicked;
 
-        public event EventHandler Clicked {
-            add { clicked += value; }
-            remove { clicked -= value; }
-        }
+		public event EventHandler Clicked {
+			add { clicked += value; }
+			remove { clicked -= value; }
+		}
 
-        public HoverImageButton()
-        {
+		public HoverImageButton ()
+		{
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += OnPerformPress;
 
-			Accessible.SetRole (AtkCocoa.Roles.AXButton);
+			this.SetRole (AtkCocoa.Roles.AXButton);
 
-			Gtk.Alignment al = new Alignment (0.5f, 0.5f, 0f, 0f);
-			al.Accessible.SetShouldIgnore (true);
-			al.Show ();
-            CanFocus = true;
-			VisibleWindow = false;
-			image = new ImageView();
-			image.Accessible.SetShouldIgnore (true);
-            image.Show();
-			al.Add (image);
-            Add(al);
-        }
+			Focusable = true;
+			CanFocus = true;
+			image = new ImageView () {
+				Halign = Gtk.Align.Center,
+				Valign = Gtk.Align.Center,
+			};
+			image.SetShouldIgnore (true);
+			Child = image;
 
-        public HoverImageButton(IconSize size, string icon_name) : this(size, new string [] { icon_name })
-        {
-        }
+			if (hand_cursor == null)
+				hand_cursor = new Gdk.Cursor ("pointer", null);
 
-        public HoverImageButton(IconSize size, params string [] icon_names) : this()
-        {
-            this.icon_size = size;
-            this.icon_names = icon_names;
-        }
+			this.AddMotionHandler (null, (x, y) => {
+				Cursor = hand_cursor;
+				is_hovering = true;
+				UpdateImage ();
+			}, () => {
+				Cursor = null;
+				is_hovering = false;
+				UpdateImage ();
+			});
+			this.AddFocusHandler (() => { UpdateImage (); QueueDraw (); }, () => { UpdateImage (); QueueDraw (); });
+			this.AddClickHandler (OnPressed, OnReleased, 1);
+		}
 
-        public new void Activate()
-        {
-            EventHandler handler = clicked;
-            if(handler != null) {
-                handler(this, EventArgs.Empty);
-            }
-        }
+		public HoverImageButton (StockIconSize size, string icon_name) : this (size, new string [] { icon_name })
+		{
+		}
+
+		public HoverImageButton (StockIconSize size, params string [] icon_names) : this ()
+		{
+			this.icon_size = size;
+			this.icon_names = icon_names;
+		}
+
+		public new void Activate ()
+		{
+			EventHandler handler = clicked;
+			if (handler != null) {
+				handler (this, EventArgs.Empty);
+			}
+		}
 
 		void OnPerformPress (object sender, EventArgs args)
 		{
 			Activate ();
 		}
 
-        private bool changing_style = false;
-        protected override void OnStyleSet(Style previous_style)
-        {
-            if(changing_style) {
-                return;
-            }
-
-            changing_style = true;
+		protected override void OnRealized ()
+		{
+			base.OnRealized ();
 			if (normal_pixbuf == null)
-	            LoadPixbufs();
-            changing_style = false;
-        }
+				LoadPixbufs ();
+		}
 
-        protected override bool OnEnterNotifyEvent(Gdk.EventCrossing evnt)
-        {
-            image.GdkWindow.Cursor = hand_cursor;
-            is_hovering = true;
-            UpdateImage();
-            return base.OnEnterNotifyEvent(evnt);
-        }
+		void OnPressed (ClickInfo click)
+		{
+			if (CanFocus)
+				GrabFocus ();
+			is_pressed = true;
+			QueueDraw ();
+		}
 
-        protected override bool OnLeaveNotifyEvent(Gdk.EventCrossing evnt)
-        {
-			image.GdkWindow.Cursor = null;
-			is_hovering = false;
-            UpdateImage();
-            return base.OnLeaveNotifyEvent(evnt);
-        }
+		void OnReleased (ClickInfo click)
+		{
+			is_pressed = false;
+			QueueDraw ();
+			Activate ();
+		}
 
-        protected override bool OnFocusInEvent(Gdk.EventFocus evnt)
-        {
-            bool ret = base.OnFocusInEvent(evnt);
-            UpdateImage();
-            return ret;
-        }
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			base.OnSnapshot (snapshot);
 
-        protected override bool OnFocusOutEvent(Gdk.EventFocus evnt)
-        {
-            bool ret = base.OnFocusOutEvent(evnt);
-            UpdateImage();
-            return ret;
-        }
-
-        protected override bool OnButtonPressEvent(Gdk.EventButton evnt)
-        {
-            if(evnt.Button != 1) {
-                return base.OnButtonPressEvent(evnt);
-            }
-
-            HasFocus = true;
-            is_pressed = true;
-            QueueDraw();
-
-            return base.OnButtonPressEvent(evnt);
-        }
-
-        protected override bool OnButtonReleaseEvent(Gdk.EventButton evnt)
-        {
-            if(evnt.Button != 1) {
-                return base.OnButtonReleaseEvent(evnt);
-            }
-
-            is_pressed = false;
-            QueueDraw();
-            Activate();
-
-            return base.OnButtonReleaseEvent(evnt);
-        }
-
-        protected override bool OnExposeEvent(Gdk.EventExpose evnt)
-        {
-            base.OnExposeEvent(evnt);
-
-            if(HasFocus && draw_focus) {
-                Style.PaintFocus(Style, GdkWindow, StateType.Normal, evnt.Area, this, "button",
-                    0, 0, Allocation.Width, Allocation.Height);
-            }
-
-            return true;
-        }
-
-        private void UpdateImage()
-        {
-			image.Image = is_hovering || is_pressed || HasFocus
-                ? active_pixbuf : normal_pixbuf;
-        }
-
-        private void LoadPixbufs()
-        {
-            int width, height;
-            Icon.SizeLookup(icon_size, out width, out height);
-
-            if(normal_pixbuf != null) {
-                normal_pixbuf.Dispose();
-                normal_pixbuf = null;
-            }
-
-            if(active_pixbuf != null) {
-                active_pixbuf.Dispose();
-                active_pixbuf = null;
-            }
-
-            for(int i = 0; i < icon_names.Length; i++) {
-                try {
-					normal_pixbuf = ImageService.GetIcon (icon_names[i], icon_size);
-					active_pixbuf = normal_pixbuf;
-                    break;
-                } catch {
-                }
-            }
-
-            UpdateImage();
-        }
-		
-		public Xwt.Drawing.Image Pixbuf {
-			get { return this.normal_pixbuf; }
-			set { 
-				this.normal_pixbuf = value; 
-				active_pixbuf = normal_pixbuf; 
-				UpdateImage();
+			if (HasFocus && draw_focus) {
+				snapshot.DrawCairo (this, cr => {
+					cr.Rectangle (0.5, 0.5, Width - 1, Height - 1);
+					cr.SetSourceColor (Styles.FocusColor.ToCairoColor ());
+					cr.LineWidth = 1;
+					cr.SetDash (new double [] { 1, 1 }, 0.5);
+					cr.Stroke ();
+				});
 			}
 		}
 
-        public string [] IconNames {
-            get { return icon_names; }
-            set {
-                icon_names = value;
-                LoadPixbufs();
-            }
-        }
+		void UpdateImage ()
+		{
+			image.Image = is_hovering || is_pressed || HasFocus
+				? active_pixbuf : normal_pixbuf;
+		}
 
-        public IconSize IconSize {
-            get { return icon_size; }
-            set {
-                icon_size = value;
-                LoadPixbufs();
-            }
-        }
+		void LoadPixbufs ()
+		{
+			if (normal_pixbuf != null) {
+				normal_pixbuf.Dispose ();
+				normal_pixbuf = null;
+			}
+
+			if (active_pixbuf != null) {
+				active_pixbuf.Dispose ();
+				active_pixbuf = null;
+			}
+
+			for (int i = 0; i < icon_names.Length; i++) {
+				try {
+					normal_pixbuf = ImageService.GetIcon (icon_names[i], icon_size);
+					active_pixbuf = normal_pixbuf;
+					break;
+				} catch {
+				}
+			}
+
+			UpdateImage ();
+		}
+
+		public Xwt.Drawing.Image Pixbuf {
+			get { return this.normal_pixbuf; }
+			set {
+				this.normal_pixbuf = value;
+				active_pixbuf = normal_pixbuf;
+				UpdateImage ();
+			}
+		}
+
+		public string [] IconNames {
+			get { return icon_names; }
+			set {
+				icon_names = value;
+				LoadPixbufs ();
+			}
+		}
+
+		public StockIconSize IconSize {
+			get { return icon_size; }
+			set {
+				icon_size = value;
+				LoadPixbufs ();
+			}
+		}
 
 		public ImageView Image {
-            get { return image; }
-        }
+			get { return image; }
+		}
 
-        public bool DrawFocus {
-            get { return draw_focus; }
-            set {
-                draw_focus = value;
-                QueueDraw();
-            }
-        }
-    }
+		public bool DrawFocus {
+			get { return draw_focus; }
+			set {
+				draw_focus = value;
+				QueueDraw ();
+			}
+		}
+	}
 }

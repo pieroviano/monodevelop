@@ -44,21 +44,20 @@ namespace MonoDevelop.Components.Extensions
 			toolbar = new HeaderBox ();
 			toolbar.GradientBackground = true;
 			toolbar.SetMargins (0, 1, 0, 0);
-			MainBox.PackStart (toolbar, false, false, 0);
-			((Gtk.Box.BoxChild)MainBox [toolbar]).Position = 0;
+			MainBox.Prepend (toolbar);
 		}
 
 		public void SetHeaderContent (IWidgetBackend backend)
 		{
 			if (toolbar.Child != null) {
 				WidgetBackend.RemoveChildPlacement (toolbar.Child);
-				toolbar.Remove (toolbar.Child);
+				toolbar.Child = null;
 			}
 			if (backend != null) {
 				toolbar.Child = WidgetBackend.GetWidgetWithPlacement (backend);
-				toolbar.Show ();
+				toolbar.Visible = true;
 			} else {
-				toolbar.Hide ();
+				toolbar.Visible = false;
 			}
 		}
 	}

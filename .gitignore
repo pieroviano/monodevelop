@@ -285,3 +285,5 @@ main/tests/StressTest/bin
 /main/Main.sln.DotSettings
 .vs
 */.vs
+*.code-workspace
+/main/build

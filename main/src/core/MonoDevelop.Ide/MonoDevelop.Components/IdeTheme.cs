@@ -42,8 +42,11 @@ namespace MonoDevelop.Components
 	public static class IdeTheme
 	{
 		internal static string DefaultTheme;
-		internal static string DefaultGtkDataFolder;
-		internal static string DefaultGtk2RcFiles;
+
+		// GTK 4: gtkrc (Gtk.Rc) theming is gone. MonoDevelop's light/dark theme is applied through
+		// Gtk.Settings (gtk-application-prefer-dark-theme / gtk-theme-name) plus an application CSS provider.
+		static Gtk.CssProvider themeCssProvider;
+		static readonly HashSet<Gdk.Display> themedDisplays = new HashSet<Gdk.Display> ();
 
 		public static Theme UserInterfaceTheme { get; private set; }
 
@@ -62,11 +65,8 @@ namespace MonoDevelop.Components
 
 		static IdeTheme ()
 		{
-			DefaultGtkDataFolder = Environment.GetEnvironmentVariable ("GTK_DATA_PREFIX");
-			DefaultGtk2RcFiles = Environment.GetEnvironmentVariable ("GTK2_RC_FILES");
 			// FIXME: Immediate theme switching disabled, until:
 			//        MAC: NSAppearance issues are fixed
-			//        WIN: spradic Gtk crashes on theme realoding are fixed
 			//IdeApp.Preferences.UserInterfaceTheme.Changed += (sender, e) => UpdateGtkTheme ();
 		}
 
@@ -82,36 +82,11 @@ namespace MonoDevelop.Components
 			// Early init Cocoa through xwt
 			var loaded = NativeToolkitHelper.LoadCocoa ();
 			IdeStartupTracker.StartupTracker.MarkSection ("XamarinMacInitialization");
-
-			var disableA11y = Environment.GetEnvironmentVariable ("DISABLE_ATKCOCOA");
-			if (Platform.IsMac && (NSUserDefaults.StandardUserDefaults.BoolForKey ("com.monodevelop.AccessibilityEnabled") && string.IsNullOrEmpty (disableA11y))) {
-				// Load a private version of AtkCocoa stored in the XS app directory
-				var appDir = Directory.GetParent (AppDomain.CurrentDomain.BaseDirectory);
-				var gtkPath = $"{appDir.Parent.FullName}/lib/gtk-2.0";
-
-				LoggingService.LogInfo ($"Loading modules from {gtkPath}");
-				Environment.SetEnvironmentVariable ("GTK_MODULES", $"{gtkPath}/libatkcocoa.so");
-				AccessibilityEnabled = true;
-			} else {
-				// If we are restarted from a running instance when changing the accessibility setting then
-				// we inherit the environment from it
-				Environment.SetEnvironmentVariable ("GTK_MODULES", null);
-				LoggingService.LogInfo ("Accessibility disabled");
-				AccessibilityEnabled = false;
-			}
 #endif
-			//HACK: we must initilize some Gtk rc before Gtk.Application is initialized on Mac/Windows
-			//      otherwise it will not be loaded correctly and theme switching won't work.
-			if (!Platform.IsLinux)
-				UpdateGtkTheme ();
+			// GTK 4 exposes accessibility natively (Gtk.Accessible); the GTK 2 AtkCocoa module is gone.
+			AccessibilityEnabled = true;
 
-			Gtk.Application.Init (BrandingService.ApplicationName, ref args);
-
-			// Reset our environment after initialization on Mac
-			if (Platform.IsMac) {
-				Environment.SetEnvironmentVariable ("GTK_MODULES", null);
-				Environment.SetEnvironmentVariable ("GTK2_RC_FILES", DefaultGtk2RcFiles);
-			}
+			Gtk.Application.Init (progname, ref args);
 		}
 
 		internal static void SetupXwtTheme ()
@@ -137,7 +112,7 @@ namespace MonoDevelop.Components
 		{
 			if (Gtk.Settings.Default == null)
 				return;
-			
+
 			if (Platform.IsLinux) {
 				DefaultTheme = Gtk.Settings.Default.ThemeName;
 				string theme = IdeApp.Preferences.UserInterfaceThemeName;
@@ -146,120 +121,128 @@ namespace MonoDevelop.Components
 				ValidateGtkTheme (ref theme);
 				if (theme != DefaultTheme)
 					Gtk.Settings.Default.ThemeName = theme;
-				LoggingService.LogInfo ("GTK: Using Gtk theme from {0}", Path.Combine (Gtk.Rc.ThemeDir, Gtk.Settings.Default.ThemeName));
+				LoggingService.LogInfo ("GTK: Using Gtk theme {0}", Gtk.Settings.Default.ThemeName);
 			} else
 				DefaultTheme = "Light";
 
-			// HACK: on Windows we have to load the theme twice on startup. During the first run we
-			//       set the environment variables from InitializeGtk() and after Gtk initialization
-			//       we set the active theme from here. Otherwise Gtk will preload the default theme with
-			//       the Wimp engine, which can break our own configs.
-			if (Platform.IsWindows)
-				UpdateGtkTheme ();
+			UpdateGtkTheme ();
 		}
 
 		internal static void UpdateGtkTheme ()
 		{
-			if (DefaultTheme == null)
+			if (DefaultTheme == null) {
 				SetupGtkTheme ();
+				return;
+			}
 
+			var settings = Gtk.Settings.Default;
 			string current_theme = IdeApp.Preferences.UserInterfaceThemeName;
 
 			if (!Platform.IsLinux) {
 				UserInterfaceTheme = IdeApp.Preferences.UserInterfaceThemeName == "Dark" ? Theme.Dark : Theme.Light;
-				if (current_theme != UserInterfaceTheme.ToString ()) // Only theme names allowed on Win/Mac
-					current_theme = UserInterfaceTheme.ToString ();
-			}
-
-			var use_bundled_theme = false;
-
-			
-			// Use the bundled gtkrc only if the Xamarin theme is installed
-			if (File.Exists (Path.Combine (Gtk.Rc.ModuleDir, "libxamarin.so")) || File.Exists (Path.Combine (Gtk.Rc.ModuleDir, "libxamarin.dll")))
-				use_bundled_theme = true;
-			// on Windows we can't rely on Gtk.Rc.ModuleDir to be valid
-			// and test additionally the default installation dir
-			if (!use_bundled_theme && Platform.IsWindows) {
-				var gtkBasePath = Environment.GetEnvironmentVariable ("GTK_BASEPATH");
-				if (String.IsNullOrEmpty (gtkBasePath))
-					gtkBasePath = "C:\\Program Files (x86)\\GtkSharp\\2.12\\";
-				if (File.Exists (Path.Combine (gtkBasePath, "lib\\gtk-2.0\\2.10.0\\engines\\libxamarin.dll")))
-				    use_bundled_theme = true;
-			}
-			
-			if (use_bundled_theme) {
-				
-				if (!Directory.Exists (UserProfile.Current.ConfigDir))
-					Directory.CreateDirectory (UserProfile.Current.ConfigDir);
-				
-				if (Platform.IsWindows) {
-					// HACK: Gtk Bug: Rc.ReparseAll () and the include "[rcfile]" gtkrc statement are broken on Windows.
-					//                We must provide our own XDG folder structure to switch bundled themes.
-					var rc_themes = UserProfile.Current.ConfigDir.Combine ("share", "themes");
-					var rc_theme_light = rc_themes.Combine ("Light", "gtk-2.0", "gtkrc");
-					var rc_theme_dark = rc_themes.Combine ("Dark", "gtk-2.0", "gtkrc");
-					if (!Directory.Exists (rc_theme_light.ParentDirectory))
-						Directory.CreateDirectory (rc_theme_light.ParentDirectory);
-					if (!Directory.Exists (rc_theme_dark.ParentDirectory))
-						Directory.CreateDirectory (rc_theme_dark.ParentDirectory);
-
-					string gtkrc = PropertyService.EntryAssemblyPath.Combine ("gtkrc");
-					File.Copy (gtkrc + ".win32", rc_theme_light, true);
-					File.Copy (gtkrc + ".win32-dark", rc_theme_dark, true);
-
-					var themeDir = UserProfile.Current.ConfigDir;
-					if (!themeDir.IsAbsolute)
-						themeDir = themeDir.ToAbsolute (Environment.CurrentDirectory);
-					Environment.SetEnvironmentVariable ("GTK_DATA_PREFIX", themeDir);
-
-					// set the actual theme and reset the environment only after Gtk has been fully
-					// initialized. See SetupGtkTheme ().
-					if (Gtk.Settings.Default != null) {
-						LoggingService.LogInfo ("GTK: Using Gtk theme from {0}", Path.Combine (Gtk.Rc.ThemeDir, current_theme));
-						Gtk.Settings.Default.ThemeName = current_theme;
-						Environment.SetEnvironmentVariable ("GTK_DATA_PREFIX", DefaultGtkDataFolder);
-					}
-
-				} else if (Platform.IsMac) {
-					
-					var gtkrc = "gtkrc.mac";
-					if (IdeApp.Preferences.UserInterfaceTheme == Theme.Dark)
-						gtkrc += "-dark";
-					gtkrc = PropertyService.EntryAssemblyPath.Combine (gtkrc);
-
-					LoggingService.LogInfo ("GTK: Using gtkrc from {0}", gtkrc);
-					
-					// Generate a dummy rc file and use that to include the real rc. This allows changing the rc
-					// on the fly. All we have to do is rewrite the dummy rc changing the include and call ReparseAll
-					var rcFile = UserProfile.Current.ConfigDir.Combine ("gtkrc");
-					File.WriteAllText (rcFile, "include \"" + gtkrc + "\"");
-					Environment.SetEnvironmentVariable ("GTK2_RC_FILES", rcFile);
-
-					Gtk.Rc.ReparseAll ();
-
-					// reset the environment only after Gtk has been fully initialized. See SetupGtkTheme ().
-					if (Gtk.Settings.Default != null)
-						Environment.SetEnvironmentVariable ("GTK2_RC_FILES", DefaultGtk2RcFiles);
+				if (settings != null) {
+					// Only Light/Dark are allowed on Win/Mac: GTK's default theme in its light or dark variant.
+					settings.ApplicationPreferDarkTheme = UserInterfaceTheme == Theme.Dark;
+					LoggingService.LogInfo ("GTK: Using the {0} variant of the Gtk theme {1}", UserInterfaceTheme, settings.ThemeName);
 				}
-
-			} else if (Gtk.Settings.Default != null && current_theme != Gtk.Settings.Default.ThemeName) {
-				LoggingService.LogInfo ("GTK: Using Gtk theme from {0}", Path.Combine (Gtk.Rc.ThemeDir, current_theme));
-				Gtk.Settings.Default.ThemeName = current_theme;
+			} else if (settings != null && !string.IsNullOrEmpty (current_theme) && current_theme != settings.ThemeName) {
+				LoggingService.LogInfo ("GTK: Using Gtk theme {0}", current_theme);
+				settings.ThemeName = current_theme;
 			}
 
-			// let Gtk realize the new theme
-			// Style is being updated by DefaultWorkbench.OnStyleSet ()
-			// This ensures that the theme and all styles have been loaded when
-			// the Styles.Changed event is raised.
-			//GLib.Timeout.Add (50, delegate { UpdateStyles(); return false; });
+			LoadThemeCss ();
+
+			// Styles are updated by DefaultWorkbench (UpdateStyles) once the new theme has been applied.
 		}
+
+		/// <summary>
+		/// Loads MonoDevelop's CSS for the current light/dark theme into the application provider and registers it
+		/// for the default display. A <c>gtk4.css</c> / <c>gtk4-dark.css</c> file next to the entry assembly, if present,
+		/// replaces the built-in palette (the role of the GTK 2 <c>gtkrc.*</c> files).
+		/// </summary>
+		static void LoadThemeCss ()
+		{
+			bool dark = UserInterfaceTheme == Theme.Dark;
+			string css = null;
+			try {
+				var file = PropertyService.EntryAssemblyPath.Combine (dark ? "gtk4-dark.css" : "gtk4.css");
+				if (File.Exists (file))
+					css = File.ReadAllText (file);
+			} catch (Exception ex) {
+				LoggingService.LogError ("Could not read the theme CSS", ex);
+			}
+			// On Linux the system Gtk theme is used as is (GTK 2 also used no bundled gtkrc there).
+			if (css == null)
+				css = Platform.IsLinux ? string.Empty : (dark ? DarkPaletteCss : LightPaletteCss);
+
+			if (themeCssProvider == null)
+				themeCssProvider = new Gtk.CssProvider ();
+			themeCssProvider.LoadFromString (css);
+
+			EnsureThemeCss (Gdk.Display.Default);
+		}
+
+		static void EnsureThemeCss (Gdk.Display display)
+		{
+			if (themeCssProvider == null || display == null || themedDisplays.Contains (display))
+				return;
+			Gtk.StyleContext.AddProviderForDisplay (display, themeCssProvider, (uint)Gtk.StyleProviderPriority.Application);
+			themedDisplays.Add (display);
+		}
+
+		// Palettes of the former gtkrc.win32 / gtkrc.win32-dark color schemes.
+		const string LightPaletteCss = @"
+@define-color theme_bg_color #f5f5f5;
+@define-color theme_fg_color #000000;
+@define-color theme_base_color #ffffff;
+@define-color theme_text_color #000000;
+@define-color theme_selected_bg_color #cce8ff;
+@define-color theme_selected_fg_color #000000;
+@define-color theme_unfocused_bg_color #f5f5f5;
+@define-color theme_unfocused_fg_color #000000;
+@define-color theme_unfocused_base_color #ffffff;
+@define-color theme_unfocused_selected_bg_color #cce8ff;
+@define-color theme_unfocused_selected_fg_color #000000;
+@define-color insensitive_fg_color #767676;
+@define-color borders #b2b2b2;
+window, .background { background-color: @theme_bg_color; color: @theme_fg_color; }
+.view, textview text, iconview, treeview.view { background-color: @theme_base_color; color: @theme_text_color; }
+.view:selected, treeview.view:selected, selection { background-color: @theme_selected_bg_color; color: @theme_selected_fg_color; }
+link, .link { color: #175fde; }
+tooltip.background { background-color: #f2f2f2; color: #222222; border: 1px solid #b2b2b2; }
+";
+
+		const string DarkPaletteCss = @"
+@define-color theme_bg_color #333333;
+@define-color theme_fg_color #d7d7d7;
+@define-color theme_base_color #404040;
+@define-color theme_text_color #d7d7d7;
+@define-color theme_selected_bg_color #4c5e6e;
+@define-color theme_selected_fg_color #bfbfbf;
+@define-color theme_unfocused_bg_color #333333;
+@define-color theme_unfocused_fg_color #d7d7d7;
+@define-color theme_unfocused_base_color #404040;
+@define-color theme_unfocused_selected_bg_color #4c5e6e;
+@define-color theme_unfocused_selected_fg_color #bfbfbf;
+@define-color insensitive_fg_color #ababab;
+@define-color borders #5a5a5a;
+window, .background { background-color: @theme_bg_color; color: @theme_fg_color; }
+.view, textview text, iconview, treeview.view { background-color: @theme_base_color; color: @theme_text_color; }
+.view:selected, treeview.view:selected, selection { background-color: @theme_selected_bg_color; color: @theme_selected_fg_color; }
+link, .link { color: #ace2ff; }
+tooltip.background { background-color: #5a5a5a; color: #d2d5cd; border: 1px solid #b2b2b2; }
+";
 
 		internal static void UpdateStyles ()
 		{
 			if (Platform.IsLinux) {
-				var defaultStyle = Gtk.Rc.GetStyle (IdeApp.Workbench.RootWindow);
-				var bgColor = defaultStyle.Background (Gtk.StateType.Normal);
-				UserInterfaceTheme = HslColor.Brightness (bgColor) < 0.5 ? Theme.Dark : Theme.Light;
+				// GTK 4 has no Rc style to query the background color: a light foreground color means a dark theme.
+				Gtk.Widget window = IdeApp.Workbench?.RootWindow;
+				var settings = Gtk.Settings.Default;
+				if (window != null)
+					UserInterfaceTheme = HslColor.Brightness (window.StyleColor) > 0.5 ? Theme.Dark : Theme.Light;
+				else if (settings != null)
+					UserInterfaceTheme = settings.ApplicationPreferDarkTheme || (settings.ThemeName ?? "").EndsWith ("-dark", StringComparison.OrdinalIgnoreCase) ? Theme.Dark : Theme.Light;
 			}
 
 			if (UserInterfaceTheme == Theme.Dark)
@@ -282,25 +265,25 @@ namespace MonoDevelop.Components
 		static void UpdateXwtDefaults ()
 		{
 			// Xwt default dialog icons
-			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", Gtk.IconSize.Dialog);
-			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", Gtk.IconSize.Dialog);
-			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", Gtk.IconSize.Dialog);
-			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog);
-			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog);
+			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", StockIconSize.Dialog);
+			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", StockIconSize.Dialog);
+			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", StockIconSize.Dialog);
+			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog);
+			Xwt.Toolkit.CurrentEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog);
 
 			if (Platform.IsMac && UserInterfaceTheme == Theme.Dark) {
 				// dark NSAppearance can not handle custom drawn images in dialogs
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", Gtk.IconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", Gtk.IconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", Gtk.IconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", StockIconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", StockIconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", StockIconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog).ToBitmap (GtkWorkarounds.GetScaleFactor ());
 			} else {
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", Gtk.IconSize.Dialog);
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", Gtk.IconSize.Dialog);
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", Gtk.IconSize.Dialog);
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog);
-				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", Gtk.IconSize.Dialog);
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.InformationIcon = ImageService.GetIcon ("gtk-dialog-info", StockIconSize.Dialog);
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.WarningIcon = ImageService.GetIcon ("gtk-dialog-warning", StockIconSize.Dialog);
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ErrorIcon = ImageService.GetIcon ("gtk-dialog-error", StockIconSize.Dialog);
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.QuestionIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog);
+				Xwt.Toolkit.NativeEngine.Defaults.MessageDialog.ConfirmationIcon = ImageService.GetIcon ("gtk-dialog-question", StockIconSize.Dialog);
 			}
 
 			Xwt.Toolkit.CurrentEngine.Defaults.FallbackLinkColor = Styles.LinkForegroundColor;
@@ -343,7 +326,7 @@ namespace MonoDevelop.Components
 					"set it as your default in the GTK+ Theme Selector or MonoDevelop Preferences.";
 			}
 
-			MessageService.GenericAlert (Gtk.Stock.DialogWarning, message, BrandingService.BrandApplicationName (detail), AlertButton.Ok);
+			MessageService.GenericAlert ("gtk-dialog-warning", message, BrandingService.BrandApplicationName (detail), AlertButton.Ok);
 
 			theme = fallback ?? themes.FirstOrDefault () ?? theme;
 		}
@@ -425,6 +408,9 @@ namespace MonoDevelop.Components
 
 		public static void ApplyTheme (this Gtk.Window window)
 		{
+			// Make sure the theme CSS also reaches windows on other displays.
+			if (window?.Display != null)
+				EnsureThemeCss (window.Display);
 			#if MAC
 			window.Realized += OnGtkWindowRealized;
 			if (window.IsRealized) {

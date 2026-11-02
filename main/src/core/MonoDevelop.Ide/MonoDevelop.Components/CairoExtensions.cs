@@ -55,9 +55,9 @@ namespace MonoDevelop.Components
 			return new Cairo.Rectangle (rect.X, rect.Y, rect.Width, rect.Height);
 		}
 
-        public static Surface CreateSurfaceForPixbuf (Context cr, Pixbuf pixbuf)
+        public static Cairo.Surface CreateSurfaceForPixbuf (Context cr, Pixbuf pixbuf)
         {
-			Surface surface;
+			Cairo.Surface surface;
 			using (var t = cr.GetTarget ()) {
 				surface = t.CreateSimilar (t.Content, pixbuf.Width, pixbuf.Height);
 			}
@@ -76,24 +76,20 @@ namespace MonoDevelop.Components
                 (1.0 - alpha) * ca.G + alpha * cb.G,
                 (1.0 - alpha) * ca.B + alpha * cb.B);
         }
-		public static Gdk.Color CairoColorToGdkColor(Cairo.Color color)
-        {
-            return new Gdk.Color ((byte)(color.R * 255), (byte)(color.G * 255), (byte)(color.B * 255));
-        }
+		public static Gdk.RGBA CairoColorToGdkColor (Cairo.Color color)
+		{
+			return new Gdk.RGBA { Red = (float)color.R, Green = (float)color.G, Blue = (float)color.B, Alpha = (float)color.A };
+		}
 
-        public static Cairo.Color GdkColorToCairoColor(Gdk.Color color)
-        {
-            return GdkColorToCairoColor(color, 1.0);
-        }
+		public static Cairo.Color GdkColorToCairoColor (Gdk.RGBA color)
+		{
+			return new Cairo.Color (color.Red, color.Green, color.Blue, color.Alpha);
+		}
 
-        public static Cairo.Color GdkColorToCairoColor(Gdk.Color color, double alpha)
-        {
-            return new Cairo.Color(
-                (double)(color.Red >> 8) / 255.0,
-                (double)(color.Green >> 8) / 255.0,
-                (double)(color.Blue >> 8) / 255.0,
-                alpha);
-        }
+		public static Cairo.Color GdkColorToCairoColor (Gdk.RGBA color, double alpha)
+		{
+			return new Cairo.Color (color.Red, color.Green, color.Blue, alpha);
+		}
 
         public static Cairo.Color RgbToColor (uint rgbColor)
         {
@@ -406,19 +402,6 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		[DllImport (LIBCAIRO, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr cairo_pattern_set_extend(IntPtr pattern, CairoExtend extend);
-
-		[DllImport (LIBCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		internal static extern IntPtr cairo_get_source (IntPtr cr);
-
-		enum CairoExtend {
-			CAIRO_EXTEND_NONE,
-			CAIRO_EXTEND_REPEAT,
-			CAIRO_EXTEND_REFLECT,
-			CAIRO_EXTEND_PAD
-		}
-
 		public static void RenderTiled (this Cairo.Context self, Gtk.Widget target, Xwt.Drawing.Image source, Gdk.Rectangle area, Gdk.Rectangle clip, double opacity = 1)
 		{
 			var ctx = Xwt.Toolkit.CurrentEngine.WrapContext (target, self);
@@ -436,79 +419,14 @@ namespace MonoDevelop.Components
             cr.Dispose ();
         }
 
-        private struct CairoInteropCall
-        {
-            public string Name;
-            public MethodInfo ManagedMethod;
-            public bool CallNative;
-
-            public CairoInteropCall (string name)
-            {
-                Name = name;
-                ManagedMethod = null;
-                CallNative = false;
-            }
-        }
-
-        private static bool CallCairoMethod (Cairo.Context cr, ref CairoInteropCall call)
-        {
-            if (call.ManagedMethod == null && !call.CallNative) {
-                MemberInfo [] members = typeof (Cairo.Context).GetMember (call.Name, MemberTypes.Method,
-                    BindingFlags.InvokeMethod | BindingFlags.Instance | BindingFlags.Public);
-
-                if (members != null && members.Length > 0 && members[0] is MethodInfo) {
-                    call.ManagedMethod = (MethodInfo)members[0];
-                } else {
-                    call.CallNative = true;
-                }
-            }
-
-            if (call.ManagedMethod != null) {
-                call.ManagedMethod.Invoke (cr, null);
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool native_push_pop_exists = true;
-
-		[DllImport (LIBCAIRO, CallingConvention = CallingConvention.Cdecl)]
-        private static extern void cairo_push_group (IntPtr ptr);
-        private static CairoInteropCall cairo_push_group_call = new CairoInteropCall ("PushGroup");
-
-        public static void PushGroup (Cairo.Context cr)
-        {
-            if (!native_push_pop_exists) {
-                return;
-            }
-
-            try {
-                if (!CallCairoMethod (cr, ref cairo_push_group_call)) {
-                    cairo_push_group (cr.Handle);
-                }
-            } catch {
-                native_push_pop_exists = false;
-            }
-        }
-
-		[DllImport (LIBCAIRO, CallingConvention = CallingConvention.Cdecl)]
-        private static extern void cairo_pop_group_to_source (IntPtr ptr);
-        private static CairoInteropCall cairo_pop_group_to_source_call = new CairoInteropCall ("PopGroupToSource");
-
-        public static void PopGroupToSource (Cairo.Context cr)
+		public static void PushGroup (Cairo.Context cr)
 		{
-			if (!native_push_pop_exists) {
-				return;
-			}
+			cr.PushGroup ();
+		}
 
-			try {
-				if (!CallCairoMethod (cr, ref cairo_pop_group_to_source_call)) {
-					cairo_pop_group_to_source (cr.Handle);
-				}
-			} catch (EntryPointNotFoundException) {
-				native_push_pop_exists = false;
-			}
+		public static void PopGroupToSource (Cairo.Context cr)
+		{
+			cr.PopGroupToSource ();
 		}
 
 		public static Cairo.Color ParseColor (string s, double alpha = 1)
@@ -614,11 +532,12 @@ namespace MonoDevelop.Components
 		public object Data { get; set; }
 		public bool IsDisposed { get; private set; }
 
+		/// <param name="similar">Context whose target the surface should be similar to; null creates an image surface.</param>
 		public SurfaceWrapper (Cairo.Context similar, int width, int height)
 		{
 			if (Platform.IsMac) {
 				Surface = new QuartzSurface (Cairo.Format.ARGB32, width, height);
-			} else if (Platform.IsWindows) {
+			} else if (Platform.IsWindows && similar != null) {
 				using (var target = similar.GetTarget ()) {
 					Surface = target.CreateSimilar (Cairo.Content.ColorAlpha, width, height);
 				}
@@ -635,9 +554,9 @@ namespace MonoDevelop.Components
 			// There is a bug in Cairo for OSX right now that prevents creating additional accellerated surfaces.
 			if (Platform.IsMac) {
 				surface = new QuartzSurface (Format.ARGB32, source.Width, source.Height);
-			} else if (Platform.IsWindows) {
+			} else if (Platform.IsWindows && similar != null) {
 				using (var t = similar.GetTarget ()) {
-					surface = t.CreateSimilar (Content.ColorAlpha, source.Width, source.Height);
+					surface = t.CreateSimilar (Cairo.Content.ColorAlpha, source.Width, source.Height);
 				}
 			} else {
 				surface = new ImageSurface (Format.ARGB32, source.Width, source.Height);

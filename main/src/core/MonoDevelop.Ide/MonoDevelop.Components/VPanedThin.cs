@@ -23,21 +23,23 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
 using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components
 {
-	public class VPanedThin: Gtk.VPaned
+	/// <summary>Vertical <see cref="Gtk.Paned"/> with a 1px splitter line (see <see cref="HPanedThin"/>).</summary>
+	public class VPanedThin: Gtk.Paned
 	{
-		CustomPanedHandle handle;
+		readonly ThinPanedHandle handle;
 
-		public VPanedThin ()
+		public VPanedThin () : base (Gtk.Orientation.Vertical)
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-			handle = new CustomGtkPanedHandle (this);
+			handle = new ThinPanedHandle (this);
 		}
 
+		/// <inheritdoc cref="HPanedThin.GrabAreaSize"/>
 		public int GrabAreaSize {
 			get { return handle.GrabAreaSize; }
 			set {
@@ -46,32 +48,29 @@ namespace MonoDevelop.Components
 			}
 		}
 
+		/// <inheritdoc cref="HPanedThin.HandleWidget"/>
 		public Gtk.Widget HandleWidget {
 			get { return handle.HandleWidget; }
 			set { handle.HandleWidget = value; }
 		}
 
-		protected override void ForAll (bool include_internals, Gtk.Callback callback)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.ForAll (include_internals, callback);
-			if (handle != null)
-				callback (handle);
+			base.OnSizeAllocate (width, height, baseline);
+			handle.Allocate (width, height);
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			base.OnExposeEvent (evnt);
-			
-			if (Child1 != null && Child1.Visible && Child2 != null && Child2.Visible) {
-				var gc = new Gdk.GC (evnt.Window);
-				gc.RgbFgColor = Styles.ThinSplitterColor.ToGdkColor ();
-				var y = Child1.Allocation.Y + Child1.Allocation.Height;
-				evnt.Window.DrawLine (gc, Allocation.X, y, Allocation.X + Allocation.Width, y);
-				gc.Dispose ();
-			}
-			
-			return true;
+			base.OnSnapshot (snapshot);
+			handle.Snapshot (snapshot);
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing)
+				handle.Dispose ();
+			base.Dispose (disposing);
 		}
 	}
 }
-

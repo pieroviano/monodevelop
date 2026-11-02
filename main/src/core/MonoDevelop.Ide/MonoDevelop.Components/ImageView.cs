@@ -24,21 +24,24 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
+	/// <summary>
+	/// Draws an <see cref="Xwt.Drawing.Image"/> (GTK 4: plain Gtk.Widget leaf; GTK 2 Gtk.Misc padding/alignment kept as properties).
+	/// </summary>
 	[System.ComponentModel.ToolboxItem (true)]
-	public class ImageView: Gtk.Misc
+	public class ImageView: Gtk.Widget
 	{
 		Xwt.Drawing.Image image;
 		string iconId;
-		Gtk.IconSize? size;
+		StockIconSize? size;
+		float xalign = 0.5f, yalign = 0.5f;
+		int xpad, ypad;
 
 		public ImageView ()
 		{
-			Accessible.Role = Atk.Role.Image;
-			WidgetFlags |= Gtk.WidgetFlags.AppPaintable | Gtk.WidgetFlags.NoWindow;
+			AccessibleRole = Gtk.AccessibleRole.Img;
 		}
 
 		public ImageView (Xwt.Drawing.Image image): this ()
@@ -46,7 +49,7 @@ namespace MonoDevelop.Components
 			this.image = image;
 		}
 
-		public ImageView (string iconId, Gtk.IconSize size): this ()
+		public ImageView (string iconId, StockIconSize size): this ()
 		{
 			this.iconId = iconId;
 			this.size = size;
@@ -62,16 +65,54 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public void SetIcon (string iconId, Gtk.IconSize size)
+		/// <summary>Horizontal alignment of the image in the allocation (0 left .. 1 right).</summary>
+		public float Xalign {
+			get { return xalign; }
+			set { xalign = value; QueueDraw (); }
+		}
+
+		/// <summary>Vertical alignment of the image in the allocation (0 top .. 1 bottom).</summary>
+		public float Yalign {
+			get { return yalign; }
+			set { yalign = value; QueueDraw (); }
+		}
+
+		/// <summary>Horizontal padding on each side.</summary>
+		public int Xpad {
+			get { return xpad; }
+			set { xpad = value; QueueResize (); }
+		}
+
+		/// <summary>Vertical padding on each side.</summary>
+		public int Ypad {
+			get { return ypad; }
+			set { ypad = value; QueueResize (); }
+		}
+
+		public void SetAlignment (float xalign, float yalign)
+		{
+			this.xalign = xalign;
+			this.yalign = yalign;
+			QueueDraw ();
+		}
+
+		public void SetPadding (int xpad, int ypad)
+		{
+			this.xpad = xpad;
+			this.ypad = ypad;
+			QueueResize ();
+		}
+
+		public void SetIcon (string iconId, StockIconSize size)
 		{
 			this.iconId = iconId;
 			this.size = size;
 			Image = MonoDevelop.Ide.ImageService.GetIcon (iconId, size);
 		}
 
-		public Gtk.IconSize IconSize {
+		public StockIconSize IconSize {
 			get {
-				return size.HasValue ? size.Value : Gtk.IconSize.Invalid;
+				return size.HasValue ? size.Value : StockIconSize.Invalid;
 			}
 			set {
 				size = value;
@@ -91,46 +132,40 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		protected override void OnSizeRequested (ref Gtk.Requisition requisition)
+		protected override Gtk.SizeRequestMode OnGetRequestMode ()
 		{
-			requisition.Width = Xpad * 2;
-			requisition.Height = Ypad * 2;
-			if (image != null) {
-				requisition.Width += (int)(image.Width);
-				requisition.Height += (int)(image.Height);
-			}
+			return Gtk.SizeRequestMode.ConstantSize;
+		}
+
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
+			if (orientation == Gtk.Orientation.Horizontal)
+				minimum = xpad * 2 + (image != null ? (int)image.Width : 0);
+			else
+				minimum = ypad * 2 + (image != null ? (int)image.Height : 0);
+			natural = minimum;
+			minimum_baseline = natural_baseline = -1;
 		}
 
 		bool IsParentDisabled ()
 		{
-			var parent = Parent;
-			if (parent != null) {
-				if (!parent.Sensitive)
-					return true;
-				// special case: Buttons with image and label align children with HBox and Alignment
-				//               Button -> Alignment -> HBox -> [ImageView|Label]
-				parent = parent.Parent.Parent as Gtk.Button;
-				if (parent != null && !parent.Sensitive)
-					return true;
-			}
-			return false;
+			// Insensitivity is inherited in GTK 4: an insensitive ancestor (e.g. a Button) makes this widget insensitive.
+			return !IsSensitive;
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (image != null) {
-				var alloc = Allocation;
-				alloc.Inflate (-Xpad, -Ypad);
-				using (var ctx = CairoHelper.Create (evnt.Window)) {
-					var x = Math.Round (alloc.X + (alloc.Width - image.Width) * Xalign);
-					var y = Math.Round (alloc.Y + (alloc.Height - image.Height) * Yalign);
-					ctx.Save ();
-					ctx.DrawImage (this, IsParentDisabled () ? image.WithAlpha (0.4) : image, x, y);
-					ctx.Restore ();
-				}
-			}
-			return true;
+			if (image == null)
+				return;
+			var alloc = new Gdk.Rectangle (0, 0, Width, Height);
+			alloc.Inflate (-xpad, -ypad);
+			snapshot.DrawCairo (this, ctx => {
+				var x = Math.Round (alloc.X + (alloc.Width - image.Width) * xalign);
+				var y = Math.Round (alloc.Y + (alloc.Height - image.Height) * yalign);
+				ctx.Save ();
+				ctx.DrawImage (this, IsParentDisabled () ? image.WithAlpha (0.4) : image, x, y);
+				ctx.Restore ();
+			});
 		}
 	}
 }
-

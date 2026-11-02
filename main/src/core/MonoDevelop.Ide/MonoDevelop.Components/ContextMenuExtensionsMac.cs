@@ -38,7 +38,7 @@ namespace MonoDevelop.Components
 	#if MAC
 	static class ContextMenuExtensionsMac
 	{
-		public static void ShowContextMenu (Gtk.Widget parent, Gdk.EventButton evt, ContextMenu menu, Action closeHandler)
+		public static void ShowContextMenu (Gtk.Widget parent, ClickInfo evt, ContextMenu menu, Action closeHandler)
 		{
 			if (parent == null)
 				throw new ArgumentNullException ("parent");
@@ -49,7 +49,7 @@ namespace MonoDevelop.Components
 			ShowContextMenu (parent, evt, nsMenu);
 		}
 
-		public static void ShowContextMenu (Gtk.Widget parent, Gdk.EventButton evt, ContextMenu menu)
+		public static void ShowContextMenu (Gtk.Widget parent, ClickInfo evt, ContextMenu menu)
 		{
 			ShowContextMenu (parent, evt, menu, null);
 		}
@@ -75,16 +75,14 @@ namespace MonoDevelop.Components
 
 			parent.GrabFocus ();
 
-			Gtk.Application.Invoke ((o, args) => {
-				// Explicitly release the grab because the menu is shown on the mouse position, and the widget doesn't get the mouse release event
-				Gdk.Pointer.Ungrab (Gtk.Global.CurrentEventTime);
+			Runtime.RunInMainThread (() => {
 				var nsview = MonoDevelop.Components.Mac.GtkMacInterop.GetNSView (parent);
-				var toplevel = parent.Toplevel as Gtk.Window;
+				var toplevel = parent.Root as Gtk.Window;
 
 				var nswindow = MonoDevelop.Components.Mac.GtkMacInterop.GetNSWindow (toplevel);
 
 				int titleBarOffset;
-				if (toplevel.TypeHint == Gdk.WindowTypeHint.Toolbar && toplevel.Type == Gtk.WindowType.Toplevel && toplevel.Decorated == false) {
+				if (toplevel.Decorated == false) {
 					// Undecorated toplevel toolbars are used for auto-hide pad windows. Don't add a titlebar offset for them.
 					titleBarOffset = 0;
 				} else if (MonoDevelop.Ide.IdeServices.DesktopService.GetIsFullscreen (toplevel)) {
@@ -93,7 +91,9 @@ namespace MonoDevelop.Components
 					titleBarOffset = MonoDevelop.Components.Mac.GtkMacInterop.GetTitleBarHeight () + 12;
 				}
 
-				parent.TranslateCoordinates (parent.Toplevel, x, y, out x, out y);
+				parent.TranslateCoordinates ((Gtk.Widget)toplevel, x, y, out double tx, out double ty);
+				x = (int)tx;
+				y = (int)ty;
 
 				if (selectFirstItem) {
 					var pt = new CoreGraphics.CGPoint (x, y);
@@ -155,7 +155,7 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public static void ShowContextMenu (Gtk.Widget parent, Gdk.EventButton evt, NSMenu menu)
+		public static void ShowContextMenu (Gtk.Widget parent, ClickInfo evt, NSMenu menu)
 		{
 			int x = 0, y = 0;
 
@@ -167,7 +167,7 @@ namespace MonoDevelop.Components
 			ShowContextMenu (parent, x, y, menu);
 		}
 
-		public static void ShowContextMenu (NSView parent, Gdk.EventButton evt, NSMenu menu)
+		public static void ShowContextMenu (NSView parent, ClickInfo evt, NSMenu menu)
 		{
 			int x = 0, y = 0;
 

@@ -23,81 +23,62 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
-using Gtk;
 using MonoDevelop.Ide;
 using MonoDevelop.Ide.Gui;
-using Gdk;
 using Xwt.Motion;
 
 namespace MonoDevelop.Components
 {
-	public class PopoverWindow : Gtk.Window, IAnimatable
+	/// <summary>
+	/// Themed popup (GTK 2: a Popup <c>Gtk.Window</c> moved next to its target). GTK 4 cannot position toplevels, so this
+	/// is a <see cref="Gtk.Popover"/> anchored to the target widget; the popover's own chrome is removed (CSS class
+	/// <c>md-themed-popover</c>) and the <see cref="PopoverWindowTheme"/> border, arrow, pager and shadow are drawn by the
+	/// content area. GTK places (and flips) the popover; the arrow side/offset are read back from the popup surface.
+	/// </summary>
+	public class PopoverWindow : Gtk.Popover, IAnimatable
 	{
 		PopoverWindowTheme theme;
 
 		PopupPosition position;
-		Gtk.Alignment alignment;
+		readonly ContentArea alignment;
 
 		Gdk.Rectangle currentCaret;
-		Gdk.Point targetWindowOrigin = new Point (-1, -1);
-		Gtk.Widget parent;
-		Xwt.Widget xwtParent;
+		Gtk.Widget anchor;
 		bool eventProvided;
-
-		Gdk.Size targetSize;
-		Gdk.Size paintSize;
-
-		bool disableSizeCheck;
 
 		const int MinArrowSpacing = 5;
 
-		public PopoverWindow () : this(Gtk.WindowType.Popup)
+		public PopoverWindow ()
 		{
-		}
+			HasArrow = false;
+			Autohide = false;
+			ThemedPopoverStyle.Apply (this);
 
-		public PopoverWindow (Gtk.WindowType type) : base(type)
-		{
-			SkipTaskbarHint = true;
-			SkipPagerHint = true;
-			AppPaintable = true;
-			TypeHint = WindowTypeHint.Tooltip;
-			CheckScreenColormap ();
-			AddEvents ((int)EventMask.ButtonReleaseMask);
-
-			alignment = new Alignment (0, 0, 1f, 1f);
-			alignment.Show ();
-			Add (alignment);
-
-			disableSizeCheck = false;
-
-			SizeRequested += (object o, SizeRequestedArgs args) => {
-				if (this.AnimationIsRunning("Resize") && !disableSizeCheck) {
-					Gtk.Requisition result = new Gtk.Requisition ();
-					result.Width  = Math.Max (args.Requisition.Width, Math.Max (Allocation.Width, targetSize.Width));
-					result.Height = Math.Max (args.Requisition.Height, Math.Max (Allocation.Height, targetSize.Height));
-					args.Requisition = result;
-				}
-			};
+			alignment = new ContentArea (this);
+			Child = alignment;
 
 			UpdatePadding ();
 		}
 
-		public PopoverWindowTheme Theme { 
-			get { 
+		public PopoverWindowTheme Theme {
+			get {
 				if (theme == null) {
 					theme = new PopoverWindowTheme ();
 					theme.RedrawNeeded += OnRedrawNeeded;
 				}
-				return theme; 
+				return theme;
 			}
 			set {
 				if (theme == value)
 					return;
 
-				theme.RedrawNeeded -= OnRedrawNeeded;
+				if (theme != null)
+					theme.RedrawNeeded -= OnRedrawNeeded;
 				theme = value;
-				theme.RedrawNeeded += OnRedrawNeeded;
+				if (theme != null)
+					theme.RedrawNeeded += OnRedrawNeeded;
 
 				UpdatePadding ();
 				QueueDraw ();
@@ -111,16 +92,18 @@ namespace MonoDevelop.Components
 			set { Theme.ShowArrow = value; }
 		}
 
-		public Gtk.Alignment ContentBox {
+		/// <summary>Content container: set its <c>Child</c> (GTK 2: <c>Gtk.Alignment.Add</c>).</summary>
+		public BinWidget ContentBox {
 			get { return alignment; }
 		}
-		
+
 		public void ShowPopup (Gtk.Widget widget, PopupPosition position)
 		{
 			ShowPopup (widget, null, Gdk.Rectangle.Zero, position);
 		}
-		
-		public void ShowPopup (Gtk.Widget widget, Gdk.EventButton evt, PopupPosition position)
+
+		/// <summary>Shows the popup pointing at the click position (<paramref name="evt"/> coordinates are relative to the gesture widget).</summary>
+		public void ShowPopup (Gtk.Widget widget, ClickInfo evt, PopupPosition position)
 		{
 			ShowPopup (widget, evt, Gdk.Rectangle.Zero, position);
 		}
@@ -130,146 +113,80 @@ namespace MonoDevelop.Components
 			ShowPopup (widget, null, caret, position);
 		}
 
+		/// <summary>
+		/// GTK 4 has no global screen coordinates: <paramref name="onScreenArea"/> is interpreted in the coordinates
+		/// of the IDE main window.
+		/// </summary>
 		public void ShowPopup (Xwt.Rectangle onScreenArea, PopupPosition position)
 		{
-			this.parent = IdeApp.Workbench.RootWindow;
-			this.currentCaret = new Rectangle ((int)onScreenArea.X, (int)onScreenArea.Y, (int)onScreenArea.Width, (int)onScreenArea.Height);
-			Theme.TargetPosition = position;
-			targetWindowOrigin = new Point ((int)onScreenArea.X, (int)onScreenArea.Y);
-			RepositionWindow ();
+			Gtk.Window root = IdeApp.Workbench.RootWindow;
+			ShowPopup (root, null, onScreenArea.ToGdkRectangle (), position);
 		}
 
 		internal void ShowPopup (Xwt.Widget widget, Xwt.Rectangle caret, PopupPosition position)
 		{
-			xwtParent = widget;
-			this.currentCaret = new Gdk.Rectangle ((int)caret.X, (int)caret.Y, (int)caret.Width, (int)caret.Height);
-			Theme.TargetPosition = position;
-			var pos = GtkUtil.GetSceenBounds (widget);
-			targetWindowOrigin = new Point ((int)pos.X, (int)pos.Y);
-			RepositionWindow ();
+			if (widget?.Surface?.NativeWidget is Gtk.Widget native) {
+				ShowPopup (native, null, caret.ToGdkRectangle (), position);
+				return;
+			}
+			// Not a GTK widget: anchor to the main window at the widget's bounds.
+			var bounds = GtkUtil.GetSceenBounds (widget);
+			ShowPopup (new Xwt.Rectangle (bounds.X + caret.X, bounds.Y + caret.Y, caret.Width, caret.Height), position);
 		}
 
-		void ShowPopup (Gtk.Widget parent, Gdk.EventButton evt, Gdk.Rectangle caret, PopupPosition position)
+		void ShowPopup (Gtk.Widget parent, ClickInfo evt, Gdk.Rectangle caret, PopupPosition position)
 		{
-			this.parent = parent;
+			if (parent == null)
+				throw new ArgumentNullException (nameof (parent));
+			this.anchor = parent;
 			this.currentCaret = caret;
 			Theme.TargetPosition = position;
-			Gdk.Window targetWindow;
+			eventProvided = evt != null;
 			if (evt != null) {
-				eventProvided = true;
-				targetWindow = evt.Window;
-			} else
-				targetWindow = parent.GdkWindow;
-			
-			if (targetWindow != null) {
-				int x, y;
-				targetWindow.GetOrigin (out x, out y);
-				targetWindowOrigin = new Point (x, y);
+				var owner = evt.Gesture?.Widget;
+				var r = new Gdk.Rectangle ((int)evt.X, (int)evt.Y, 1, 1);
+				currentCaret = owner != null ? owner.TranslateRectangle (parent, r) : r;
 			}
 			RepositionWindow ();
-		}
-
-		Gdk.Rectangle GetScreenCoordinates (Gdk.Rectangle caret)
-		{
-			if (parent != null)
-				return GtkUtil.ToScreenCoordinates (parent, parent.GdkWindow, caret);
-			if (xwtParent != null) {
-				return GtkUtil.ToScreenCoordinates (xwtParent, caret.ToXwtRectangle ());
-			}
-			return Gdk.Rectangle.Zero;
-		}
-
-		Gdk.Size GetParentSize ()
-		{
-			if (parent != null) {
-				var alloc = parent.Allocation;
-				return new Size (alloc.Width, alloc.Height);
-			}
-			if (xwtParent != null) {
-				var size = xwtParent.Size;
-				return new Size ((int) size.Width, (int) size.Height);
-			}
-			return Size.Empty;
 		}
 
 		bool HasParent {
-			get { return parent != null || xwtParent != null; }
+			get { return anchor != null; }
 		}
 
-		Gdk.Rectangle GetUsableMonitorGeometry (Gdk.Rectangle caret)
-		{
-			Screen screen = null;
-			if (parent != null)
-				screen = parent.Screen;
-			else if (xwtParent != null)
-				screen = Gdk.Screen.Default; // FIXME: should we try to get the Screen from the backend?
-
-			if (screen != null)
-				return GtkWorkarounds.GetUsableMonitorGeometry (screen, screen.GetMonitorAtPoint (caret.X, caret.Y));
-			
-			return Gdk.Rectangle.Zero;
-		}
-		
 		void IAnimatable.BatchBegin () { }
 		void IAnimatable.BatchCommit () { QueueDraw (); }
 
+		/// <summary>GTK 4: the popover surface is resized by GTK; the size is no longer animated.</summary>
 		public void AnimatedResize ()
 		{
-			if (!GtkUtil.ScreenSupportsARGB ()) {
-				QueueResize();
-				return;
-			}
-
-			disableSizeCheck = true;
-			Gtk.Requisition sizeReq = Gtk.Requisition.Zero;
-			// use OnSizeRequested instead of SizeRequest to bypass internal GTK caching
-			OnSizeRequested (ref sizeReq);
-			disableSizeCheck = false;
-
-			Gdk.Size size = new Gdk.Size (sizeReq.Width, sizeReq.Height);
-
-			// ensure that our apint area is big enough for our padding
-			if (paintSize.Width <= 15 || paintSize.Height <= 15)
-				paintSize = size;
-
-			targetSize = size;
-			Gdk.Size start = paintSize;
-			Func<double, Gdk.Size> transform = x => new Gdk.Size ((int)(start.Width + (size.Width - start.Width) * x),
-			                                                     (int)(start.Height + (size.Height - start.Height) * x));
-			this.Animate ("Resize",
-			              transform,
-			              s => paintSize = s,
-			              length: 150,
-			              easing: Easing.SinInOut,
-			              finished: (x, aborted) => { if (!aborted) MaybeReanimate(); });
 			QueueResize ();
 		}
 
-		bool IsDestroyed { get; set; }
+		protected bool IsDestroyed { get; private set; }
 
-		protected override void OnDestroyed ()
+		/// <summary>Called once from <see cref="Destroy"/> (replaces the GTK 2 ::destroy handler).</summary>
+		protected virtual void OnDestroyed ()
 		{
-			this.AbortAnimation ("Resize");
-			IsDestroyed = true;
-			base.OnDestroyed ();
 		}
 
-		void MaybeReanimate ()
+		/// <summary>Pops the popover down and detaches it from its anchor.</summary>
+		public override void Destroy ()
 		{
-			disableSizeCheck = true;
-			Gtk.Requisition sizeReq = Gtk.Requisition.Zero;
-			OnSizeRequested (ref sizeReq);
-			disableSizeCheck = false;
-
-			if (sizeReq.Width == paintSize.Width && sizeReq.Height == paintSize.Height)
-				QueueResize ();
-			else
-				AnimatedResize (); //Desired size changed mid animation
+			if (IsDestroyed || Handle == IntPtr.Zero)
+				return;
+			IsDestroyed = true;
+			this.AbortAnimation ("Resize");
+			OnDestroyed ();
+			if (Visible)
+				Popdown ();
+			base.Destroy ();
+			anchor = null;
 		}
 
 		/// <summary>
 		/// Gets or sets the maximum Y top bound. The popover window will be placed below this bound.
-		/// 0 means it's not set. Default value: 0
+		/// 0 means it's not set. Default value: 0. GTK 4 places popovers itself: kept for API compatibility only.
 		/// </summary>
 		public int MaximumYTopBound {
 			get;
@@ -287,232 +204,180 @@ namespace MonoDevelop.Components
 				currentCaret = newCaret.Value;
 			}
 			Gdk.Rectangle caret = currentCaret;
-			if (targetWindowOrigin.X < 0)
-				return;
-			int x = targetWindowOrigin.X;
-			int y = targetWindowOrigin.Y;
-			PopupPosition position = Theme.TargetPosition;
-			this.position = Theme.TargetPosition;
-			UpdatePadding ();
-
-			var psize = GetParentSize ();
-
-			if (eventProvided) {
-				caret.X = x;
-				caret.Y = y;
-				caret.Width = caret.Height = 1;
-			} else {
-				if (caret.Equals (Gdk.Rectangle.Zero))
-					caret = new Gdk.Rectangle (0, 0, psize.Width, psize.Height);
-				caret = GetScreenCoordinates (caret);
-			}
+			if (!eventProvided && caret.Equals (Gdk.Rectangle.Zero))
+				caret = new Gdk.Rectangle (0, 0, anchor.Width, anchor.Height);
 
 			caret.Inflate (CaretSpacing, CaretSpacing);
-			if (!Core.Platform.IsWindows)
+			if (!Core.Platform.IsWindows && !eventProvided)
 				caret.Inflate (-1, -1);
 
-			Gtk.Requisition request = SizeRequest ();
-			Gdk.Rectangle geometry = GetUsableMonitorGeometry (caret);
-
-			// Add some spacing between the screen border and the popover window
-			geometry.Inflate (-5, -5);
-
-			// Flip the orientation if the window doesn't fit the screen.
-
-			int intPos = (int) position;
-			switch ((PopupPosition)(intPos & 0x0f)) {
-			case PopupPosition.Top:
-				if (caret.Bottom + request.Height > geometry.Bottom)
-					intPos = (intPos & 0xf0) | (int)PopupPosition.Bottom;
-				break;
-			case PopupPosition.Bottom:
-				if (caret.Top - request.Height < geometry.X)
-					intPos = (intPos & 0xf0) | (int)PopupPosition.Top;
-				break;
-			case PopupPosition.Right:
-				if (caret.X - request.Width < geometry.X)
-					intPos = (intPos & 0xf0) | (int)PopupPosition.Left;
-				break;
-			case PopupPosition.Left:
-				if (caret.Right + request.Width > geometry.Right)
-					intPos = (intPos & 0xf0) | (int)PopupPosition.Right;
-				break;
-			}
-
-			position = (PopupPosition) intPos;
+			position = Theme.TargetPosition;
 			UpdatePadding ();
+			Position = ToGtkPosition (position);
 
-			// Calculate base coordinate
-
-			switch ((PopupPosition)((int)position & 0x0f)) {
-			case PopupPosition.Top:
-				y = caret.Bottom + 1;
-				break;
-			case PopupPosition.Bottom:
-				y = caret.Y - request.Height; break;
-			case PopupPosition.Right:
-				x = caret.X - request.Width; break;
-			case PopupPosition.Left:
-				x = caret.Right + 1; break;
-			}
-			int offset;
+			// GTK centers the popover on the pointing rectangle: offset it for the left/right aligned positions.
+			alignment.Measure (Gtk.Orientation.Horizontal, -1, out _, out int width, out _, out _);
+			alignment.Measure (Gtk.Orientation.Vertical, width, out _, out int height, out _, out _);
+			int offsetX = 0, offsetY = 0;
+			int arrowSpace = MinArrowSpacing + Theme.ArrowWidth / 2;
 			if ((position & PopupPosition.Top) != 0 || (position & PopupPosition.Bottom) != 0) {
 				if (((int)position & 0x10) != 0)
-					x = caret.X - MinArrowSpacing - Theme.ArrowWidth/2;
+					offsetX = width / 2 - caret.Width / 2 - arrowSpace;
 				else if (((int)position & 0x20) != 0)
-					x = caret.Right - request.Width + MinArrowSpacing + Theme.ArrowWidth/2;
-				else
-					x = caret.X + (caret.Width - request.Width) / 2;
-
-				if (x < geometry.Left)
-					x = geometry.Left;
-				else if (x + request.Width > geometry.Right)
-					x = geometry.Right - request.Width;
-
-				offset = caret.X + caret.Width / 2 - x;
-				if (offset - Theme.ArrowWidth/2 < MinArrowSpacing)
-					offset = MinArrowSpacing + Theme.ArrowWidth/2;
-				if (offset > request.Width - MinArrowSpacing - Theme.ArrowWidth/2)
-					offset = request.Width - MinArrowSpacing - Theme.ArrowWidth/2;
-			}
-			else {
+					offsetX = caret.Width / 2 - width / 2 + arrowSpace;
+			} else {
 				if (((int)position & 0x10) != 0)
-					y = caret.Y - MinArrowSpacing - Theme.ArrowWidth/2;
+					offsetY = height / 2 - caret.Height / 2 - arrowSpace;
 				else if (((int)position & 0x20) != 0)
-					y = caret.Bottom - request.Height + MinArrowSpacing + Theme.ArrowWidth/2;
-				else
-					y = caret.Y + (caret.Height - request.Height) / 2;
-
-				if (y < geometry.Top)
-					y = geometry.Top;
-				else if (y + request.Height > geometry.Bottom)
-					y = geometry.Bottom - request.Height;
-				if (MaximumYTopBound > 0)
-					y = Math.Max (MaximumYTopBound, y);
-
-				offset = caret.Y + caret.Height / 2 - y;
-				if (offset - Theme.ArrowWidth/2 < MinArrowSpacing)
-					offset = MinArrowSpacing + Theme.ArrowWidth/2;
-				if (offset > request.Height - MinArrowSpacing - Theme.ArrowWidth/2)
-					offset = request.Height - MinArrowSpacing - Theme.ArrowWidth/2;
+					offsetY = caret.Height / 2 - height / 2 + arrowSpace;
 			}
-			Theme.ArrowOffset = offset;
-			this.position = position;
-			UpdatePadding ();
+			SetOffset (offsetX, offsetY);
+			bool vertical = (position & PopupPosition.Top) != 0 || (position & PopupPosition.Bottom) != 0;
+			Theme.ArrowOffset = (vertical ? width : height) / 2;
 
-			Move (x, y);
-			Show ();
-			if (!ShowWindowShadow && !IsDestroyed)
-				IdeServices.DesktopService.RemoveWindowShadow (this);
+			this.Reparent (anchor);
+			this.ShowAt (caret);
 		}
-		
+
+		/// <summary>Popover side for a <see cref="PopupPosition"/> (which names the side of the arrow, i.e. of the target).</summary>
+		internal static Gtk.PositionType ToGtkPosition (PopupPosition position)
+		{
+			switch ((PopupPosition)((int)position & 0x0f)) {
+			case PopupPosition.Bottom:
+				return Gtk.PositionType.Top;
+			case PopupPosition.Left:
+				return Gtk.PositionType.Right;
+			case PopupPosition.Right:
+				return Gtk.PositionType.Left;
+			default:
+				return Gtk.PositionType.Bottom;
+			}
+		}
+
+		/// <summary>True when translucent surfaces are available (GTK 2: RGBA colormap).</summary>
 		public bool SupportsAlpha {
-			get;
-			private set;
+			get { return GtkUtil.ScreenSupportsARGB (); }
 		}
 
+		/// <summary>GTK 4 draws no native shadow for popovers stripped of their chrome; kept for API compatibility.</summary>
 		public bool ShowWindowShadow {
 			get;
 			set;
 		}
 
-		void CheckScreenColormap ()
+		Gdk.Surface layoutSurface;
+
+		protected override void OnRealized ()
 		{
-			SupportsAlpha = Screen.IsComposited;
-			if (SupportsAlpha) {
-				Colormap = Screen.RgbaColormap;
-			} else {
-				Colormap = Screen.RgbColormap;
+			base.OnRealized ();
+			layoutSurface = Surface;
+			if (layoutSurface != null)
+				layoutSurface.Layout += OnSurfaceLayout;
+		}
+
+		protected override void OnUnrealized ()
+		{
+			if (layoutSurface != null) {
+				layoutSurface.Layout -= OnSurfaceLayout;
+				layoutSurface = null;
 			}
+			base.OnUnrealized ();
 		}
 
-		protected override void OnScreenChanged (Gdk.Screen previous_screen)
+		void OnSurfaceLayout (object sender, Gdk.LayoutArgs args)
 		{
-			base.OnScreenChanged (previous_screen);
-			CheckScreenColormap ();
+			UpdatePlacement ();
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		/// <summary>Reads back the side GTK placed the popover on (it may flip it) and the target center for the arrow.</summary>
+		void UpdatePlacement ()
 		{
-			bool retVal;
-			bool changed;
-			using (var context = Gdk.CairoHelper.Create (evnt.Window)) {
-				context.Save ();
-				if (SupportsAlpha) {
-					context.Operator = Cairo.Operator.Source;
-					context.SetSourceRGBA (1, 1, 1, 0);
-				} else {
-					context.Operator = Cairo.Operator.Over;
-					context.SetSourceRGB (1, 1, 1);
+			if (!ShowArrow || anchor == null || IsDestroyed)
+				return;
+			bool vertical;
+			if (ThemedPopoverStyle.TryGetPlacement (this, anchor, currentCaret, alignment, out var actualSide, out var arrowOffset)) {
+				var side = (PopupPosition)(((int)position & 0xf0) | (int)actualSide);
+				if (side != position) {
+					position = side;
+					UpdatePadding ();
 				}
-				context.Paint ();
+				vertical = (position & PopupPosition.Top) != 0 || (position & PopupPosition.Bottom) != 0;
+				int size = vertical ? alignment.Width : alignment.Height;
+				int min = MinArrowSpacing + Theme.ArrowWidth / 2;
+				Theme.ArrowOffset = Math.Max (min, Math.Min (size - min, arrowOffset));
+			} else {
+				vertical = (position & PopupPosition.Top) != 0 || (position & PopupPosition.Bottom) != 0;
+				Theme.ArrowOffset = (vertical ? alignment.Width : alignment.Height) / 2;
+			}
+			alignment.QueueDraw ();
+		}
+
+		void DrawChrome (Gtk.Snapshot snapshot, Action drawChildren)
+		{
+			var border = BorderAllocation;
+			snapshot.DrawCairo (alignment, context => {
+				if (!SupportsAlpha) {
+					context.SetSourceRGB (1, 1, 1);
+					context.Paint ();
+				}
+				context.Save ();
+				Theme.SetBorderPath (context, border, position);
+				context.Clip ();
+				OnDrawContent (context); // Draw content first so we can easily clip it
 				context.Restore ();
+			});
 
-				OnDrawContent (evnt, context); // Draw content first so we can easily clip it
-				retVal = base.OnExposeEvent (evnt);
+			drawChildren ();
 
-				changed = Theme.SetBorderPath (context, BorderAllocation, position);
-				context.Operator = Cairo.Operator.DestIn;
-				context.SetSourceRGBA (1, 1, 1, 1);
-				context.Fill ();
-				context.Operator = Cairo.Operator.Over;
-
+			snapshot.DrawCairo (alignment, context => {
 				// protect against overriden methods which leave in a bad state
 				context.Save ();
 				if (Theme.DrawPager) {
-					Theme.RenderPager (context, 
+					Theme.RenderPager (context,
 					                   PangoContext,
-					                   BorderAllocation);
+					                   border);
 				}
 
-				Theme.RenderShadow (context, BorderAllocation, position);
+				Theme.RenderShadow (context, border, position);
 				context.Restore ();
-			}
-
-			if (changed)
-				GtkWorkarounds.UpdateNativeShadow (this);
-
-			return retVal;
+			});
 		}
 
-		protected virtual void OnDrawContent (Gdk.EventExpose evnt, Cairo.Context context)
+		/// <summary>Draws the background (already clipped to the border path); (0,0) is the content area origin.</summary>
+		protected virtual void OnDrawContent (Cairo.Context context)
 		{
-			Theme.RenderBackground (context, new Gdk.Rectangle (Allocation.X, Allocation.Y, paintSize.Width, paintSize.Height));
+			Theme.RenderBackground (context, new Gdk.Rectangle (0, 0, alignment.Width, alignment.Height));
 		}
 
 		void UpdatePadding ()
 		{
-			uint top,left,bottom,right;
-			top = left = bottom = right = (uint)(Theme.Padding + (Core.Platform.IsWindows ? 1 : 2));
+			if (alignment == null)
+				return;
+			int top,left,bottom,right;
+			top = left = bottom = right = Theme.Padding + (Core.Platform.IsWindows ? 1 : 2);
 
 			if (ShowArrow) {
 				if ((position & PopupPosition.Top) != 0)
-					top += (uint)Theme.ArrowLength;
+					top += Theme.ArrowLength;
 				else if ((position & PopupPosition.Bottom) != 0)
-					bottom += (uint)Theme.ArrowLength;
+					bottom += Theme.ArrowLength;
 				else if ((position & PopupPosition.Left) != 0)
-					left += (uint)Theme.ArrowLength;
+					left += Theme.ArrowLength;
 				else if ((position & PopupPosition.Right) != 0)
-					right += (uint)Theme.ArrowLength;
+					right += Theme.ArrowLength;
 			}
-			alignment.SetPadding (top, bottom, left, right);
+			var p = new Gtk.Border { Top = (short)top, Bottom = (short)bottom, Left = (short)left, Right = (short)right };
+			if (!p.Equals (alignment.Padding))
+				alignment.Padding = p;
 		}
 
 		void OnRedrawNeeded (object sender, EventArgs args)
 		{
 			UpdatePadding ();
-			QueueDraw ();
+			alignment?.QueueDraw ();
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
-		{
-			if (!this.AnimationIsRunning ("Resize"))
-				paintSize = new Gdk.Size (allocation.Width, allocation.Height);
-
-			base.OnSizeAllocated (allocation);
-		}
-
-		protected Rectangle ChildAllocation {
+		protected Gdk.Rectangle ChildAllocation {
 			get {
 				var rect = BorderAllocation;
 				rect.Inflate (-Theme.Padding - 1, -Theme.Padding - 1);
@@ -520,9 +385,9 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		Rectangle BorderAllocation {
+		Gdk.Rectangle BorderAllocation {
 			get {
-				var rect = new Gdk.Rectangle (Allocation.X, Allocation.Y, paintSize.Width, paintSize.Height);
+				var rect = new Gdk.Rectangle (0, 0, alignment.Width, alignment.Height);
 				if (ShowArrow) {
 					if ((position & PopupPosition.Top) != 0) {
 						rect.Y += Theme.ArrowLength;
@@ -574,33 +439,128 @@ namespace MonoDevelop.Components
 				PagerRightClicked (this, null);
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
+		void OnContentButtonReleased (ClickInfo evnt)
 		{
 			if (evnt.Button != 1 || !Theme.DrawPager)
-				return base.OnButtonPressEvent (evnt);
+				return;
 
-			var retval = false;
-			if (retval = Theme.HitTestPagerLeftArrow (PangoContext, BorderAllocation, new Point ((int)evnt.X, (int)evnt.Y)))
+			var point = new Gdk.Point ((int)evnt.X, (int)evnt.Y);
+			if (Theme.HitTestPagerLeftArrow (PangoContext, BorderAllocation, point)) {
+				evnt.Claim ();
 				OnPagerLeftClicked ();
-			else if (retval = Theme.HitTestPagerRightArrow (PangoContext, BorderAllocation, new Point ((int)evnt.X, (int)evnt.Y)))
+			} else if (Theme.HitTestPagerRightArrow (PangoContext, BorderAllocation, point)) {
+				evnt.Claim ();
 				OnPagerRightClicked ();
-
-			return retval;
+			}
 		}
 
-		protected override void OnShown ()
+		/// <summary>Content area: padding for the themed border/arrow, draws the theme around the child.</summary>
+		sealed class ContentArea : BinWidget
 		{
-			base.OnShown ();
-			#if MAC
-			if (Core.Platform.IsMac && (Type == Gtk.WindowType.Popup || TypeHint == WindowTypeHint.PopupMenu || TypeHint == WindowTypeHint.Tooltip)) {
-				var wndnative = Mac.GtkMacInterop.GetNSWindow (this);
-				// the native window level is initially NSWindowLevel.PopUpMenu, but
-				// for some reason it gets resetted to NSWindowLevel.Normal after the window
-				// has been shown, so reset it back:
-				wndnative.Level = AppKit.NSWindowLevel.PopUpMenu;
+			readonly PopoverWindow owner;
+
+			public ContentArea (PopoverWindow owner)
+			{
+				this.owner = owner;
+				this.AddClickHandler (null, owner.OnContentButtonReleased, 1);
 			}
-			#endif
+
+			protected override void OnSnapshot (Gtk.Snapshot snapshot)
+			{
+				owner.DrawChrome (snapshot, () => base.OnSnapshot (snapshot));
+			}
+		}
+	}
+
+	/// <summary>
+	/// Shared GTK 4 support for popovers that draw their own themed chrome.
+	/// </summary>
+	static class ThemedPopoverStyle
+	{
+		public const string CssClass = "md-themed-popover";
+		static bool installed;
+
+		/// <summary>Removes the default popover background/border/shadow so the content can draw the themed chrome.</summary>
+		public static void Apply (Gtk.Widget popover)
+		{
+			if (!installed) {
+				var display = Gdk.Display.Default;
+				if (display != null) {
+					var provider = new Gtk.CssProvider ();
+					provider.LoadFromString (
+						"popover." + CssClass + " { background: none; box-shadow: none; padding: 0; margin: 0; } " +
+						"popover." + CssClass + " > contents { background: none; border: none; box-shadow: none; padding: 0; margin: 0; border-radius: 0; min-width: 0; min-height: 0; }");
+					Gtk.StyleContext.AddProviderForDisplay (display, provider, Gtk.StyleProviderPriority.Application);
+					installed = true;
+				}
+			}
+			popover.AddCssClass (CssClass);
+		}
+
+		/// <summary>
+		/// Reads back where GTK placed <paramref name="popover"/>: the side of the target relative to the popover
+		/// (<see cref="PopupPosition"/> semantics, i.e. the arrow side) and the target center along that side,
+		/// in <paramref name="content"/> coordinates. False if the popover isn't mapped yet.
+		/// </summary>
+		public static bool TryGetPlacement (Gtk.Popover popover, Gtk.Widget anchor, Gdk.Rectangle pointingTo, Gtk.Widget content, out PopupPosition side, out int arrowOffset)
+		{
+			side = PopupPosition.Top;
+			arrowOffset = 0;
+			try {
+				var surface = popover.Surface;
+				if (surface == null || anchor == null || !popover.IsMapped)
+					return false;
+				var popup = Gdk.PopupAdapter.GetObject (surface);
+				if (popup == null)
+					return false;
+
+				switch (popup.SurfaceAnchor) {
+				case Gdk.Gravity.North:
+				case Gdk.Gravity.NorthWest:
+				case Gdk.Gravity.NorthEast:
+					side = PopupPosition.Top;
+					break;
+				case Gdk.Gravity.South:
+				case Gdk.Gravity.SouthWest:
+				case Gdk.Gravity.SouthEast:
+					side = PopupPosition.Bottom;
+					break;
+				case Gdk.Gravity.West:
+					side = PopupPosition.Left;
+					break;
+				case Gdk.Gravity.East:
+					side = PopupPosition.Right;
+					break;
+				default:
+					return false;
+				}
+
+				// Target center: anchor -> its native (window/popover) -> parent surface coordinates.
+				Gtk.Widget native = anchor;
+				while (native != null && !(native is Gtk.Window) && !(native is Gtk.Popover))
+					native = native.Parent;
+				if (native == null)
+					return false;
+				double cx = pointingTo.X + pointingTo.Width / 2.0;
+				double cy = pointingTo.Y + pointingTo.Height / 2.0;
+				if (!anchor.TranslateCoordinates (native, cx, cy, out double nx, out double ny))
+					return false;
+				double tx, ty;
+				if (native is Gtk.Window w)
+					w.GetSurfaceTransform (out tx, out ty);
+				else
+					((Gtk.Popover)native).GetSurfaceTransform (out tx, out ty);
+				// -> popover surface -> popover widget -> content.
+				popover.GetSurfaceTransform (out double ptx, out double pty);
+				double px = nx + tx - popup.PositionX - ptx;
+				double py = ny + ty - popup.PositionY - pty;
+				if (!popover.TranslateCoordinates (content, px, py, out double x, out double y))
+					return false;
+				arrowOffset = (int)Math.Round (side == PopupPosition.Top || side == PopupPosition.Bottom ? x : y);
+				return true;
+			} catch (Exception) {
+				return false;
+			}
 		}
 	}
 }
-

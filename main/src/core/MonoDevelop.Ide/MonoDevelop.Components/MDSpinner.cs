@@ -49,18 +49,18 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public MDSpinner () : this (Gtk.IconSize.Menu, null)
+		public MDSpinner () : this (StockIconSize.Menu, null)
 		{
 		}
 
-		public MDSpinner (Image idleImage) : this (Gtk.IconSize.Menu, idleImage)
+		public MDSpinner (Image idleImage) : this (StockIconSize.Menu, idleImage)
 		{
 		}
 
-		public MDSpinner (Gtk.IconSize size, Image idleImage = null)
+		public MDSpinner (StockIconSize size, Image idleImage = null)
 		{
 			Content = imageView = new Xwt.ImageView ();
-			if (size == Gtk.IconSize.Menu)
+			if (size == StockIconSize.Menu)
 				spinner = ImageService.GetAnimatedIcon ("md-spinner-16", size);
 			else
 				spinner = ImageService.GetAnimatedIcon ("md-spinner-18", size);

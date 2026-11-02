@@ -27,7 +27,6 @@
 //
 
 using System;
-using Gtk;
 
 using MonoDevelop.Components.AtkCocoaHelper;
 
@@ -37,34 +36,34 @@ namespace MonoDevelop.Components
 	
 	[System.ComponentModel.Category("MonoDevelop.Components")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public class MenuButton : Button
+	public class MenuButton : Gtk.Button
 	{
 		ContextMenuCreator contextMenuCreator;
-		Label label;
+		Gtk.Label label;
 		ImageView image;
-		Arrow arrow;
+		Gtk.Image arrow;
+		Gtk.ArrowType arrowType;
+		Gtk.Box box;
 		bool isOpen;
 		
 		public MenuButton ()
 			: base ()
 		{
-			Accessible.SetRole (AtkCocoa.Roles.AXMenuButton);
+			this.SetRole (AtkCocoa.Roles.AXMenuButton);
 
-			HBox box = new HBox ();
-			box.Spacing = 6;
-			Add (box);
+			box = new Gtk.Box (Gtk.Orientation.Horizontal, 6);
+			Child = box;
 			
 			image = new ImageView ();
-			image.Accessible.Role = Atk.Role.Filler;
-			image.NoShowAll = true;
-			box.PackStart (image, false, false, 0);
-			label = new Label ();
-			label.NoShowAll = true;
-			label.Accessible.SetShouldIgnore (true);
+			image.SetShouldIgnore (true);
+			image.Visible = false;
+			box.Append (image);
+			label = new Gtk.Label ();
+			label.Visible = false;
+			label.SetShouldIgnore (true);
 
-			box.PackStart (label, false, false, 0);
+			box.Append (label);
 			ArrowType = Gtk.ArrowType.Down;
-			base.Label = null;
 		}
 		
 		protected MenuButton (IntPtr raw)
@@ -78,20 +77,22 @@ namespace MonoDevelop.Components
 			set { contextMenuCreator = value; }
 		}
 
-		ReliefStyle MenuOpened ()
+		bool MenuOpened ()
 		{
 			isOpen = true;
-			//make sure the button looks depressed
-			ReliefStyle oldRelief = this.Relief;
-			this.Relief = ReliefStyle.Normal;
-			return oldRelief;
+			//make sure the button looks depressed while the menu is open
+			bool wasFlat = HasCssClass ("flat");
+			RemoveCssClass ("flat");
+			SetStateFlags (Gtk.StateFlags.Active, false);
+			return wasFlat;
 		}
 
-		void MenuClosed (ReliefStyle oldRelief)
+		void MenuClosed (bool wasFlat)
 		{
-			this.Relief = oldRelief;
+			if (wasFlat)
+				AddCssClass ("flat");
 			isOpen = false;
-			this.State = StateType.Normal;
+			UnsetStateFlags (Gtk.StateFlags.Active);
 		}
 
 		protected override void OnClicked ()
@@ -99,68 +100,49 @@ namespace MonoDevelop.Components
 			base.OnClicked ();
 			if (contextMenuCreator != null) {
 				ContextMenu menu = contextMenuCreator (this);
-				var oldRelief = MenuOpened ();
-
-				Gdk.Rectangle rect = this.Allocation;
+				var wasFlat = MenuOpened ();
 
 				this.GrabFocus ();
-				// Offset the menu by the height of the rect
-				menu.Show (this, 0, rect.Height, () => MenuClosed (oldRelief)); 
+				// Offset the menu by the height of the button
+				menu.Show (this, 0, Height, () => MenuClosed (wasFlat)); 
 			}
 		}
 		
-		protected override void OnStateChanged(StateType previous_state)
+		static string GetArrowIconName (Gtk.ArrowType type)
 		{
-			base.OnStateChanged (previous_state);
-			
-			//while the menu's open, make sure the button looks depressed
-			if (isOpen && this.State != StateType.Active)
-				this.State = StateType.Active;
-		}
-		
-		void PositionFunc (Menu mn, out int x, out int y, out bool push_in)
-		{
-			this.GdkWindow.GetOrigin (out x, out y);
-			Gdk.Rectangle rect = this.Allocation;
-			x += rect.X;
-			y += rect.Y + rect.Height;
-			
-			//if the menu would be off the bottom of the screen, "drop" it upwards
-			if (y + mn.Requisition.Height > this.Screen.Height) {
-				y -= mn.Requisition.Height;
-				y -= rect.Height;
+			switch (type) {
+			case Gtk.ArrowType.Up: return "pan-up-symbolic";
+			case Gtk.ArrowType.Left: return "pan-start-symbolic";
+			case Gtk.ArrowType.Right: return "pan-end-symbolic";
+			default: return "pan-down-symbolic";
 			}
-			
-			//let GTK reposition the button if it still doesn't fit on the screen
-			push_in = true;
 		}
-		
-		public ArrowType? ArrowType {
-			get { return arrow == null? (Gtk.ArrowType?) null : arrow.ArrowType; }
+
+		public Gtk.ArrowType? ArrowType {
+			get { return arrow == null? (Gtk.ArrowType?) null : arrowType; }
 			set {
 				if (value == null) {
 					if (arrow != null) {
-						((HBox)arrow.Parent).Remove (arrow);
-						arrow.Destroy ();
+						box.Remove (arrow);
 						arrow = null;
 					}
 				} else {
 					if (arrow == null ) {
-						arrow = new Arrow (Gtk.ArrowType.Down, ShadowType.Out);
-						arrow.Accessible.Role = Atk.Role.Filler;
-						arrow.Show ();
-						((HBox)label.Parent).PackEnd (arrow, false, false, 0);
+						arrow = new Gtk.Image ();
+						arrow.SetShouldIgnore (true);
+						box.Append (arrow);
 					}
-					arrow.ArrowType = value.Value;
+					arrowType = value.Value;
+					arrow.IconName = GetArrowIconName (arrowType);
 				}
 			}
 		}
 		
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			contextMenuCreator = null;
 
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
 		public new string Label {
@@ -169,7 +151,7 @@ namespace MonoDevelop.Components
 				label.Text = value;
 				label.Visible = !string.IsNullOrEmpty (value);
 
-				Accessible.Name = value;
+				this.SetLabel (value);
 			}
 		}
 		
@@ -180,8 +162,8 @@ namespace MonoDevelop.Components
 		
 		public string StockImage {
 			set {
-				image.SetIcon (value, IconSize.Button);
-				image.Show ();
+				image.SetIcon (value, StockIconSize.Button);
+				image.Visible = true;
 			}
 		}
 		

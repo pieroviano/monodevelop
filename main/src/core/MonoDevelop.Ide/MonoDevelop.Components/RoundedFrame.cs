@@ -28,21 +28,18 @@
 //
 
 using System;
-using Gtk;
 using Cairo;
 
 using MonoDevelop.Components.Theming;
 
 namespace MonoDevelop.Components
 {
-	public class RoundedFrame : Bin
+	public class RoundedFrame : BinWidget
 	{
 		private Theme theme;
 
 		private int frame_width = 3;
 
-		private Widget child;
-		private Gdk.Rectangle child_allocation;
 		private bool fill_color_set;
 		private Cairo.Color fill_color;
 		private bool draw_border = true;
@@ -55,16 +52,11 @@ namespace MonoDevelop.Components
 
 		public RoundedFrame ()
 		{
-			this.Events =  Gdk.EventMask.AllEventsMask;
-			this.WidgetFlags |= WidgetFlags.NoWindow;
-			DoubleBuffered = true;
-			AppPaintable = false;
+			Padding = new Gtk.Border { Left = (short)frame_width, Right = (short)frame_width, Top = (short)frame_width, Bottom = (short)frame_width };
 		}
 
 		public void SetFillColor (Cairo.Color color)
 		{
-			this.ModifyBase (Gtk.StateType.Normal, CairoExtensions.CairoColorToGdkColor (color));
-			this.ModifyBg (Gtk.StateType.Normal, CairoExtensions.CairoColorToGdkColor (color));
 			fill_color = color;
 			fill_color_set = true;
 			QueueDraw ();
@@ -100,72 +92,26 @@ namespace MonoDevelop.Components
 			theme = MonoDevelop.Components.Theming.ThemeEngine.CreateTheme (this);
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (child != null && child.Visible) {
-				// Add the child's width/height
-				Requisition child_requisition = child.SizeRequest ();
-				requisition.Width = Math.Max (0, child_requisition.Width);
-				requisition.Height = child_requisition.Height;
-			} else {
-				requisition.Width = 0;
-				requisition.Height = 0;
-			}
-			
-			// Add the frame border
-			requisition.Width += ((int)BorderWidth + frame_width) * 2;
-			requisition.Height += ((int)BorderWidth + frame_width) * 2;
+			if (theme != null && Child != null && Child.Visible)
+				snapshot.DrawCairo (this, DrawFrame);
+			base.OnSnapshot (snapshot);
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		private void DrawFrame (Cairo.Context cr)
 		{
-			base.OnSizeAllocated (child_allocation);
-			
-			if (child == null || !child.Visible)
-				return;
-			
-			int border = (int)BorderWidth + frame_width;
-			
-			child_allocation = new Gdk.Rectangle (allocation.X + border,
-			                                      allocation.Y + border,
-			                                      (int)Math.Max (1, allocation.Width - border * 2),
-			                                      (int)Math.Max (1, allocation.Height - border * 2));
-			
-			child.SizeAllocate (child_allocation);
-		}
+			int childWidth = Math.Max (1, Width - frame_width * 2);
+			int childHeight = Math.Max (1, Height - frame_width * 2);
+			int x = 0;
+			int y = -frame_width - 1;
+			int width = childWidth + 2 * frame_width;
+			int height = childHeight + 3 * frame_width;
 
-		protected override void OnSetScrollAdjustments (Adjustment hadj, Adjustment vadj)
-		{
-			// This is to satisfy the gtk_widget_set_scroll_adjustments
-			// inside of GtkScrolledWindow so it doesn't complain about
-			// its child not being scrollable.
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			if (!IsDrawable) {
-				return false;
-			}
-			
-			using (Context cr = Gdk.CairoHelper.Create (evnt.Window)) {
-				DrawFrame (cr, evnt.Area);
-				if (child != null) 
-					PropagateExpose (child, evnt);
-				return false;
-			}
-		}
-
-		private void DrawFrame (Cairo.Context cr, Gdk.Rectangle clip)
-		{
-			int x = child_allocation.X - frame_width;
-			int y = child_allocation.Y - 2 * frame_width - 1;
-			int width = child_allocation.Width + 2 * frame_width;
-			int height = child_allocation.Height + 3 * frame_width;
-			
 			Gdk.Rectangle rect = new Gdk.Rectangle (x, y, width, height);
-			
+
 			theme.Context.ShowStroke = draw_border;
-			
+
 			if (fill_color_set) {
 				theme.DrawFrameBackground (cr, rect, fill_color);
 				theme.DrawFrameBorder (cr, rect);
@@ -178,25 +124,5 @@ namespace MonoDevelop.Components
 		}
 
 		#endregion
-
-		#region Gtk.Container Overrides
-
-		protected override void OnAdded (Widget widget)
-		{
-			child = widget;
-			base.OnAdded (widget);
-		}
-
-		protected override void OnRemoved (Widget widget)
-		{
-			if (child == widget) {
-				child = null;
-			}
-			
-			base.OnRemoved (widget);
-		}
-		
-		#endregion
-		
 	}
 }

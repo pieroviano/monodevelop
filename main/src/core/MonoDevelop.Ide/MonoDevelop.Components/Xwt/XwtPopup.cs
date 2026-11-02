@@ -131,7 +131,8 @@ namespace MonoDevelop.Components
 			ShowPopup (widget, Rectangle.Zero, position);
 		}
 
-		public void ShowPopup (Gtk.Widget widget, Gdk.EventButton evt, PopupPosition position)
+		/// <summary>Shows the popup at the click position (<paramref name="evt"/> coordinates are relative to the gesture widget).</summary>
+		public void ShowPopup (Gtk.Widget widget, ClickInfo evt, PopupPosition position)
 		{
 			ShowPopup (widget, evt, Gdk.Rectangle.Zero, position);
 		}
@@ -168,27 +169,27 @@ namespace MonoDevelop.Components
 			ShowPopupInternal ();
 		}
 
-		void ShowPopup (Gtk.Widget parent, Gdk.EventButton evt, Gdk.Rectangle targetRectangle, PopupPosition position)
+		void ShowPopup (Gtk.Widget parent, ClickInfo evt, Gdk.Rectangle targetRectangle, PopupPosition position)
 		{
 			target = parent;
 			targetRect = targetRectangle.ToXwtRectangle ();
 			targetPosition = position;
-			Gdk.Window targetWindow;
+			eventProvided = evt != null;
 			if (evt != null) {
-				eventProvided = true;
-				targetWindow = evt.Window;
-			} else
-				targetWindow = parent.GdkWindow;
-
-			if (targetWindow != null) {
-				int x, y;
-				targetWindow.GetOrigin (out x, out y);
-				targetWindowOrigin = new Point (x, y);
+				// GTK 4 has no screen coordinates: keep the click position relative to the target widget.
+				var owner = evt.Gesture?.Widget;
+				var r = new Gdk.Rectangle ((int)evt.X, (int)evt.Y, 1, 1);
+				if (owner != null)
+					r = owner.TranslateRectangle (parent, r);
+				targetRect = r.ToXwtRectangle ();
 			}
-			Gtk.Window parentWindow = parent.Toplevel as Gtk.Window;
+			var bounds = GetToolkitForWidget (parent).GetScreenBounds (parent);
+			targetWindowOrigin = new Point (bounds.X, bounds.Y);
+
+			Gtk.Window parentWindow = parent.Root as Gtk.Window;
 			if (parentWindow != null)
 				try {
-					TransientFor = Toolkit.Load (ToolkitType.Gtk).WrapWindow (parentWindow);
+					TransientFor = Toolkit.Load (ToolkitType.Gtk4).WrapWindow (parentWindow);
 				} catch {
 					if (MessageDialog.RootWindow != null)
 						TransientFor = MessageDialog.RootWindow;
@@ -243,7 +244,7 @@ namespace MonoDevelop.Components
 		static Toolkit GetToolkitForWidget (object nativeWidget)
 		{
 			if (nativeWidget is Gtk.Widget)
-				return Toolkit.Load (ToolkitType.Gtk);
+				return Toolkit.Load (ToolkitType.Gtk4);
 			#if MAC
 			if (nativeWidget is AppKit.NSView)
 				return Toolkit.Load (ToolkitType.XamMac);
@@ -258,10 +259,8 @@ namespace MonoDevelop.Components
 		protected Size GetParentSize ()
 		{
 			var gtkTarget = target as Gtk.Widget;
-			if (gtkTarget != null) {
-				var alloc = gtkTarget.Allocation;
-				return new Size (alloc.Width, alloc.Height);
-			}
+			if (gtkTarget != null)
+				return new Size (gtkTarget.Width, gtkTarget.Height);
 			#if MAC
 			var nsTarget = target as AppKit.NSView;
 			if (nsTarget != null) {
@@ -318,9 +317,9 @@ namespace MonoDevelop.Components
 			var psize = GetParentSize ();
 
 			if (eventProvided) {
-				currentRect.X = targetWindowOrigin.X;
-				currentRect.Y = targetWindowOrigin.Y;
+				// targetRect holds the click position relative to the target widget
 				currentRect.Width = currentRect.Height = 1;
+				currentRect = GetScreenCoordinates (currentRect);
 			} else {
 				if (currentRect.IsEmpty)
 					currentRect = new Rectangle (0, 0, psize.Width, psize.Height);

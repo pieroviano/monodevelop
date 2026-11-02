@@ -25,7 +25,6 @@
 // THE SOFTWARE.
 
 using System;
-using Gdk;
 using System.Collections.Generic;
 
 namespace MonoDevelop.Components
@@ -106,13 +105,11 @@ namespace MonoDevelop.Components
 			return temp1;
 		}
 
-		public static implicit operator Color (HslColor hsl)
+		public static implicit operator Gdk.RGBA (HslColor hsl)
 		{
 			double r = 0, g = 0, b = 0;
 			hsl.ToRgb (out r, out g, out b);
-			return new Color ((byte)(255 * r),
-							  (byte)(255 * g),
-							  (byte)(255 * b));
+			return new Gdk.RGBA { Red = (float)r, Green = (float)g, Blue = (float)b, Alpha = (float)hsl.Alpha };
 		}
 
 		public static implicit operator Cairo.Color (HslColor hsl)
@@ -134,7 +131,7 @@ namespace MonoDevelop.Components
 			return new HslColor (color.Red, color.Green, color.Blue, color.Alpha);
 		}
 
-		public static implicit operator HslColor (Color color)
+		public static implicit operator HslColor (Gdk.RGBA color)
 		{
 			return new HslColor (color);
 		}
@@ -240,9 +237,8 @@ namespace MonoDevelop.Components
 
 		}
 
-		public HslColor (Color color) : this (color.Red / (double)ushort.MaxValue, color.Green / (double)ushort.MaxValue, color.Blue / (double)ushort.MaxValue)
+		public HslColor (Gdk.RGBA color) : this (color.Red, color.Green, color.Blue, color.Alpha)
 		{
-			Alpha = 1.0;
 		}
 
 		public HslColor (Cairo.Color color) : this (color.R, color.G, color.B, color.A)
@@ -259,8 +255,8 @@ namespace MonoDevelop.Components
 				return new HslColor (r, g, b, a);
 			}
 
-			Gdk.Color col = new Gdk.Color (0, 0, 0);
-			Gdk.Color.Parse (color, ref col);
+			var col = new Gdk.RGBA { Alpha = 1 };
+			col.Parse (color);
 			return (HslColor)col;
 		}
 
@@ -277,11 +273,11 @@ namespace MonoDevelop.Components
 			return System.Math.Sqrt (r * .241 + g * .691 + b * .068);
 		}
 
-		public static double Brightness (Gdk.Color c)
+		public static double Brightness (Gdk.RGBA c)
 		{
-			double r = c.Red / (double)ushort.MaxValue;
-			double g = c.Green / (double)ushort.MaxValue;
-			double b = c.Blue / (double)ushort.MaxValue;
+			double r = c.Red;
+			double g = c.Green;
+			double b = c.Blue;
 			return System.Math.Sqrt (r * .241 + g * .691 + b * .068);
 		}
 
@@ -333,11 +329,6 @@ namespace MonoDevelop.Components
 				((int)(resultColor.G * 255)).ToString ("x2"),
 				((int)(resultColor.B * 255)).ToString ("x2"),
 				((int)(resultColor.A * 255)).ToString ("x2"));
-		}
-
-		internal Gdk.GC CreateGC (Gdk.Drawable drawable)
-		{
-			return new Gdk.GC (drawable) { RgbBgColor = this, RgbFgColor = this };
 		}
 	}
 }

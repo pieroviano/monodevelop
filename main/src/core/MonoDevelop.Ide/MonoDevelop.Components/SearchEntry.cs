@@ -28,39 +28,47 @@
 //
 
 using System;
-using Gtk;
+using System.Collections.Generic;
 using MonoDevelop.Core;
-using MonoDevelop.Ide.Fonts;
 using MonoDevelop.Ide.Gui;
 using MonoDevelop.Components.AtkCocoaHelper;
-using MonoDevelop.Ide;
 
 namespace MonoDevelop.Components
 {
+	/// <summary>
+	/// Search field: [filter button][entry][optional label][clear button] inside a drawn frame.
+	/// The filter menu is a <see cref="GLib.Menu"/> shown in a <see cref="Gtk.PopoverMenu"/>; its built-in
+	/// filter options use actions in the <see cref="MenuActionPrefix"/> group of this widget.
+	/// </summary>
 	[System.ComponentModel.ToolboxItem(true)]
-	public class SearchEntry : EventBox
+	public class SearchEntry : BinWidget
 	{
-		Alignment alignment;
-		Alignment entryAlignment;
-		private HBox box;
-		private Entry entry;
-		private HoverImageButton filter_button;
-		private HoverImageButton clear_button;
+		/// <summary>Action group prefix of <see cref="MenuActions"/> (menu items use "searchentry.&lt;name&gt;").</summary>
+		public const string MenuActionPrefix = "searchentry";
 
-		private Menu menu;
-		private int active_filter_id = -1;
+		Gtk.Box box;
+		Gtk.Entry entry;
+		HoverImageButton filter_button;
+		HoverImageButton clear_button;
 
-		private uint changed_timeout_id = 0;
+		GLib.Menu menu;
+		GLib.Menu currentSection;
+		readonly GLib.SimpleActionGroup menuActions = new GLib.SimpleActionGroup ();
+		readonly List<FilterOption> filterOptions = new List<FilterOption> ();
+		int actionCounter;
+		Gtk.PopoverMenu menuPopover;
+		int active_filter_id = -1;
 
-		private string empty_message;
-		private bool ready = false;
+		uint changed_timeout_id = 0;
 
-		private event EventHandler filter_changed;
-		private event EventHandler entry_changed;
+		string empty_message;
+		bool ready = false;
+
+		event EventHandler filter_changed;
+		event EventHandler entry_changed;
 		EventHandler activated_event;
 		bool roundedShape;
 		bool hasFrame = true;
-		bool customRoundedShapeDrawing = false;
 
 		public event EventHandler Changed {
 			add { entry_changed += value; }
@@ -88,25 +96,40 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public Menu Menu {
+		/// <summary>
+		/// Filter menu model. A replacement menu must reference actions that can be resolved from this widget,
+		/// e.g. added to <see cref="MenuActions"/> ("searchentry.&lt;name&gt;") or inserted with <c>InsertActionGroup</c>.
+		/// </summary>
+		public GLib.Menu Menu {
 			get {
-				if (menu != null)
-					return menu;
-				return menu = new Menu ();
+				if (menu == null)
+					SetMenu (new GLib.Menu ());
+				return menu;
 			}
 			set {
-				if (menu != null) {
-					menu.Deactivated -= OnMenuDeactivated;
-					menu.Destroy ();
-				}
-				menu = value;
-				if (value != null) {
-					menu.Deactivated += OnMenuDeactivated;
-				}
+				SetMenu (value);
 			}
 		}
 
-		public Entry Entry {
+		/// <summary>Actions available to <see cref="Menu"/> items under the "searchentry." prefix.</summary>
+		public GLib.SimpleActionGroup MenuActions {
+			get { return menuActions; }
+		}
+
+		void SetMenu (GLib.Menu value)
+		{
+			ClosePopover ();
+			menu = value;
+			currentSection = null;
+			if (filterOptions.Count > 0) {
+				foreach (var o in filterOptions)
+					menuActions.Remove (o.ActionName);
+				filterOptions.Clear ();
+			}
+			ShowHideButtons ();
+		}
+
+		public Gtk.Entry Entry {
 			get { return this.entry; }
 		}
 
@@ -122,10 +145,6 @@ namespace MonoDevelop.Components
 					return;
 
 				roundedShape = value;
-				if (value)
-					entry.Name = "search-entry";
-				else
-					entry.Name = "";
 				ShowHideButtons ();
 				QueueDraw ();
 			}
@@ -133,14 +152,8 @@ namespace MonoDevelop.Components
 
 		public SearchEntry ()
 		{
-			AppPaintable = true;
-
 			BuildWidget ();
-
-			NoShowAll = true;
-			GtkWorkarounds.SetTransparentBgHint (this, true);
-
-			Accessible.SetShouldIgnore (true);
+			this.SetShouldIgnore (true);
 		}
 
 		public Xwt.Drawing.Image FilterButtonPixbuf {
@@ -152,47 +165,39 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		private void BuildWidget ()
+		void BuildWidget ()
 		{
-			alignment = new Alignment (0.5f, 0.5f, 1f, 0f);
-			alignment.Accessible.SetShouldIgnore (true);
-			alignment.SetPadding (1, 1, 3, 3);
-			VisibleWindow = false;
+			Padding = new Gtk.Border { Left = 3, Right = 3, Top = 1, Bottom = 1 };
+			InsertActionGroup (MenuActionPrefix, menuActions);
 
-			box = new HBox ();
-			box.Accessible.SetShouldIgnore (true);
-			entry = new FramelessEntry (this);
-			entry.UseNativeContextMenus ();
-			entry.Accessible.SetSubRole ("AXSearchField");
-			entry.Accessible.SetLabel (GettextCatalog.GetString ("Search"));
+			box = new Gtk.Box (Gtk.Orientation.Horizontal, 0) {
+				Valign = Gtk.Align.Center,
+			};
+			box.SetShouldIgnore (true);
+			entry = new Gtk.Entry {
+				HasFrame = false,
+				WidthChars = 1,
+				Hexpand = true,
+			};
+			entry.SetSubRole ("AXSearchField");
+			entry.SetLabel (GettextCatalog.GetString ("Search"));
 
-			filter_button = new HoverImageButton (IconSize.Menu, "md-searchbox-search");
-			filter_button.Accessible.SetRole (AtkCocoa.Roles.AXMenuButton);
-			filter_button.Accessible.SetLabel (GettextCatalog.GetString ("Search filter menu"));
-			filter_button.Accessible.Description = GettextCatalog.GetString ("Change the search filters");
+			filter_button = new HoverImageButton (StockIconSize.Menu, "md-searchbox-search");
+			filter_button.SetRole (AtkCocoa.Roles.AXMenuButton);
+			filter_button.SetCommonAttributes (null, GettextCatalog.GetString ("Search filter menu"), GettextCatalog.GetString ("Change the search filters"));
 
 			// This will be set to false if an event handler is attached to RequestMenu
-			filter_button.Accessible.SetShouldIgnore (true);
+			filter_button.SetShouldIgnore (true);
 
-			clear_button = new HoverImageButton (IconSize.Menu, "md-searchbox-clear");
-			clear_button.Accessible.SetLabel (GettextCatalog.GetString ("Clear"));
-			clear_button.Accessible.Description = GettextCatalog.GetString ("Clear the search entry");
+			clear_button = new HoverImageButton (StockIconSize.Menu, "md-searchbox-clear");
+			clear_button.SetCommonAttributes (null, GettextCatalog.GetString ("Clear"), GettextCatalog.GetString ("Clear the search entry"));
 
-			entryAlignment = new Gtk.Alignment (0.5f, 0.5f, 1f, 1f);
-			entryAlignment.Accessible.SetShouldIgnore (true);
-			alignment.SetPadding (0, 0, 3, 3);
-			entryAlignment.Add (entry);
-			box.PackStart (filter_button, false, false, 0);
-			box.PackStart (entryAlignment, true, true, 0);
-			box.PackStart (clear_button, false, false, 0);
-			alignment.Add (box);
-			Add (alignment);
-			alignment.ShowAll ();
+			box.Append (filter_button);
+			box.Append (entry);
+			box.Append (clear_button);
+			Child = box;
 
-			entry.StyleSet += OnInnerEntryStyleSet;
-			entry.StateChanged += OnInnerEntryStateChanged;
-			entry.FocusInEvent += OnInnerEntryFocusEvent;
-			entry.FocusOutEvent += OnInnerEntryFocusEvent;
+			entry.AddFocusHandler (QueueDraw, QueueDraw);
 			entry.Changed += OnInnerEntryChanged;
 			entry.Activated += delegate {
 				NotifyActivated ();
@@ -201,33 +206,25 @@ namespace MonoDevelop.Components
 			filter_button.CanFocus = false;
 			clear_button.CanFocus = false;
 
-			filter_button.ButtonReleaseEvent += OnButtonReleaseEvent;
-			clear_button.ButtonReleaseEvent += OnButtonReleaseEvent;
+			filter_button.AddClickHandler (null, c => OnButtonRelease (filter_button), 1);
+			clear_button.AddClickHandler (null, c => OnButtonRelease (clear_button), 1);
 			clear_button.Clicked += OnClearButtonClicked;
+
+			this.AddKeyPressHandler (OnKeyPressed);
 
 			ShowHideButtons ();
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			if (HeightRequest != -1 && box.HeightRequest != HeightRequest)
-				box.HeightRequest = HeightRequest;
-			if (box.HeightRequest != -1 && HeightRequest == -1)
-				box.HeightRequest = -1;
-			base.OnSizeRequested (ref requisition);
-		}
+		Gtk.Widget statusLabelWidget;
 
-		Gtk.EventBox statusLabelEventBox;
-		public Gtk.EventBox AddLabelWidget (Gtk.Label label)
+		/// <summary>Adds <paramref name="label"/> before the clear button; returns the widget hosting it (the label itself in GTK 4).</summary>
+		public Gtk.Widget AddLabelWidget (Gtk.Label label)
 		{
-			box.Remove (clear_button);
-			statusLabelEventBox = new Gtk.EventBox ();
-			statusLabelEventBox.Child = label;
-			box.PackStart (statusLabelEventBox, false, false, 0);
-			box.PackStart (clear_button, false, false, 0);
-			UpdateStyle ();
-			box.ShowAll ();
-			return statusLabelEventBox;
+			if (statusLabelWidget != null)
+				box.Remove (statusLabelWidget);
+			statusLabelWidget = label;
+			box.InsertChildAfter (label, entry);
+			return label;
 		}
 
 		void NotifyActivated ()
@@ -238,69 +235,69 @@ namespace MonoDevelop.Components
 
 		public void PopupFilterMenu ()
 		{
-			ShowMenu (0);
+			ShowMenu ();
 		}
 
-		void ShowMenu (uint time)
+		void ShowMenu ()
 		{
 			OnRequestMenu (EventArgs.Empty);
-			if (MenuHasChildren ()) {
-				Menu.Popup (null, null, OnPositionMenu, 0, time);
-				Menu.ShowAll ();
+			if (!MenuHasChildren ())
+				return;
+
+			ClosePopover ();
+			menuPopover = new Gtk.PopoverMenu (menu) {
+				HasArrow = false,
+				Position = Gtk.PositionType.Bottom,
+			};
+			menuPopover.Parent = filter_button;
+			var popover = menuPopover;
+			popover.Closed += (s, e) => GLib.Idle.Add (() => {
+				popover.Detach ();
+				if (menuPopover == popover)
+					menuPopover = null;
+				filter_button.QueueDraw ();
+				return false;
+			});
+			popover.Popup ();
+		}
+
+		void ClosePopover ()
+		{
+			if (menuPopover != null) {
+				menuPopover.Detach ();
+				menuPopover = null;
 			}
 		}
 
 		bool MenuHasChildren ()
 		{
-			return menu != null && Menu.Children.Length > 0;
+			return menu != null && menu.NItems > 0;
 		}
 
-		private void ShowHideButtons ()
+		void ShowHideButtons ()
 		{
+			if (entry == null)
+				return;
 			clear_button.Visible = entry.Text.Length > 0;
-			entryAlignment.RightPadding = (uint) (!clear_button.Visible && roundedShape ? 6 : 0);
+			entry.MarginEnd = !clear_button.Visible && roundedShape ? 6 : 0;
 
 			filter_button.Visible = ForceFilterButtonVisible || MenuHasChildren ();
-			entryAlignment.LeftPadding = (uint) (!filter_button.Visible && roundedShape ? 6 : 0);
+			entry.MarginStart = !filter_button.Visible && roundedShape ? 6 : 0;
 		}
 
-		private void OnPositionMenu (Menu menu, out int x, out int y, out bool push_in)
-		{
-			int origin_x, origin_y, tmp;
-
-			filter_button.GdkWindow.GetOrigin (out origin_x, out tmp);
-			GdkWindow.GetOrigin (out tmp, out origin_y);
-
-			x = origin_x + filter_button.Allocation.X;
-			y = origin_y + Allocation.Y + SizeRequest ().Height;
-			push_in = true;
-		}
-
-		private void OnMenuDeactivated (object o, EventArgs args)
-		{
-			filter_button.QueueDraw ();
-		}
-
-		private bool toggling = false;
+		bool toggling = false;
 		public bool IsCheckMenu { get; set; }
-		private void OnMenuItemToggled (object o, EventArgs args)
+
+		void OnFilterOptionToggled (FilterOption item)
 		{
-			if (IsCheckMenu || toggling || !(o is FilterMenuItem)) {
+			if (IsCheckMenu || toggling) {
 				return;
 			}
 
 			toggling = true;
-			FilterMenuItem item = (FilterMenuItem)o;
-
-			foreach (MenuItem child_item in Menu) {
-				if (!(child_item is FilterMenuItem)) {
-					continue;
-				}
-
-				FilterMenuItem filter_child = (FilterMenuItem)child_item;
-				if (filter_child != item) {
-					filter_child.Active = false;
-				}
+			foreach (var other in filterOptions) {
+				if (other != item)
+					other.Active = false;
 			}
 
 			item.Active = true;
@@ -308,7 +305,7 @@ namespace MonoDevelop.Components
 			toggling = false;
 		}
 
-		private void OnInnerEntryChanged (object o, EventArgs args)
+		void OnInnerEntryChanged (object o, EventArgs args)
 		{
 			ShowHideButtons ();
 
@@ -321,56 +318,19 @@ namespace MonoDevelop.Components
 				changed_timeout_id = GLib.Timeout.Add (25, OnChangedTimeout);
 		}
 
-		private bool OnChangedTimeout ()
+		bool OnChangedTimeout ()
 		{
 			changed_timeout_id = 0;
 			OnChanged ();
 			return false;
 		}
 
-		private void UpdateStyle ()
+		void OnButtonRelease (Gtk.Widget button)
 		{
-			Gdk.Color color = entry.Style.Base (entry.State);
-			filter_button.ModifyBg (entry.State, color);
-			clear_button.ModifyBg (entry.State, color);
-			if (statusLabelEventBox != null)
-				statusLabelEventBox.ModifyBg (entry.State, color);
+			entry.GrabFocus ();
 
-			box.BorderWidth = 0;
-			var h = entry.SizeRequest ().Height + entry.Style.Ythickness * 2;
-			var req = entry.SizeRequest ().Height;
-			req = Math.Max (req, filter_button.SizeRequest ().Height);
-			req = Math.Max (req, clear_button.SizeRequest ().Height);
-			var diff = h - req;
-			if (diff > 1)
-				box.BorderWidth = (uint)(diff / 2);
-		}
-
-		private void OnInnerEntryStyleSet (object o, StyleSetArgs args)
-		{
-			UpdateStyle ();
-		}
-
-		private void OnInnerEntryStateChanged (object o, EventArgs args)
-		{
-			UpdateStyle ();
-		}
-
-		private void OnInnerEntryFocusEvent (object o, EventArgs args)
-		{
-			QueueDraw ();
-		}
-
-		private void OnButtonReleaseEvent (object o, ButtonReleaseEventArgs args)
-		{
-			if (args.Event.Button != 1) {
-				return;
-			}
-
-			entry.HasFocus = true;
-
-			if (o == filter_button) {
-				ShowMenu (args.Event.Time);
+			if (button == filter_button) {
+				ShowMenu ();
 			}
 		}
 
@@ -385,7 +345,7 @@ namespace MonoDevelop.Components
 			add {
 				lock (requestMenuLock) {
 					requestMenu += value;
-					filter_button.Accessible.SetShouldIgnore (false);
+					filter_button.SetShouldIgnore (false);
 				}
 			}
 
@@ -393,7 +353,7 @@ namespace MonoDevelop.Components
 				lock (requestMenuLock) {
 					requestMenu -= value;
 					if (requestMenu == null) {
-						filter_button.Accessible.SetShouldIgnore (true);
+						filter_button.SetShouldIgnore (true);
 					}
 				}
 			}
@@ -403,77 +363,66 @@ namespace MonoDevelop.Components
 		{
 			this.entry.GrabFocus ();
 		}
-		private void OnClearButtonClicked (object o, EventArgs args)
+
+		void OnClearButtonClicked (object o, EventArgs args)
 		{
 			active_filter_id = 0;
 			entry.Text = String.Empty;
 			NotifyActivated ();
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			if (menu != null) {
-				menu.Deactivated -= OnMenuDeactivated;
-				menu.Destroy ();
-				menu = null;
+			if (disposing) {
+				ClosePopover ();
+				if (changed_timeout_id > 0) {
+					GLib.Source.Remove (changed_timeout_id);
+					changed_timeout_id = 0;
+				}
 			}
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (evnt.Key == Gdk.Key.Escape) {
+			if ((Gdk.Key)keyval == Gdk.Key.Escape) {
 				active_filter_id = 0;
 				entry.Text = String.Empty;
 				NotifyActivated ();
 				return true;
 			}
-			return base.OnKeyPressEvent (evnt);
+			return false;
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			var alloc = new Gdk.Rectangle (alignment.Allocation.X, box.Allocation.Y, alignment.Allocation.Width, box.Allocation.Height);
+			int width = Width, height = Height;
+			if (width <= 0 || height <= 0)
+				return;
 
-			if (hasFrame && (!roundedShape || (roundedShape && !customRoundedShapeDrawing))) {
-				if (Platform.IsLinux)
-					Style.PaintFlatBox (Style, GdkWindow, entry.State, ShadowType.None,
-					                    evnt.Area, this, "entry_bg", alloc.X + 2, alloc.Y + 2, alloc.Width - 4, alloc.Height - 4);
-				Style.PaintShadow (entry.Style, GdkWindow, entry.State, entry.ShadowType,
-				                   evnt.Area, entry, "entry", alloc.X, alloc.Y, alloc.Width, alloc.Height);
-/*				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-					ctx.LineWidth = 1;
-					ctx.Rectangle (alloc.X + 0.5, alloc.Y + 0.5, alloc.Width - 1, alloc.Height - 1);
-					ctx.Color = new Cairo.Color (1,0,0);
-					ctx.Stroke ();
-				}*/
-			}
-			else if (!roundedShape) {
-				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-					CairoExtensions.RoundedRectangle (ctx, alloc.X + 0.5, alloc.Y + 0.5, alloc.Width - 1, alloc.Height - 1, 4);
-					ctx.SetSourceColor (entry.Style.Base (Gtk.StateType.Normal).ToCairoColor ());
-					ctx.Fill ();
-				}
-			}
-			else {
-				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-					RoundBorder (ctx, alloc.X + 0.5, alloc.Y + 0.5, alloc.Width - 1, alloc.Height - 1);
-					ctx.SetSourceColor (entry.Style.Base (Gtk.StateType.Normal).ToCairoColor ());
-					ctx.Fill ();
-				}
-			}
+			// frame around the inner box (vertically centered), like the GTK 2 entry shadow
+			var boxBounds = box.Allocation;
+			double x = Padding.Left + 0.5, y = boxBounds.Y + 0.5;
+			double w = Math.Max (0, width - Padding.Left - Padding.Right - 1), h = Math.Max (0, boxBounds.Height - 1);
 
-			PropagateExpose (Child, evnt);
-
-			if (hasFrame && roundedShape && customRoundedShapeDrawing) {
-				using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
-					RoundBorder (ctx, alloc.X + 0.5, alloc.Y + 0.5, alloc.Width - 1, alloc.Height - 1);
-					ctx.SetSourceColor (Styles.WidgetBorderColor.ToCairoColor ());
+			snapshot.DrawCairo (this, ctx => {
+				var baseColor = Styles.BaseBackgroundColor.ToCairoColor ();
+				if (roundedShape)
+					RoundBorder (ctx, x, y, w, h);
+				else
+					CairoExtensions.RoundedRectangle (ctx, x, y, w, h, hasFrame ? 3 : 4);
+				ctx.SetSourceColor (baseColor);
+				if (hasFrame) {
+					ctx.FillPreserve ();
+					ctx.SetSourceColor ((entry.HasFocus ? Styles.FocusColor : Styles.WidgetBorderColor).ToCairoColor ());
 					ctx.LineWidth = 1;
 					ctx.Stroke ();
+				} else {
+					ctx.Fill ();
 				}
-			}
-			return true;
+			});
+
+			base.OnSnapshot (snapshot);
 		}
 
 		static void RoundBorder (Cairo.Context ctx, double x, double y, double w, double h)
@@ -489,9 +438,9 @@ namespace MonoDevelop.Components
 			ctx.ClosePath ();
 		}
 
-		protected override void OnShown ()
+		protected override void OnMapped ()
 		{
-			base.OnShown ();
+			base.OnMapped ();
 			ShowHideButtons ();
 		}
 
@@ -519,16 +468,28 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		public CheckMenuItem AddFilterOption (int id, string label)
+		GLib.Menu CurrentSection {
+			get {
+				if (currentSection == null) {
+					currentSection = new GLib.Menu ();
+					Menu.AppendSection (null, currentSection);
+				}
+				return currentSection;
+			}
+		}
+
+		/// <summary>Adds a check (radio unless <see cref="IsCheckMenu"/>) filter item to the menu.</summary>
+		public FilterOption AddFilterOption (int id, string label)
 		{
 			if (id < 0) {
 				throw new ArgumentException ("id", "must be >= 0");
 			}
 
-			FilterMenuItem item = new FilterMenuItem (id, label);
-
-			item.Toggled += OnMenuItemToggled;
-			Menu.Append (item);
+			var item = new FilterOption (this, id, label, "filter" + (actionCounter++));
+			filterOptions.Add (item);
+			menuActions.Insert (item.Action);
+			item.Section = CurrentSection;
+			item.Section.Append (label, MenuActionPrefix + "." + item.ActionName);
 
 			if (ActiveFilterID < 0) {
 				item.Toggle ();
@@ -538,48 +499,63 @@ namespace MonoDevelop.Components
 			return item;
 		}
 
-		public MenuItem AddMenuItem (string label)
+		/// <summary>Adds a plain item; handle <see cref="GLib.SimpleAction.Activated"/> on the returned action.</summary>
+		public GLib.SimpleAction AddMenuItem (string label)
 		{
-			var item = new MenuItem (label);
-			Menu.Append (item);
-			return item;
+			var action = new GLib.SimpleAction ("item" + (actionCounter++), null);
+			menuActions.Insert (action);
+			CurrentSection.Append (label, MenuActionPrefix + "." + action.Name);
+			ShowHideButtons ();
+			return action;
 		}
 
 		public void AddFilterSeparator ()
 		{
-			Menu.Append (new SeparatorMenuItem ());
+			// GMenu draws separators between sections
+			currentSection = new GLib.Menu ();
+			Menu.AppendSection (null, currentSection);
 		}
 
 		public void RemoveFilterOption (int id)
 		{
-			FilterMenuItem item = FindFilterMenuItem (id);
-			if (item != null) {
-				Menu.Remove (item);
+			FilterOption item = FindFilterOption (id);
+			if (item == null)
+				return;
+
+			string detailed = MenuActionPrefix + "." + item.ActionName;
+			var section = item.Section;
+			for (int i = 0; i < section.NItems; i++) {
+				using (var v = section.GetItemAttributeValue (i, "action", GLib.VariantType.String)) {
+					if (v != null && (string)v == detailed) {
+						section.Remove (i);
+						break;
+					}
+				}
 			}
+			menuActions.Remove (item.ActionName);
+			filterOptions.Remove (item);
 		}
 
 		public void ActivateFilter (int id)
 		{
-			FilterMenuItem item = FindFilterMenuItem (id);
+			FilterOption item = FindFilterOption (id);
 			if (item != null) {
 				item.Toggle ();
 			}
 		}
 
-		private FilterMenuItem FindFilterMenuItem (int id)
+		FilterOption FindFilterOption (int id)
 		{
-			foreach (MenuItem item in Menu) {
-				if (item is FilterMenuItem && ((FilterMenuItem)item).ID == id) {
-					return (FilterMenuItem)item;
-				}
+			foreach (var item in filterOptions) {
+				if (item.ID == id)
+					return item;
 			}
-
 			return null;
 		}
 
 		public string GetLabelForFilterID (int id)
 		{
-			FilterMenuItem item = FindFilterMenuItem (id);
+			FilterOption item = FindFilterOption (id);
 			if (item == null) {
 				return null;
 			}
@@ -605,12 +581,21 @@ namespace MonoDevelop.Components
 			}
 		}
 
+		/// <summary>Placeholder shown while the entry is empty (Pango markup is stripped).</summary>
 		public string EmptyMessage {
 			get { return entry.Sensitive ? empty_message : String.Empty; }
 			set {
 				empty_message = value;
-				entry.QueueDraw ();
+				entry.PlaceholderText = StripMarkup (value);
 			}
+		}
+
+		static string StripMarkup (string markup)
+		{
+			if (string.IsNullOrEmpty (markup) || markup.IndexOf ('<') < 0 && markup.IndexOf ('&') < 0)
+				return markup;
+			var text = System.Text.RegularExpressions.Regex.Replace (markup, "<[^>]*>", string.Empty);
+			return System.Net.WebUtility.HtmlDecode (text);
 		}
 
 		public string Query {
@@ -629,59 +614,59 @@ namespace MonoDevelop.Components
 
 		public new bool HasFocus {
 			get { return entry.HasFocus; }
-			set { entry.HasFocus = true; }
+			set { if (value) entry.GrabFocus (); }
 		}
 
-
-		public Entry InnerEntry {
+		public Gtk.Entry InnerEntry {
 			get { return entry; }
 		}
 
-		protected override void OnStateChanged (Gtk.StateType previous_state)
+		/// <summary>Check item of the filter menu (replaces the GTK 2 <c>CheckMenuItem</c>).</summary>
+		public sealed class FilterOption
 		{
-			base.OnStateChanged (previous_state);
+			readonly SearchEntry owner;
+			bool active;
 
-			entry.Sensitive = State != StateType.Insensitive;
-			filter_button.Sensitive = State != StateType.Insensitive;
-			clear_button.Sensitive = State != StateType.Insensitive;
-		}
-
-		private class FilterMenuItem : CheckMenuItem
-		{
-			private int id;
-			private string label;
-
-			public FilterMenuItem (int id, string label) : base(label)
+			internal FilterOption (SearchEntry owner, int id, string label, string actionName)
 			{
-				this.id = id;
-				this.label = label;
-				DrawAsRadio = true;
+				this.owner = owner;
+				ID = id;
+				Label = label;
+				ActionName = actionName;
+				Action = new GLib.SimpleAction (actionName, null, new GLib.Variant (false));
+				// a stateful action without parameter: activation toggles (like GTK 2 CheckMenuItem activate)
+				Action.Activated += (o, e) => Toggle ();
 			}
 
-			public int ID {
-				get { return id; }
-			}
+			public int ID { get; }
 
-			public string Label {
-				get { return label; }
-			}
-			/*
-            // FIXME: Remove when restored to CheckMenuItem
-            private bool active;
-            public bool Active {
-                get { return active; }
-                set { active = value; }
-            }*/
+			public string Label { get; }
 
-			public new event EventHandler Toggled;
-			protected override void OnActivated ()
-			{
-				base.OnActivated ();
-				if (Toggled != null) {
-					Toggled (this, EventArgs.Empty);
+			internal string ActionName { get; }
+
+			internal GLib.SimpleAction Action { get; }
+
+			internal GLib.Menu Section { get; set; }
+
+			/// <summary>Checked state; changing it raises <see cref="Toggled"/>.</summary>
+			public bool Active {
+				get { return active; }
+				set {
+					if (active == value)
+						return;
+					active = value;
+					Action.ChangeState (new GLib.Variant (value));
+					Toggled?.Invoke (this, EventArgs.Empty);
+					owner.OnFilterOptionToggled (this);
 				}
 			}
 
+			public void Toggle ()
+			{
+				Active = !Active;
+			}
+
+			public event EventHandler Toggled;
 		}
 
 		public void SetEntryAccessibilityAttributes (string name, string label, string help)
@@ -689,117 +674,6 @@ namespace MonoDevelop.Components
 			entry.SetCommonAccessibilityAttributes (name, label, help);
 		}
 
-		public Atk.Object EntryAccessible => entry.Accessible;
-
-		private class FramelessEntry : Entry
-		{
-			private SearchEntry parent;
-			private Pango.Layout layout;
-			private Gdk.GC text_gc;
-
-			public FramelessEntry (SearchEntry parent) : base()
-			{
-				this.parent = parent;
-				HasFrame = false;
-
-				parent.StyleSet += OnParentStyleSet;
-				WidthChars = 1;
-
-				GtkWorkarounds.SetTransparentBgHint (this, true);
-			}
-
-			private void OnParentStyleSet (object o, EventArgs args)
-			{
-				RefreshGC ();
-				QueueDraw ();
-			}
-
-			private void RefreshGC ()
-			{
-				text_gc?.Dispose ();
-				text_gc = null;
-			}
-
-			protected override void OnDestroyed ()
-			{
-				RefreshGC ();
-				if (layout != null) {
-					layout.Dispose ();
-					layout = null;
-				}
-				parent.StyleSet -= OnParentStyleSet;
-				base.OnDestroyed ();
-			}
-
-			public static Gdk.Color ColorBlend (Gdk.Color a, Gdk.Color b)
-			{
-				// at some point, might be nice to allow any blend?
-				double blend = 0.5;
-
-				if (blend < 0.0 || blend > 1.0) {
-					throw new ApplicationException ("blend < 0.0 || blend > 1.0");
-				}
-
-				double blendRatio = 1.0 - blend;
-
-				int aR = a.Red >> 8;
-				int aG = a.Green >> 8;
-				int aB = a.Blue >> 8;
-
-				int bR = b.Red >> 8;
-				int bG = b.Green >> 8;
-				int bB = b.Blue >> 8;
-
-				double mR = aR + bR;
-				double mG = aG + bG;
-				double mB = aB + bB;
-
-				double blR = mR * blendRatio;
-				double blG = mG * blendRatio;
-				double blB = mB * blendRatio;
-
-				Gdk.Color color = new Gdk.Color ((byte)blR, (byte)blG, (byte)blB);
-				Gdk.Colormap.System.AllocColor (ref color, true, true);
-				return color;
-			}
-
-			protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-			{
-				// The Entry's GdkWindow is the top level window onto which
-				// the frame is drawn; the actual text entry is drawn into a
-				// separate window, so we can ensure that for themes that don't
-				// respect HasFrame, we never ever allow the base frame drawing
-				// to happen
-				if (evnt.Window == GdkWindow) {
-					return true;
-				}
-
-				bool ret = base.OnExposeEvent (evnt);
-
-				if (text_gc == null) {
-					text_gc = new Gdk.GC (evnt.Window);
-					text_gc.Copy (Style.TextGC (StateType.Normal));
-					Gdk.Color color_a = parent.Style.Base (StateType.Normal);
-					Gdk.Color color_b = parent.Style.Text (StateType.Normal);
-					text_gc.RgbFgColor = ColorBlend (color_a, color_b);
-				}
-
-				if (Text.Length > 0 || HasFocus || parent.EmptyMessage == null) {
-					return ret;
-				}
-
-				if (layout == null) {
-					layout = new Pango.Layout (PangoContext);
-					layout.FontDescription = IdeServices.FontService.SansFont.CopyModified (Styles.FontScale11);
-				}
-
-				int width, height;
-				layout.SetMarkup (parent.EmptyMessage);
-				layout.GetPixelSize (out width, out height);
-				evnt.Window.DrawLayout (text_gc, 2, (SizeRequest ().Height - height) / 2, layout);
-
-				return ret;
-			}
-		}
+		public Gtk.IAccessible EntryAccessible => entry;
 	}
 }

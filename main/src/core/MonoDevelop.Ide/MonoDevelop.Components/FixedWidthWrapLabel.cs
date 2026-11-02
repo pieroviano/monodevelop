@@ -27,16 +27,13 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-
-
 using System;
-using Gtk;
 
 namespace MonoDevelop.Components
 {
 	[System.ComponentModel.Category("MonoDevelop.Components")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public class FixedWidthWrapLabel : Widget
+	public class FixedWidthWrapLabel : Gtk.Widget
 	{
 		string text;
 		bool use_markup = false;
@@ -44,47 +41,50 @@ namespace MonoDevelop.Components
 		int indent;
 		int spacing;
 		int width = int.MaxValue;
-		
+
 		bool breakOnPunctuation;
 		bool breakOnCamelCasing;
 		string brokentext;
-		
+
 		Pango.WrapMode wrapMode = Pango.WrapMode.Word;
-		
+
 		Pango.FontDescription fontDescription;
-		public Pango.FontDescription FontDescription { 
+		public Pango.FontDescription FontDescription {
 			get {
 				return fontDescription;
 			}
 			set {
 				fontDescription = value;
+				if (layout != null) {
+					layout.FontDescription = value;
+					QueueResize ();
+				}
 			}
-			
+
 		}
 		public FixedWidthWrapLabel ()
 		{
-			WidgetFlags |= WidgetFlags.NoWindow;
 		}
-		
+
 		public FixedWidthWrapLabel (string text)
 			: this ()
 		{
 			this.text = text;
 		}
-		
+
 		public FixedWidthWrapLabel (string text, int width)
 			: this (text)
 		{
 			this.width = width;
 		}
-		
+
 		void CreateLayout ()
 		{
 			if (layout != null) {
 				layout.Dispose ();
 			}
-			
-			layout = new Pango.Layout (PangoContext);
+
+			layout = CreatePangoLayout (null);
 			if (FontDescription != null)
 				layout.FontDescription = FontDescription;
 			layout.Indent = (int) (indent * Pango.Scale.PangoScale);
@@ -96,23 +96,23 @@ namespace MonoDevelop.Components
 				layout.Width = int.MaxValue;
 			SetLayoutMarkupAndResize ();
 		}
-		
-		protected override void OnDestroyed ()
+
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
-			if (layout != null) {
+			if (disposing && layout != null) {
 				layout.Dispose ();
-				layout = null;
+				layout = null;
 			}
+			base.Dispose (disposing);
 		}
-		
+
 		void UpdateLayout ()
 		{
 			if (layout == null) {
 				CreateLayout ();
 			}
 		}
-		
+
 		public int MaxWidth {
 			get { return width; }
 			set {
@@ -126,7 +126,7 @@ namespace MonoDevelop.Components
 				}
 			}
 		}
-		
+
 		public int RealWidth {
 			get {
 				UpdateLayout ();
@@ -135,49 +135,36 @@ namespace MonoDevelop.Components
 				return lw;
 			}
 		}
-		
-		protected override void OnStyleSet (Style previous_style)
+
+		protected override void OnCssChanged (Gtk.CssStyleChange change)
 		{
-			CreateLayout ();
-			base.OnStyleSet (previous_style);
+			base.OnCssChanged (change);
+			// the font may have changed: rebuild the layout from the widget's Pango context
+			if (layout != null)
+				CreateLayout ();
 		}
-		
-		protected override void OnSizeRequested (ref Requisition requisition)
+
+		protected override Gtk.SizeRequestMode OnGetRequestMode ()
 		{
-			base.OnSizeRequested (ref requisition);
+			return Gtk.SizeRequestMode.ConstantSize;
+		}
+
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
 			UpdateLayout ();
 			int lw, lh;
 			layout.GetPixelSize (out lw, out lh);
-			requisition.Height = lh;
-			requisition.Width = lw;
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? lw : lh;
+			minimum_baseline = natural_baseline = -1;
 		}
-		
-//		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-//		{
-//			//wrap to allocation and set automatic height if MaxWidth is -1
-//			if (width < 0) {
-//				int lw, lh;
-//				layout.Width = (int)(allocation.Width * Pango.Scale.PangoScale);
-//				layout.GetPixelSize (out lw, out lh);
-//				HeightRequest = lh;
-//			}
-//			base.OnSizeAllocated (allocation);
-//		}
 
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
 			UpdateLayout ();
-			if (evnt.Window != GdkWindow) {
-				return base.OnExposeEvent (evnt);
-			}
-            
-			Gtk.Style.PaintLayout (Style, GdkWindow, State, false, evnt.Area, 
-			    this, null, Allocation.X, Allocation.Y, layout);
-			
-			return true;
+			// StyleColor already reflects the :disabled state
+			snapshot.AppendLayout (layout, StyleColor);
 		}
-        
+
 		public string Markup {
 			get { return text; }
 			set {
@@ -186,7 +173,7 @@ namespace MonoDevelop.Components
 				breakText ();
 			}
 		}
-        
+
 		public string Text {
 			get { return text; }
 			set {
@@ -194,8 +181,8 @@ namespace MonoDevelop.Components
 				text = value;
 				breakText ();
 			}
-		}  
-		
+		}
+
 		public int Indent {
 			get { return indent; }
 			set {
@@ -217,7 +204,7 @@ namespace MonoDevelop.Components
 				}
 			}
 		}
-		
+
 		public bool BreakOnPunctuation {
 			get { return breakOnPunctuation; }
 			set {
@@ -225,7 +212,7 @@ namespace MonoDevelop.Components
 				breakText ();
 			}
 		}
-		
+
 		public bool BreakOnCamelCasing {
 			get { return breakOnCamelCasing; }
 			set {
@@ -233,7 +220,7 @@ namespace MonoDevelop.Components
 				breakText ();
 			}
 		}
-		
+
 		public Pango.WrapMode Wrap {
 			get { return wrapMode; }
 			set {
@@ -257,7 +244,7 @@ namespace MonoDevelop.Components
 			}
 			QueueResize ();
 		}
-		
+
 		void breakText ()
 		{
 			brokentext = null;
@@ -265,9 +252,9 @@ namespace MonoDevelop.Components
 				SetLayoutMarkupAndResize ();
 				return;
 			}
-			
+
 			System.Text.StringBuilder sb = new System.Text.StringBuilder (text.Length);
-			
+
 			bool prevIsLower = false;
 			bool inMarkup = false;
 			bool inEntity = false;
@@ -275,7 +262,7 @@ namespace MonoDevelop.Components
 
 			for (int i = 0; i < text.Length; i++) {
 				char c = text[i];
-				
+
 				//ignore markup
 				if (use_markup) {
 					switch (c) {
@@ -309,7 +296,7 @@ namespace MonoDevelop.Components
 				if (lineLength > 0) {
 					//insert breaks using zero-width space unicode char
 					if (breakOnCamelCasing && prevIsLower && char.IsUpper (c))
-						sb.Append ('\u200b');
+						sb.Append ('​');
 				}
 
 				sb.Append (c);
@@ -317,8 +304,8 @@ namespace MonoDevelop.Components
 				// Punctuation breaks after the punctuation
 				if (lineLength > 0) {
 					//insert breaks using zero-width space unicode char
-					if (breakOnPunctuation && char.IsPunctuation (c)) 
-						sb.Append ('\u200b');
+					if (breakOnPunctuation && char.IsPunctuation (c))
+						sb.Append ('​');
 				}
 				if (c == '\n' || c == '\r') {
 					lineLength = 0;

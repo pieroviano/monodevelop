@@ -26,7 +26,6 @@
 
 using System;
 using MonoDevelop.Ide;
-using Gtk;
 using System.Text;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Ide.Fonts;
@@ -34,10 +33,16 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.Components
 {
-	public class DropDownBoxListWindow : Gtk.Window
+	/// <summary>
+	/// Drop-down list of items (path bar, <see cref="DropDownBox"/>). GTK 4: an autohide <see cref="Gtk.Popover"/>;
+	/// attach it with <c>popover.Reparent (anchor)</c> and show it with <c>popover.ShowAt (area)</c>
+	/// (or let <see cref="DropDownBox"/> do it). <see cref="Destroy"/> pops it down and detaches it.
+	/// </summary>
+	public class DropDownBoxListWindow : Gtk.Popover
 	{
-		readonly ScrolledWindow vScrollbar;
+		readonly Gtk.ScrolledWindow vScrollbar;
 		internal ListWidget list;
+		bool destroyed;
 
 		public IListDataProvider DataProvider {
 			get;
@@ -61,41 +66,31 @@ namespace MonoDevelop.Components
 			set {
 				list.MaxVisibleRows = value;
 				list.CalcVisibleRows ();
-				SetSizeRequest (list.WidthRequest + WidthModifier, list.HeightRequest);
 			}
 		}
 
-		const int padding = 5;
-
-		int WidthModifier {
-			get {
-				return padding + 2 * (int)BorderWidth;
-			}
-		}
-
-		public DropDownBoxListWindow (IListDataProvider provider) : this (provider, WindowType.Toplevel)
+		public DropDownBoxListWindow (IListDataProvider provider)
 		{
-		}
-
-		public DropDownBoxListWindow (IListDataProvider provider, WindowType windowType) : base (windowType)
-		{
-			Accessible.Name = "DropDownBoxListWindow";
+			Name = "DropDownBoxListWindow";
 
 			this.DataProvider = provider;
-			this.TransientFor = IdeApp.Workbench.RootWindow;
-			this.TypeHint = Gdk.WindowTypeHint.DropdownMenu;
-			this.Decorated = false;
-			this.BorderWidth = 1;
+			Autohide = true;
+			HasArrow = false;
+			Position = Gtk.PositionType.Bottom;
+			Halign = Gtk.Align.Start;
+
+			vScrollbar = new Gtk.ScrolledWindow ();
+			vScrollbar.SetPolicy (Gtk.PolicyType.Never, Gtk.PolicyType.Automatic);
+			vScrollbar.PropagateNaturalWidth = true;
+
 			list = new ListWidget (this);
-			list.Accessible.Name = "DropDownBoxListWindow.List";
+			list.Name = "DropDownBoxListWindow.List";
 
 			list.SelectItem += delegate {
 				var sel = list.Selection;
 				if (sel >= 0 && sel < DataProvider.IconCount) {
 					try {
 						DataProvider.ActivateItem (sel);
-						// This is so parent window of dropdown regains focus
-						TransientFor?.Present ();
 					} catch (Exception ex) {
 						LoggingService.LogInternalError ("Offset seems to be out of sync with the snapshot.", ex);
 					}
@@ -103,17 +98,26 @@ namespace MonoDevelop.Components
 					Destroy ();
 				}
 			};
-			SetSizeRequest (list.WidthRequest + WidthModifier, list.HeightRequest);
-			vScrollbar = new ScrolledWindow ();
-			vScrollbar.VScrollbar.SizeAllocated += (o, args) => {
-				var minWidth = list.WidthRequest + args.Allocation.Width;
-				if (this.Allocation.Width < minWidth)
-					SetSizeRequest (minWidth, list.HeightRequest);
-			};
+			// Non-scrollable child: the scrolled window wraps it in a viewport.
 			vScrollbar.Child = list;
-			var vbox = new VBox ();
-			vbox.PackStart (vScrollbar, true, true, 0);
-			Add (vbox);
+			Child = vScrollbar;
+			list.CalcVisibleRows ();
+
+			// Keys typed while the list is open (the popover takes the keyboard focus).
+			this.AddKeyPressHandler ((keyval, keycode, state) => ProcessKey ((Gdk.Key)keyval, state));
+			Closed += (s, e) => GLib.Idle.Add (() => {
+				Destroy ();
+				return false;
+			});
+		}
+
+		internal Gtk.Adjustment VAdjustment => vScrollbar.Vadjustment;
+
+		internal void SetVisibleHeight (int height)
+		{
+			vScrollbar.MinContentHeight = -1;
+			vScrollbar.MaxContentHeight = height;
+			vScrollbar.MinContentHeight = height;
 		}
 
 		public void SelectItem (object item)
@@ -122,7 +126,8 @@ namespace MonoDevelop.Components
 			for (int i = 0; i < count; i++) {
 				if (DataProvider.GetTag (i) == item) {
 					list.Selection = i;
-					vScrollbar.Vadjustment.Value = Math.Max (0, i * list.RowHeight - vScrollbar.Vadjustment.PageSize / 2);
+					var adj = vScrollbar.Vadjustment;
+					adj.Value = Math.Max (0, i * list.RowHeight - adj.PageSize / 2);
 					break;
 				}
 			}
@@ -137,7 +142,7 @@ namespace MonoDevelop.Components
 					list.Selection = i;
 					list.WordSelection.Append (selection);
 				}
-			} 
+			}
 		}
 
 		public bool ProcessKey (Gdk.Key key, Gdk.ModifierType modifier)
@@ -149,7 +154,7 @@ namespace MonoDevelop.Components
 				else
 					list.Selection--;
 				return true;
-				
+
 			case Gdk.Key.Down:
 				if (list.SelectionDisabled)
 					list.SelectionDisabled = false;
@@ -160,7 +165,7 @@ namespace MonoDevelop.Components
 			case Gdk.Key.Page_Up:
 				list.Selection -= list.VisibleRows - 1;
 				return true;
-				
+
 			case Gdk.Key.Page_Down:
 				list.Selection += list.VisibleRows - 1;
 				return true;
@@ -168,15 +173,15 @@ namespace MonoDevelop.Components
 			case Gdk.Key.Home:
 				list.Selection = 0;
 				return true;
-			
+
 			case Gdk.Key.End:
 				list.Selection = DataProvider.IconCount;
 				return true;
-							
+
 			case Gdk.Key.Escape:
 				Destroy ();
 				return true;
-				
+
 			case Gdk.Key.Return:
 			case Gdk.Key.ISO_Enter:
 			case Gdk.Key.Key_3270_Enter:
@@ -191,38 +196,27 @@ namespace MonoDevelop.Components
 				}
 				break;
 			}
-			
+
 			return false;
 		}
 
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
+		/// <summary>Raised once when the list is popped down and detached (GTK 2: ::destroy).</summary>
+		public event EventHandler Destroyed;
+
+		/// <summary>Pops the list down and detaches it from its anchor.</summary>
+		public override void Destroy ()
 		{
-			Destroy ();
-			return base.OnFocusOutEvent (evnt);
+			if (destroyed || Handle == IntPtr.Zero)
+				return;
+			destroyed = true;
+			if (Visible)
+				Popdown ();
+			list.Cleanup ();
+			base.Destroy ();
+			Destroyed?.Invoke (this, EventArgs.Empty);
 		}
 
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
-		{
-			if (left)
-				Destroy ();
-			return base.OnButtonPressEvent (evnt);
-		}
-
-		bool left = true;
-
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			left = true;
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			left &= evnt.Window != GdkWindow;
-			return base.OnEnterNotifyEvent (evnt);
-		}
-
-		internal class ListWidget: DrawingArea
+		internal class ListWidget: CairoWidget
 		{
 			const int leftXAlignment = 1;
 			const int padding = 4;
@@ -243,18 +237,20 @@ namespace MonoDevelop.Components
 				get;
 				set;
 			}
-			//	bool buttonPressed;
 			bool disableSelection;
 
 			public event EventHandler SelectionChanged;
 
 			public ListWidget (DropDownBoxListWindow win)
 			{
-				Accessible.Role = Atk.Role.List;
+				this.SetRole (AtkCocoa.Roles.AXList);
 				this.win = win;
-				this.Events = Gdk.EventMask.ButtonPressMask | Gdk.EventMask.ButtonReleaseMask | Gdk.EventMask.PointerMotionMask | Gdk.EventMask.LeaveNotifyMask;
 				this.CanFocus = true;
+				this.Focusable = true;
 				UpdateStyle ();
+
+				this.AddClickHandler (OnButtonPressed, null, 1);
+				this.AddMotionHandler (OnMotion, null, OnLeave);
 
 				CalcAccessibility ();
 			}
@@ -277,7 +273,7 @@ namespace MonoDevelop.Components
 				var columnElement = new AtkCocoaHelper.AccessibilityElementProxy ();
 				columnElement.GtkParent = this;
 				columnElement.SetRole (AtkCocoa.Roles.AXColumn);
-				Accessible.AddAccessibleElement (columnElement);
+				this.AddAccessibleElement (columnElement);
 
 				int count = win.DataProvider.IconCount;
 				textElements = new TextElement[count];
@@ -285,7 +281,7 @@ namespace MonoDevelop.Components
 					var rowElement = new AtkCocoaHelper.AccessibilityElementProxy ();
 					rowElement.GtkParent = this;
 					rowElement.SetRole (AtkCocoa.Roles.AXRow);
-					Accessible.AddAccessibleElement (rowElement);
+					this.AddAccessibleElement (rowElement);
 
 					var cellElement = new AtkCocoaHelper.AccessibilityElementProxy ();
 					cellElement.GtkParent = this;
@@ -322,17 +318,16 @@ namespace MonoDevelop.Components
 					layout.GetPixelSize (out rowWidth, out rowHeight);
 					rowHeight += padding;
 				}
-				SetBounds ();
+				CalcVisibleRows ();
 			}
 
-			protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
+			void OnLeave ()
 			{
 				selection = -1;
 				QueueDraw ();
-				return base.OnLeaveNotifyEvent (evnt);
 			}
 
-			protected override void OnDestroyed ()
+			internal void Cleanup ()
 			{
 				if (textElements != null) {
 					foreach (var textElement in textElements) {
@@ -345,7 +340,6 @@ namespace MonoDevelop.Components
 					layout.Dispose ();
 					layout = null;
 				}
-				base.OnDestroyed ();
 			}
 
 			public void Reset ()
@@ -354,7 +348,7 @@ namespace MonoDevelop.Components
 					selection = -1;
 					return;
 				}
-				
+
 				selection = win.DataProvider.IconCount == 0 ? -1 : 0;
 				CalcVisibleRows ();
 				disableSelection = false;
@@ -378,98 +372,86 @@ namespace MonoDevelop.Components
 				get {
 					return selection;
 				}
-				
+
 				set {
 					wordSelection.Length = 0;
 					var newValue = Math.Max (0, Math.Min (value, win.DataProvider.IconCount - 1));
-					
+
 					if (newValue != selection) {
 						selection = newValue;
 						UpdatePage ();
-						
+
 						if (SelectionChanged != null)
 							SelectionChanged (this, EventArgs.Empty);
 					}
-					
+
 					disableSelection &= !disableSelection;
-	
+
 					QueueDraw ();
 				}
 			}
 
 			void UpdatePage ()
 			{
+				var vAdjustment = win.VAdjustment;
+				if (vAdjustment == null || selection < 0)
+					return;
 				var area = GetRowArea (selection);
 				var value = vAdjustment.Value;
 				if (area.Y < value) {
 					value = area.Y;
-				} else if (value + Allocation.Height < area.Bottom) {
+				} else if (value + vAdjustment.PageSize < area.Bottom) {
 					value = Math.Max (0, area.Bottom - vAdjustment.PageSize + 1);
 				}
 				vAdjustment.Value = Math.Max (vAdjustment.Lower, Math.Min (value, vAdjustment.Upper - vAdjustment.PageSize));
-
 			}
 
 			public bool SelectionDisabled {
 				get { return disableSelection; }
 				set {
-					disableSelection = value; 
+					disableSelection = value;
 					QueueDraw ();
 				}
 			}
 
-			protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+			void OnButtonPressed (ClickInfo evnt)
 			{
 				Selection = GetRowByPosition ((int)evnt.Y);
-				if (evnt.Type == Gdk.EventType.ButtonPress) {
+				if (evnt.NPress == 1) {
+					evnt.Claim ();
 					OnSelectItem (EventArgs.Empty);
-					Destroy ();
 				}
-				//buttonPressed = true;
-				return base.OnButtonPressEvent (evnt);
-			}
-			int curMouseY;
-			protected override bool OnMotionNotifyEvent (Gdk.EventMotion evnt)
-			{
-				int winWidth, winHeight;
-				GdkWindow.GetSize (out winWidth, out winHeight);
-				curMouseY = (int)evnt.Y;
-				Selection = GetRowByPosition (curMouseY);
-				
-				return base.OnMotionNotifyEvent (evnt);
 			}
 
-			protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+			void OnMotion (double x, double y)
 			{
-				return win.ProcessKey (evnt.Key, evnt.State);
+				Selection = GetRowByPosition ((int)y);
 			}
 
-			protected override bool OnScrollEvent (Gdk.EventScroll evnt)
+			protected override void OnDraw (Cairo.Context cr, int winWidth, int winHeight)
 			{
-				var s = GetRowByPosition ((int)evnt.Y);
-				Selection = s;
-				
-				return base.OnScrollEvent (evnt);
-			}
+				if (layout == null || rowHeight <= 0)
+					return;
 
-			protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-			{
-				base.OnExposeEvent (evnt);
-				DrawList ();
-				return false;
-			}
+				var bg = Ide.Gui.Styles.BaseBackgroundColor.ToCairoColor ();
+				var fg = Ide.Gui.Styles.BaseForegroundColor.ToCairoColor ();
+				var selBg = Ide.Gui.Styles.BaseSelectionBackgroundColor.ToCairoColor ();
+				var selFg = Ide.Gui.Styles.BaseSelectionTextColor.ToCairoColor ();
 
-			void DrawList ()
-			{
-				int winWidth, winHeight;
-				GdkWindow.GetSize (out winWidth, out winHeight);
+				cr.SetSourceColor (bg);
+				cr.Paint ();
 
 				int lineWidth = winWidth - leftXAlignment * 2;
 				const int xpos = leftXAlignment + padding;
 
-				int n = (int)(vAdjustment.Value / rowHeight);
-				int ypos = (int)(leftXAlignment + n * rowHeight - vAdjustment.Value);
-				while (ypos < winHeight - leftXAlignment && n < win.DataProvider.IconCount) {
+				// The list is inside a viewport: only draw the rows in the visible page.
+				var vAdjustment = win.VAdjustment;
+				double top = vAdjustment?.Value ?? 0;
+				double bottom = vAdjustment != null && vAdjustment.PageSize > 0 ? top + vAdjustment.PageSize : winHeight;
+
+				int n = Math.Max (0, (int)(top / rowHeight));
+				int ypos = leftXAlignment + n * rowHeight;
+				while (ypos < Math.Min (bottom, winHeight - leftXAlignment) && n < win.DataProvider.IconCount) {
 					string text = win.DataProvider.GetMarkup (n) ?? "&lt;null&gt;";
 
 					var icon = win.DataProvider.GetIcon (n);
@@ -477,40 +459,39 @@ namespace MonoDevelop.Components
 					int iconWidth = icon != null ? (int)icon.Width : 0;
 
 					layout.Ellipsize = Pango.EllipsizeMode.End;
-					layout.Width = (Allocation.Width - xpos - padding - iconWidth - iconTextDistance) * (int)Pango.Scale.PangoScale;
+					layout.Width = (winWidth - xpos - padding - iconWidth - iconTextDistance) * (int)Pango.Scale.PangoScale;
 					layout.SetMarkup (PathBar.GetFirstLineFromMarkup (text));
 
 					int wi, he, typos, iypos;
 					layout.GetPixelSize (out wi, out he);
 					typos = he < rowHeight ? ypos + (rowHeight - he) / 2 : ypos;
 					iypos = iconHeight < rowHeight ? ypos + (rowHeight - iconHeight) / 2 : ypos;
-					
+
+					var textColor = fg;
 					if (n == selection) {
+						cr.Rectangle (leftXAlignment, ypos, lineWidth, rowHeight);
 						if (!disableSelection) {
-							GdkWindow.DrawRectangle (Style.BaseGC (StateType.Selected), 
-								true, leftXAlignment, ypos, lineWidth, rowHeight);
-							GdkWindow.DrawLayout (Style.TextGC (StateType.Selected), 
-							                      xpos + iconWidth + iconTextDistance, typos, layout);
+							cr.SetSourceColor (selBg);
+							cr.Fill ();
+							textColor = selFg;
 							if (icon != null)
 								icon = icon.WithStyles ("sel");
 						} else {
-							GdkWindow.DrawRectangle (Style.BaseGC (StateType.Selected), 
-								false, leftXAlignment, ypos, lineWidth, rowHeight);
-							GdkWindow.DrawLayout (Style.TextGC (StateType.Normal), 
-							                      xpos + iconWidth + iconTextDistance, typos, layout);
+							cr.SetSourceColor (selBg);
+							cr.LineWidth = 1;
+							cr.Stroke ();
 						}
-					} else
-						GdkWindow.DrawLayout (Style.TextGC (StateType.Normal), 
-						                      xpos + iconWidth + iconTextDistance, typos, layout);
-					
-					if (icon != null) {
-						using (var ctx = Gdk.CairoHelper.Create (this.GdkWindow))
-							ctx.DrawImage (this, icon, xpos, iypos);
 					}
-					
+					cr.MoveTo (xpos + iconWidth + iconTextDistance, typos);
+					cr.SetSourceColor (textColor);
+					Pango.CairoHelper.ShowLayout (cr, layout);
+
+					if (icon != null)
+						cr.DrawImage (this, icon, xpos, iypos);
+
 					ypos += rowHeight;
 					n++;
-					
+
 //reset the markup or it carries over to the next SetText
 					layout.SetMarkup (string.Empty);
 				}
@@ -518,17 +499,20 @@ namespace MonoDevelop.Components
 
 			int GetRowByPosition (int ypos)
 			{
-				return (int)(vAdjustment.Value + ypos) / rowHeight;
+				// ypos is in list coordinates (the viewport scrolls the whole list widget)
+				return rowHeight > 0 ? ypos / rowHeight : 0;
 			}
 
 			public Gdk.Rectangle GetRowArea (int row)
 			{
-				return new Gdk.Rectangle (0, row * rowHeight, Allocation.Width, rowHeight - 1);
+				return new Gdk.Rectangle (0, row * rowHeight, Width, rowHeight - 1);
 			}
 
 			public int VisibleRows {
 				get {
-					return Allocation.Height / rowHeight;
+					var vAdjustment = win.VAdjustment;
+					var pageHeight = vAdjustment != null && vAdjustment.PageSize > 0 ? (int)vAdjustment.PageSize : Height;
+					return rowHeight > 0 ? Math.Max (1, pageHeight / rowHeight) : 1;
 				}
 			}
 
@@ -536,17 +520,18 @@ namespace MonoDevelop.Components
 
 			internal void CalcVisibleRows ()
 			{
-				int lvWidth, lvHeight;
-				GetSizeRequest (out lvWidth, out lvHeight);
 				if (layout == null)
 					return;
+				int count = win.DataProvider.IconCount;
 				int newHeight;
-				newHeight = win.DataProvider.IconCount > MaxVisibleRows ? 
+				newHeight = count > MaxVisibleRows ?
 								(rowHeight * MaxVisibleRows) + leftXAlignment * 2 :
-								(rowHeight * win.DataProvider.IconCount) + leftXAlignment * 2;
+								(rowHeight * count) + leftXAlignment * 2;
 				newHeight += 2;
 				listWidth = Math.Min (450, CalcWidth ());
-				SetSizeRequest (listWidth, newHeight);
+				// The list has its full height; the scrolled window shows MaxVisibleRows of it.
+				SetSizeRequest (listWidth, rowHeight * count + leftXAlignment * 2 + 2);
+				win.SetVisibleHeight (newHeight);
 			}
 
 			internal int CalcWidth ()
@@ -573,32 +558,6 @@ namespace MonoDevelop.Components
 				return iconWidth + iconTextDistance + (padding * 2) + leftXAlignment + w;
 			}
 
-
-
-			void SetBounds ()
-			{
-				if (vAdjustment == null)
-					return;
-				var h = Allocation.Height;
-				var height = Math.Max (h, rowHeight * win.DataProvider.IconCount);
-				if (win.DataProvider.IconCount < MaxVisibleRows) {
-					vAdjustment.SetBounds (0, h, 0, 0, h);
-				} else {
-					vAdjustment.SetBounds (0, height, RowHeight, h, h);
-				}
-				UpdatePage ();
-			}
-
-			protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-			{
-				base.OnSizeAllocated (allocation);
-				hAdjustment.SetBounds (0, allocation.Width, 0, 0, allocation.Width);
-
-				SetBounds ();
-
-				UpdatePage ();
-			}
-
 			protected override void OnRealized ()
 			{
 				base.OnRealized ();
@@ -607,31 +566,12 @@ namespace MonoDevelop.Components
 
 			void UpdateStyle ()
 			{
-				if (IsRealized)
-					GdkWindow.Background = Style.Base (StateType.Normal);
 				if (layout != null)
 					layout.Dispose ();
-				layout = new Pango.Layout (PangoContext);
+				layout = CreatePangoLayout (null);
 				layout.Wrap = Pango.WrapMode.Char;
 				layout.FontDescription = IdeServices.FontService.SansFont.CopyModified (Ide.Gui.Styles.FontScale11);
 				CalcRowHeight ();
-				CalcVisibleRows ();
-			}
-
-			Adjustment hAdjustment;
-			Adjustment vAdjustment;
-
-			protected override void OnSetScrollAdjustments (Adjustment hadj, Adjustment vadj)
-			{
-				hAdjustment = hadj;
-				vAdjustment = vadj;
-				if (vAdjustment != null)
-					vAdjustment.ValueChanged += delegate {
-						if (selection > -1)
-							Selection = GetRowByPosition (curMouseY);
-						QueueDraw ();
-					};
-				base.OnSetScrollAdjustments (hadj, vadj);
 			}
 
 			internal virtual void OnSelectItem (EventArgs e)
@@ -661,4 +601,3 @@ namespace MonoDevelop.Components
 		}
 	}
 }
-

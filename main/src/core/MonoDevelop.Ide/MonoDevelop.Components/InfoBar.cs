@@ -25,7 +25,7 @@
 // THE SOFTWARE.
 
 using System;
-using Gtk;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components
 {
@@ -34,143 +34,125 @@ namespace MonoDevelop.Components
 	/// Widget for displaying an informational non-modal question or message at the top of a content area.
 	/// Very loosely modelled on the GTK+ 2.18 InfoBar widget.
 	/// </summary>
-	public class InfoBar : HBox
+	public class InfoBar : Gtk.Box
 	{
 		ImageView img;
-		MessageType messageType;
-		HBox messageHBox = new HBox ();
-		public InfoBar () : this (MessageType.Other)
+		Gtk.MessageType messageType;
+		Gtk.Box messageHBox = new Gtk.Box (Gtk.Orientation.Horizontal, 0);
+
+		public InfoBar () : this (Gtk.MessageType.Other)
 		{
 		}
 
-		public InfoBar (MessageType messageType)
+		public InfoBar (Gtk.MessageType messageType) : base (Gtk.Orientation.Horizontal, 6)
 		{
-			BorderWidth = 6;
-			Spacing = 6;
-			ActionArea = new VButtonBox () {
-				Spacing = 6,
-				LayoutStyle = ButtonBoxStyle.Start
+			// GTK 2 BorderWidth = 6 (inside the drawn background)
+			var messageVBox = new Gtk.Box (Gtk.Orientation.Vertical, 0) {
+				Hexpand = true,
+				MarginStart = 6, MarginTop = 6, MarginBottom = 6,
 			};
-			MessageArea = new Alignment (0f, 0f, 1f, 1f);
-			
-			this.PackEnd (ActionArea, false, false, 0);
+			MessageArea = new Gtk.Box (Gtk.Orientation.Vertical, 0) { Hexpand = true };
+			messageHBox.Append (MessageArea);
+			messageVBox.Append (messageHBox);
+			Append (messageVBox);
 
-			var messageVBox = new VBox ();
+			ActionArea = new Gtk.Box (Gtk.Orientation.Vertical, 6) {
+				Valign = Gtk.Align.Start,
+				MarginEnd = 6, MarginTop = 6, MarginBottom = 6,
+			};
+			Append (ActionArea);
 
-			messageHBox.PackEnd (MessageArea, true, true, 0);
-			messageVBox.PackStart (messageHBox, false, false, 0);
-			this.PackEnd (messageVBox, true, true, 0);
 			this.MessageType = messageType;
 		}
-		
-		public MessageType MessageType {
+
+		public Gtk.MessageType MessageType {
 			get { return messageType; }
 			set {
 				messageType = value;
 				UpdateImage ();
 			}
 		}
-		
+
 		void SetImage (string iconName)
 		{
 			if (iconName == null) {
 				if (img != null) {
-					this.Remove (img);
-					img.Destroy ();
+					messageHBox.Remove (img);
 					img = null;
 				}
 				return;
 			}
-			
+
 			if (img == null) {
-				img = new ImageView (iconName, IconSize.Dialog);
-				messageHBox.PackEnd (img, false, false, 12);
-				img.SetAlignment (0.5f, 0.5f);
+				img = new ImageView (iconName, StockIconSize.Dialog) {
+					Halign = Gtk.Align.Center,
+					Valign = Gtk.Align.Center,
+					MarginStart = 12,
+					MarginEnd = 12,
+				};
+				messageHBox.Prepend (img);
 			} else {
 				img.IconId = iconName;
 			}
 		}
-		
+
 		void UpdateImage ()
 		{
 			switch (messageType) {
-			case MessageType.Error:
+			case Gtk.MessageType.Error:
 				SetImage ("gtk-dialog-error");
 				break;
-			case MessageType.Info:
+			case Gtk.MessageType.Info:
 				SetImage ("gtk-dialog-info");
 				break;
-			case MessageType.Warning:
+			case Gtk.MessageType.Warning:
 				SetImage ("gtk-dialog-warning");
 				break;
-			case MessageType.Question:
+			case Gtk.MessageType.Question:
 				SetImage ("gtk-dialog-question");
 				break;
-			case MessageType.Other:
+			case Gtk.MessageType.Other:
 			default:
 				SetImage (null);
 				break;
 			}
 		}
-		
-		public ButtonBox ActionArea { get; private set; }
-		public Container MessageArea { get; private set; }
-		
+
+		/// <summary>Vertical box for the action buttons (use <c>Append</c>).</summary>
+		public Gtk.Box ActionArea { get; private set; }
+		/// <summary>Vertical box for the message widgets (use <c>Append</c>).</summary>
+		public Gtk.Box MessageArea { get; private set; }
+
 		public void SetMessageLabel (string markup)
 		{
-			foreach (var child in MessageArea.Children) {
+			Gtk.Widget child;
+			while ((child = MessageArea.FirstChild) != null)
 				MessageArea.Remove (child);
-				child.Destroy ();
-			}
+
 			var l = new Gtk.Label () {
 				Wrap = true,
 				Selectable = true,
 				Yalign = 0.5f,
 				Xalign = 0f,
-				Markup = markup,
-				Style = Style
+				WidthRequest = 350,
+				Hexpand = true,
 			};
-			MessageArea.Add (l);
-			l.SizeAllocated += delegate (object o, SizeAllocatedArgs args) {
-				l.WidthRequest = Math.Max (350, args.Allocation.Width - 15);
-			};
-		}
-		
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			Style.PaintFlatBox (Style, evnt.Window, StateType.Normal, ShadowType.Out, evnt.Area, this, "tooltip", 
-				Allocation.X + 1, Allocation.Y + 1, Allocation.Width - 2, Allocation.Height - 2);
-			return base.OnExposeEvent (evnt);
+			l.Markup = markup;
+			MessageArea.Append (l);
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		// Styled like a tooltip
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			var rect = Allocation.Union (allocation);
-			QueueDrawArea (rect.X, rect.Y, rect.Width, rect.Height);
-			base.OnSizeAllocated (allocation);
+			snapshot.DrawCairo (this, cr => {
+				cr.Rectangle (0.5, 0.5, Width - 1, Height - 1);
+				cr.SetSourceColor (Styles.PopoverWindow.DefaultBackgroundColor.ToCairoColor ());
+				cr.FillPreserve ();
+				cr.LineWidth = 1;
+				cr.SetSourceColor (Styles.PopoverWindow.BorderColor.ToCairoColor ());
+				cr.Stroke ();
+			});
+			base.OnSnapshot (snapshot);
 		}
-		
-		//this is used to style like a tooltip
-		bool changeStyle = false;
-		
-		protected override void OnStyleSet (Gtk.Style previous_style)
-		{
-			if (changeStyle)
-				return;
-			changeStyle = true;
-			var surrogate = new TooltipStyleSurrogate ();
-			surrogate.EnsureStyle ();
-			this.Style = surrogate.Style;
-			surrogate.Destroy ();
-			foreach (var label in MessageArea.Children) {
-				label.Style = Style;
-			}
-				
-			base.OnStyleSet (previous_style);
-			changeStyle = false;
-		}
-		
-		class TooltipStyleSurrogate : TooltipWindow {}
 	}
 }

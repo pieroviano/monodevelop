@@ -67,31 +67,34 @@ namespace MonoDevelop.Components.Extensions
 		{
 			Gtk.Dialog md = null;
 			try {
-				md = new Gtk.Dialog (Caption, TransientFor, DialogFlags.Modal | DialogFlags.DestroyWithParent) {
-					HasSeparator = false,
-					BorderWidth = 6,
-				};
+				md = new Gtk.Dialog (Caption, TransientFor, DialogFlags.Modal | DialogFlags.DestroyWithParent);
+				
+				var content = md.ContentArea;
+				content.Spacing = 6;
+				content.MarginStart = content.MarginEnd = content.MarginTop = content.MarginBottom = 6;
 				
 				var questionLabel = new Label (Question) {
 					UseMarkup = true,
 					Xalign = 0.0F,
+					Vexpand = true,
 				};
-				md.VBox.PackStart (questionLabel, true, false, 6);
+				content.Append (questionLabel);
 				
-				var responseEntry = new Entry (Value ?? "") {
+				var responseEntry = new Entry {
+					Text = Value ?? "",
 					Visibility = !IsPassword,
+					Hexpand = true,
 				};
 				responseEntry.Activated += (sender, e) => {
 					md.Respond (ResponseType.Ok);
 				};
-				md.VBox.PackStart (responseEntry, false, true, 6);
+				content.Append (responseEntry);
 				
-				md.AddActionWidget (new Button (Gtk.Stock.Cancel) { CanDefault = true }, ResponseType.Cancel);
-				md.AddActionWidget (new Button (Gtk.Stock.Ok), ResponseType.Ok);
+				// Gtk.Stock is gone in GTK 4: mnemonic labels.
+				md.AddButton (Core.GettextCatalog.GetString ("_Cancel"), ResponseType.Cancel);
+				md.AddButton (Core.GettextCatalog.GetString ("_OK"), ResponseType.Ok);
 
 				md.DefaultResponse = ResponseType.Cancel;
-				
-				md.Child.ShowAll ();
 				
 				var response = (ResponseType) MonoDevelop.Ide.MessageService.RunCustomDialog (md, TransientFor);
 				if (response == ResponseType.Ok) {

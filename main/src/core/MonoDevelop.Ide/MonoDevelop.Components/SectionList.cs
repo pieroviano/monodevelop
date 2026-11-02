@@ -26,50 +26,44 @@
 
 using System;
 using System.Collections.Generic;
-using Gtk;
-using Gdk;
 using Cairo;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components
 {
-	class SectionList : Container
+	class SectionList : ContainerWidget
 	{
 		const int borderLineWidth = 1;
 		const int headerPadding = 2;
-		
+
 		List<Section> sections = new List<Section> ();
-		
-		Gdk.Window inputWindow;
+
 		Pango.Layout layout;
 		int headerHeight = 20;
 		int activeIndex = 0;
 		int hoverIndex = -1;
-		bool trackingHover = false;
-		
+		int activeChildHeight;
+
 		public int ActiveIndex {
 			get { return activeIndex; }
 			set {
 				if (value >= sections.Count || value < 0)
 					throw new ArgumentOutOfRangeException ();
-				
+
 				if (activeIndex == value)
 					return;
-				
-				int oldIndex = activeIndex;
+
 				activeIndex = value;
-				//FIXME: implement real focus support
-				FocusChain = new Widget[] { sections[value].Child };
 				UpdateVisibility ();
-				RepaintSectionHeader (oldIndex);
-				RepaintSectionHeader (activeIndex);
+				QueueDraw ();
 				OnActiveSectionChanged ();
 				sections[activeIndex].OnActivated ();
 			}
 		}
-		
+
 		public Section ActiveSection {
 			get {
-				return ActiveIndex >= 0 && sections.Count > 0? sections[activeIndex] : null; 
+				return ActiveIndex >= 0 && sections.Count > 0? sections[activeIndex] : null;
 			}
 			set {
 				int idx = sections.IndexOf (value);
@@ -78,103 +72,94 @@ namespace MonoDevelop.Components
 				ActiveIndex = idx;
 			}
 		}
-		
+
 		void OnActiveSectionChanged ()
 		{
 			var evt = ActiveSectionChanged;
 			if (evt != null)
 				evt (this, EventArgs.Empty);
 		}
-		
+
 		public event EventHandler ActiveSectionChanged;
-		
+
 		public SectionList ()
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-			
-			this.WidgetFlags |= WidgetFlags.NoWindow;
 			WidthRequest = 100;
 			EnsureLayout ();
+
+			this.AddMotionHandler (
+				(x, y) => SetHoverIndex (GetSectionHeaderAtPosition ((int)x, (int)y)),
+				(x, y) => SetHoverIndex (GetSectionHeaderAtPosition ((int)x, (int)y)),
+				() => SetHoverIndex (-1));
+			this.AddClickHandler (click => {
+				var idx = GetSectionHeaderAtPosition ((int)click.X, (int)click.Y);
+				if (idx >= 0) {
+					click.Claim ();
+					ActiveIndex = idx;
+				}
+			});
 		}
-		
-		protected override void OnRealized ()
-		{
-			base.OnRealized ();
-			
-			var alloc = Allocation;
-			int bw = (int) BorderWidth;
-			
-			var attributes = new Gdk.WindowAttr () {
-				WindowType = Gdk.WindowType.Child,
-				Wclass = Gdk.WindowClass.InputOnly,
-				EventMask = (int) (
-					EventMask.EnterNotifyMask |
-					EventMask.LeaveNotifyMask |
-					EventMask.PointerMotionMask |
-					EventMask.ButtonPressMask | 
-					EventMask.ButtonReleaseMask
-				),
-				X = alloc.X + bw,
-				Y = alloc.Y + bw,
-				Width = alloc.Width - bw * 2,
-				Height = alloc.Height - bw * 2,
-			};
-			
-			var attrMask = Gdk.WindowAttributesType.X | Gdk.WindowAttributesType.Y;
-			
-			inputWindow = new Gdk.Window (Parent.GdkWindow, attributes, (int) attrMask);
-			inputWindow.UserData = Handle;
-		}
-		
-		protected override void OnUnrealized ()
-		{
-			base.OnUnrealized ();
-			
-			inputWindow.UserData = IntPtr.Zero;
-			inputWindow.Destroy ();
-			inputWindow = null;
-		}
-		
-		protected override void OnMapped ()
-		{
-			//show our window before the children, so they're on top
-			inputWindow.Show ();
-			base.OnMapped ();
-		}
-		
-		protected override void OnUnmapped ()
-		{
-			base.OnUnmapped ();
-			inputWindow.Hide ();
-		}
-		
-		public Section AddSection (string title, Widget child)
+
+		public Section AddSection (string title, Gtk.Widget child)
 		{
 			var s = new Section (this, title, child);
 			sections.Add (s);
-			child.Parent = this;
+			addingSection = true;
+			try {
+				base.InsertChild (child, Children.Count);
+			} finally {
+				addingSection = false;
+			}
+			UpdateVisibility ();
 			return s;
 		}
-		
-		protected override void OnStyleSet (Style previous)
+
+		bool addingSection;
+
+		/// <summary>Children can only be added through <see cref="AddSection"/>.</summary>
+		public override void InsertChild (Gtk.Widget child, int index)
 		{
-			base.OnStyleSet (previous);
+			if (!addingSection)
+				throw new InvalidOperationException ("Cannot add widget directly, must add a section");
+			base.InsertChild (child, index);
+		}
+
+		protected override void OnChildRemoved (Gtk.Widget widget)
+		{
+			for (int i = 0; i < sections.Count; i++) {
+				var section = sections[i];
+				if (section.Child == widget) {
+					section.Parent = null;
+					section.Child = null;
+					sections.RemoveAt (i);
+					break;
+				}
+			}
+			if (activeIndex >= sections.Count)
+				activeIndex = Math.Max (0, sections.Count - 1);
+			UpdateVisibility ();
+			base.OnChildRemoved (widget);
+		}
+
+		protected override void OnCssChanged (Gtk.CssStyleChange change)
+		{
+			base.OnCssChanged (change);
 			KillLayout ();
 			EnsureLayout ();
 		}
-		
+
 		void EnsureLayout ()
 		{
 			if (layout != null)
 				layout.Dispose ();
-			layout = new Pango.Layout (PangoContext);
-			
+			layout = CreatePangoLayout (null);
+
 			layout.SetText ("lp");
 			int w, h;
 			layout.GetPixelSize (out w, out h);
 			headerHeight = Math.Max (20, h + headerPadding + headerPadding);
 		}
-		
+
 		void KillLayout ()
 		{
 			if (layout == null)
@@ -183,327 +168,194 @@ namespace MonoDevelop.Components
 			layout = null;
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			KillLayout ();
-			base.OnDestroyed ();
+			if (disposing)
+				KillLayout ();
+			base.Dispose (disposing);
 		}
 
-		protected override void OnAdded (Widget widget)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			throw new InvalidOperationException ("Cannot add widget directly, must add a section");
-		}
-		
-		protected override void OnRemoved (Widget widget)
-		{
-			for (int i = 0; i < sections.Count; i++) {
-				var section = sections[i];
-				if (section.Child == widget) {
-					widget.Unparent ();
-					section.Parent = null;
-					section.Child = null;
-					sections.RemoveAt (i);
-					break;
-				}
-			}
-		}
-		
-		protected override void OnShown ()
-		{
-			UpdateVisibility ();
-			base.OnShown ();
-		}
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			int wr = 0, hr = 0;
+			int min = 0, nat = 0;
 			foreach (var section in sections) {
-				var req = section.Child.SizeRequest ();
-				wr = Math.Max (wr, req.Width);
-				hr = Math.Max (hr, req.Height);
+				MeasureChild (section.Child, orientation, -1, out int cmin, out int cnat);
+				min = Math.Max (min, cmin);
+				nat = Math.Max (nat, cnat);
 			}
-			
-			hr += sections.Count * headerHeight + borderLineWidth;
-			
-			int bw2 = ((int)BorderWidth + borderLineWidth) * 2;
-			
-			hr += bw2;
-			wr += bw2;
-			
-			hr = Math.Max (hr, HeightRequest);
-			wr = Math.Max (wr, WidthRequest);
-			
-			requisition.Height = hr;
-			requisition.Width = wr;
+
+			int extra = borderLineWidth * 2;
+			if (orientation == Gtk.Orientation.Vertical)
+				extra += sections.Count * headerHeight + borderLineWidth;
+
+			minimum = min + extra;
+			natural = nat + extra;
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
 			if (sections.Count == 0)
 				return;
-			
-			int bw = (int) BorderWidth + borderLineWidth;
-			int bw2 = bw * 2;
-			allocation.Width -= bw2;
-			allocation.Height -= bw2;
-			allocation.X += bw;
-			allocation.Y += bw;
-			
-			if (IsRealized) {
-				inputWindow.MoveResize (allocation);
-			}
-			
+
+			int bw = borderLineWidth;
+			var allocation = new Gdk.Rectangle (bw, bw, width - bw * 2, height - bw * 2);
 			allocation.Height -= (borderLineWidth + headerHeight) * sections.Count;
 			allocation.Y += (headerHeight + borderLineWidth) * (activeIndex + 1);
-			
-			sections[activeIndex].Child.SizeAllocate (allocation);
+			allocation.Width = Math.Max (0, allocation.Width);
+			allocation.Height = Math.Max (0, allocation.Height);
+			activeChildHeight = allocation.Height;
+
+			AllocateChild (sections[activeIndex].Child, allocation);
 		}
-		
+
 		void UpdateVisibility ()
 		{
-			for (int i = 0; i < sections.Count; i++) {
-				var section = sections[i];
-				if (activeIndex == i) {
-					section.Child.Show ();
-				} else {
-					section.Child.Hide ();
-				}
-			}
+			for (int i = 0; i < sections.Count; i++)
+				sections[i].Child.Visible = activeIndex == i;
+			QueueResize ();
 		}
-		
-		static Cairo.Color Convert (Gdk.Color color)
-		{
-			return new Cairo.Color (
-				color.Red   / (double) ushort.MaxValue,
-				color.Green / (double) ushort.MaxValue,
-				color.Blue  / (double) ushort.MaxValue);
-		}
-		
-		//FIXME: respect damage regions not just the whole areas, and skip more work when possible
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
 			if (sections.Count == 0)
-				return false;
-			
-			var alloc = Allocation;
-			
-			int bw = (int) BorderWidth;
+				return;
+			snapshot.DrawCairo (this, DrawHeaders);
+			base.OnSnapshot (snapshot);
+		}
+
+		void DrawHeaders (Cairo.Context cr)
+		{
 			double halfLineWidth = borderLineWidth / 2.0;
-			int bw2 = bw * 2;
-			int w = alloc.Width - bw2;
-			int h = alloc.Height - bw2;
-			
-			using (var cr = CairoHelper.Create (evnt.Window)) {
-				CairoHelper.Region (cr, evnt.Region);
-				cr.Clip ();
-				
-				cr.Translate (alloc.X + bw, alloc.Y + bw);
-				
-				var borderCol = Convert (Style.Dark (StateType.Normal));
-				cr.SetSourceColor (borderCol);
-				cr.Rectangle (halfLineWidth, halfLineWidth, w - borderLineWidth, h - borderLineWidth);
-				cr.LineWidth = borderLineWidth;
-				cr.Stroke ();
-				
-				cr.Translate (borderLineWidth, borderLineWidth);
-				w = w - (2 * borderLineWidth);
-				
-				using (LinearGradient unselectedGrad = new LinearGradient (0, 0, 0, headerHeight),
-				       hoverGrad = new LinearGradient (0, 0, 0, headerHeight),
-				       selectedGrad = new LinearGradient (0, 0, 0, headerHeight)
-				       )
-				{
-					var unselectedCol = Convert (Style.Mid (StateType.Normal));
-					var unselectedTextCol = Convert (Style.Text (StateType.Normal));
-					unselectedCol.A = 0.6;
-					unselectedGrad.AddColorStop (0, unselectedCol);
-					unselectedCol.A = 1;
-					unselectedGrad.AddColorStop (1, unselectedCol);
+			int w = Width;
+			int h = Height;
 
-					var hoverCol = Convert (Style.Mid (StateType.Prelight));
-					var hoverTextCol = Convert (Style.Text (StateType.Prelight));
-					hoverCol.A = 0.6;
-					hoverGrad.AddColorStop (0, unselectedCol);
-					hoverCol.A = 1;
-					hoverGrad.AddColorStop (1, unselectedCol);
+			var borderCol = Styles.BorderColor.ToCairoColor ();
+			cr.SetSourceColor (borderCol);
+			cr.Rectangle (halfLineWidth, halfLineWidth, w - borderLineWidth, h - borderLineWidth);
+			cr.LineWidth = borderLineWidth;
+			cr.Stroke ();
 
-					var selectedCol = Convert (Style.Mid (StateType.Normal));
-					var selectedTextCol = Convert (Style.Text (StateType.Normal));
-					selectedCol.A = 0.6;
-					selectedGrad.AddColorStop (0, selectedCol);
-					selectedCol.A = 1;
-					selectedGrad.AddColorStop (1, selectedCol);
-					
-					for (int i = 0; i < sections.Count; i++) {
-						var section = sections[i];
-						bool isActive = activeIndex == i;
-						bool isHover = hoverIndex == i;
-						
-						cr.Rectangle (0, 0, w, headerHeight);
-						cr.SetSource (isActive? selectedGrad : (isHover? hoverGrad : unselectedGrad));
-						cr.Fill ();
-						
-						cr.SetSourceColor (isActive? selectedTextCol : (isHover? hoverTextCol : unselectedTextCol));
-						layout.SetText (section.Title);
-						layout.Ellipsize = Pango.EllipsizeMode.End;
-						layout.Width = (int) ((w - headerPadding - headerPadding) * Pango.Scale.PangoScale);
-						cr.MoveTo (headerPadding, headerPadding);
-						Pango.CairoHelper.ShowLayout (cr, layout);
-						
-						cr.MoveTo (-halfLineWidth, i > activeIndex? -halfLineWidth : headerHeight + halfLineWidth);
-						cr.RelLineTo (w + borderLineWidth, 0.0);
-						cr.SetSourceColor (borderCol);
-						cr.Stroke ();
-						
-						cr.Translate (0, headerHeight + borderLineWidth);
-						if (isActive)
-							cr.Translate (0, section.Child.Allocation.Height + borderLineWidth);
-					}
+			cr.Translate (borderLineWidth, borderLineWidth);
+			w = w - (2 * borderLineWidth);
+
+			using (LinearGradient unselectedGrad = new LinearGradient (0, 0, 0, headerHeight),
+			       hoverGrad = new LinearGradient (0, 0, 0, headerHeight),
+			       selectedGrad = new LinearGradient (0, 0, 0, headerHeight)
+			       )
+			{
+				var unselectedCol = Styles.BackgroundColor.ToCairoColor ();
+				var unselectedTextCol = Styles.BaseForegroundColor.ToCairoColor ();
+				unselectedCol.A = 0.6;
+				unselectedGrad.AddColorStop (0, unselectedCol);
+				unselectedCol.A = 1;
+				unselectedGrad.AddColorStop (1, unselectedCol);
+
+				var hoverCol = Styles.BackgroundColor.AddLight (0.05).ToCairoColor ();
+				var hoverTextCol = Styles.BaseForegroundColor.ToCairoColor ();
+				hoverCol.A = 0.6;
+				hoverGrad.AddColorStop (0, hoverCol);
+				hoverCol.A = 1;
+				hoverGrad.AddColorStop (1, hoverCol);
+
+				var selectedCol = Styles.BackgroundColor.ToCairoColor ();
+				var selectedTextCol = Styles.BaseForegroundColor.ToCairoColor ();
+				selectedCol.A = 0.6;
+				selectedGrad.AddColorStop (0, selectedCol);
+				selectedCol.A = 1;
+				selectedGrad.AddColorStop (1, selectedCol);
+
+				for (int i = 0; i < sections.Count; i++) {
+					var section = sections[i];
+					bool isActive = activeIndex == i;
+					bool isHover = hoverIndex == i;
+
+					cr.Rectangle (0, 0, w, headerHeight);
+					cr.SetSource (isActive? selectedGrad : (isHover? hoverGrad : unselectedGrad));
+					cr.Fill ();
+
+					cr.SetSourceColor (isActive? selectedTextCol : (isHover? hoverTextCol : unselectedTextCol));
+					layout.SetText (section.Title);
+					layout.Ellipsize = Pango.EllipsizeMode.End;
+					layout.Width = (int) ((w - headerPadding - headerPadding) * Pango.Scale.PangoScale);
+					cr.MoveTo (headerPadding, headerPadding);
+					Pango.CairoHelper.ShowLayout (cr, layout);
+
+					cr.MoveTo (-halfLineWidth, i > activeIndex? -halfLineWidth : headerHeight + halfLineWidth);
+					cr.RelLineTo (w + borderLineWidth, 0.0);
+					cr.SetSourceColor (borderCol);
+					cr.Stroke ();
+
+					cr.Translate (0, headerHeight + borderLineWidth);
+					if (isActive)
+						cr.Translate (0, activeChildHeight + borderLineWidth);
 				}
 			}
-			
-			PropagateExpose (sections[activeIndex].Child, evnt);
-			return true;// base.OnExposeEvent (evnt);
 		}
 
-		protected override void ForAll (bool include_internals, Callback callback)
-		{
-			for (int i = 0; i < sections.Count; i++) {
-				var section = sections[i];
-				callback (section.Child);
-				//callbacks can remove the widget
-				if (sections.Count > 0 && section != sections[i])
-					i--;
-			}
-		}
-		
-		protected override bool OnEnterNotifyEvent (EventCrossing evnt)
-		{
-			trackingHover = true;
-			var hoverIdx = GetSectionHeaderAtPosition ((int)evnt.X, (int)evnt.Y);
-			SetHoverIndex (hoverIdx);
-			return base.OnEnterNotifyEvent (evnt);
-		}
-		
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
-		{
-			trackingHover = false;
-			SetHoverIndex (-1);
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-		
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
-		{
-			if (trackingHover) {
-				var hoverIdx = GetSectionHeaderAtPosition ((int)evnt.X, (int)evnt.Y);
-				SetHoverIndex (hoverIdx);
-			}
-			return base.OnMotionNotifyEvent (evnt);
-		}
-		
-		protected override bool OnButtonPressEvent (EventButton evnt)
-		{
-			var idx = GetSectionHeaderAtPosition ((int)evnt.X, (int)evnt.Y);
-			if (idx >= 0) {
-				ActiveIndex = idx;
-				return true;
-			}
-			return base.OnButtonPressEvent (evnt);
-		}
-		
 		int GetSectionHeaderAtPosition (int x, int y)
 		{
 			if (sections.Count == 0)
 				return -1;
-			
-			//the event window already is within the border so only need to calc width
-			var alloc = Allocation;
-			int borderWidth = (int) BorderWidth;
-			
-			if (y < 0 || x < 0 || x > (alloc.Width - borderWidth - borderWidth))
+
+			x -= borderLineWidth;
+			y -= borderLineWidth;
+			if (y < 0 || x < 0 || x > Width - borderLineWidth * 2)
 				return -1;
-			
+
 			int childWidgetStart = (headerHeight + borderLineWidth) * (activeIndex + 1);
 			if (y < childWidgetStart)
 				return y / (headerHeight + borderLineWidth);
-			
-			y -= ActiveSection.Child.Allocation.Height;
+
+			y -= activeChildHeight;
 			if (y < childWidgetStart)
 				return -1;
-			
+
 			int idx = y / (headerHeight + borderLineWidth);
 			return idx < sections.Count? idx : -1;
 		}
-		
-		Gdk.Rectangle GetSectionHeaderArea (int index)
-		{
-			int borderWidth = (int) BorderWidth;
-			var rect = Allocation;
-			rect.X += borderWidth;
-			rect.Y += borderWidth;
-			rect.Width -= borderWidth * 2;
-			rect.Height = headerHeight + borderLineWidth + borderLineWidth;
-			
-			rect.Y += (headerHeight + borderLineWidth) * (index);
-			if (index > activeIndex)
-				rect.Y += ActiveSection.Child.Allocation.Height;
-			
-			return rect;
-		}
-		
+
 		void SetHoverIndex (int index)
 		{
 			if (hoverIndex == index)
 				return;
-			int old = hoverIndex;
 			hoverIndex = index;
-			RepaintSectionHeader (old);
-			RepaintSectionHeader (index);
+			QueueDraw ();
 		}
-		
-		void RepaintSectionHeader (int index)
-		{
-			if (index < 0 || index >= sections.Count)
-				return;
-			var rect = GetSectionHeaderArea (index);
-			QueueDrawArea (rect.X, rect.Y, rect.Width, rect.Height);
-		}
-		
+
 		public class Section
 		{
 			string title;
 			public SectionList Parent { get; internal set; }
-			public Widget Child { get; internal set; }
-			
-			internal Section (SectionList parent, string title, Widget child)
+			public Gtk.Widget Child { get; internal set; }
+
+			internal Section (SectionList parent, string title, Gtk.Widget child)
 			{
 				this.Parent = parent;
 				this.title = title;
 				this.Child = child;
 			}
-			
+
 			public bool IsActive {
 				get { return Parent.ActiveSection == this; }
 				set { Parent.ActiveSection = this; }
 			}
-			
+
 			public string Title {
 				get { return this.title; }
 				set {
 					this.title = value;
-					int idx = Parent.sections.IndexOf (this);
-					Parent.RepaintSectionHeader (idx);
+					Parent?.QueueDraw ();
 				}
 			}
-			
+
 			internal void OnActivated ()
 			{
 				var evt = Activated;
 				if (evt != null)
 					evt (this, EventArgs.Empty);
 			}
-			
+
 			public event EventHandler Activated;
 		}
 	}

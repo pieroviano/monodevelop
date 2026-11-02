@@ -24,7 +24,6 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
 
 namespace MonoDevelop.Components
 {
@@ -46,6 +45,7 @@ namespace MonoDevelop.Components
 		public event EventHandler HoveredChanged;
 
 		bool trackMotion;
+		bool motionEnabled = true; // GTK 2 added PointerMotionMask in the constructor
 		Gtk.Widget owner;
 
 		public MouseTracker (Gtk.Widget owner)
@@ -54,35 +54,24 @@ namespace MonoDevelop.Components
 			Hovered = false;
 			MousePosition = new Gdk.Point(0, 0);
 
-			owner.Events = owner.Events | Gdk.EventMask.PointerMotionMask;
-
-			owner.MotionNotifyEvent += (object o, MotionNotifyEventArgs args) => {
-				MousePosition = new Gdk.Point ((int)args.Event.X, (int)args.Event.Y);
-				if (MouseMoved != null)
-					MouseMoved (this, EventArgs.Empty);
-			};
-
-			owner.EnterNotifyEvent += (o, args) => {
+			owner.AddMotionHandler ((x, y) => {
+				// GTK 4 always delivers motion events: honour TrackMotion here instead of the GDK event mask.
+				if (!motionEnabled)
+					return;
+				MousePosition = new Gdk.Point ((int)x, (int)y);
+				MouseMoved?.Invoke (this, EventArgs.Empty);
+			}, (x, y) => {
 				Hovered = true;
-				if (HoveredChanged != null)
-					HoveredChanged (this, EventArgs.Empty);
-			};
-
-			owner.LeaveNotifyEvent += (o, args) => {
+				HoveredChanged?.Invoke (this, EventArgs.Empty);
+			}, () => {
 				Hovered = false;
-				if (HoveredChanged != null)
-					HoveredChanged (this, EventArgs.Empty);
-			};
+				HoveredChanged?.Invoke (this, EventArgs.Empty);
+			});
 		}
 
 		void OnTrackMotionChanged ()
 		{
-			if (TrackMotion)
-				owner.Events = owner.Events | Gdk.EventMask.PointerMotionMask;
-			else
-				owner.Events = owner.Events & ~Gdk.EventMask.PointerMotionMask;
-
+			motionEnabled = TrackMotion;
 		}
 	}
 }
-

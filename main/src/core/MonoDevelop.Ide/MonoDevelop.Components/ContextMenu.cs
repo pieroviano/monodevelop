@@ -60,12 +60,12 @@ namespace MonoDevelop.Components
 				Items.RemoveAt (Items.Count - 1);
 		}
 
-		public void Show (Gtk.Widget parent, Gdk.EventButton evt)
+		public void Show (Gtk.Widget parent, ClickInfo evt)
 		{
 			Show (parent, evt, null);
 		}
 
-		public void Show (Gtk.Widget parent, Gdk.EventButton evt, Action closeHandler)
+		public void Show (Gtk.Widget parent, ClickInfo evt, Action closeHandler)
 		{
 			#if MAC
 			if (Platform.IsMac) {

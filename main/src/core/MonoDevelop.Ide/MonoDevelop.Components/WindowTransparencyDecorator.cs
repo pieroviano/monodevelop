@@ -29,40 +29,40 @@
 // THE SOFTWARE.
 
 using System;
-using System.Reflection;
-using System.Runtime.InteropServices;
-
-using Gtk;
-using Gdk;
 
 namespace MonoDevelop.Components
 {
+	/// <summary>
+	/// Makes a window (or popover) semi-transparent while Control is held down.
+	/// GTK 4 has no key snoopers: a capture-phase key controller is installed on the widget's root while it is shown.
+	/// </summary>
 	public class WindowTransparencyDecorator
 	{
-		Gtk.Window window;
+		Gtk.Widget window;
 		bool semiTransparent;
-		bool snooperInstalled;
-		uint snooperID;
+		Gtk.EventControllerKey keyController;
+		Gtk.Widget keyControllerOwner;
 		const double opacity = 0.2;
 
-		WindowTransparencyDecorator (Gtk.Window window)
+		WindowTransparencyDecorator (Gtk.Widget window)
 		{
 			this.window = window;
 
 			window.Shown += ShownHandler;
 			window.Hidden += HiddenHandler;
-			window.Destroyed += DestroyedHandler;
+			if (window.Visible)
+				ShownHandler (window, EventArgs.Empty);
 		}
 
-		public static WindowTransparencyDecorator Attach (Gtk.Window window)
+		/// <summary>Attaches to a toplevel window or to a popover (any widget with its own surface).</summary>
+		public static WindowTransparencyDecorator Attach (Gtk.Widget window)
 		{
 			return new WindowTransparencyDecorator (window);
 		}
 
 		public static WindowTransparencyDecorator Attach (Xwt.WindowFrame window)
 		{
-			//var gtkWindow = (Xwt.Toolkit.GetBackend (window) as Xwt.Backends.IWindowFrameBackend)?.Window as Gtk.Window;
-			var gtkWindow = Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk).GetNativeWindow (window) as Gtk.Window;
+			var gtkWindow = Xwt.Toolkit.Load (Xwt.ToolkitType.Gtk4).GetNativeWindow (window) as Gtk.Window;
 			if (gtkWindow != null)
 				return new WindowTransparencyDecorator (gtkWindow);
 			throw new NotSupportedException ();
@@ -73,21 +73,25 @@ namespace MonoDevelop.Components
 			if (window == null)
 				return;
 
-			//remove the snooper
+			//remove the key controller
 			HiddenHandler (null,  null);
 
 			//annul allreferences between this and the window
 			window.Shown -= ShownHandler;
 			window.Hidden -= HiddenHandler;
-			window.Destroyed -= DestroyedHandler;
 			window = null;
 		}
 
 		void ShownHandler (object sender, EventArgs args)
 		{
-			if (!snooperInstalled)
-				snooperID = Gtk.Key.SnooperInstall (TransparencyKeySnooper);
-			snooperInstalled = true;
+			if (keyController == null) {
+				// Popovers don't get the keyboard focus: watch the keys of the toplevel they belong to.
+				keyControllerOwner = window.Root as Gtk.Widget ?? window;
+				keyController = keyControllerOwner.AddKeyPressHandler (
+					(keyval, keycode, state) => { OnControlKey (keyval, true); return false; },
+					(keyval, keycode, state) => OnControlKey (keyval, false),
+					Gtk.PropagationPhase.Capture);
+			}
 
 			//NOTE: we unset transparency when showing, instead of when hiding
 			//because the latter case triggers a metacity+compositing bug that shows the window again
@@ -96,26 +100,23 @@ namespace MonoDevelop.Components
 
 		void HiddenHandler (object sender, EventArgs args)
 		{
-			if (snooperInstalled)
-				Gtk.Key.SnooperRemove (snooperID);
-			snooperInstalled = false;
+			if (keyController != null) {
+				keyControllerOwner?.RemoveController (keyController);
+				keyController = null;
+				keyControllerOwner = null;
+			}
 		}
 
-		void DestroyedHandler (object sender, EventArgs args)
+		void OnControlKey (uint keyval, bool pressed)
 		{
-			Detach ();
-		}
-
-		int TransparencyKeySnooper (Gtk.Widget widget, EventKey evnt)
-		{
-			if (evnt != null && evnt.Key == Gdk.Key.Control_L || evnt.Key == Gdk.Key.Control_R)
-				SemiTransparent = (evnt.Type == Gdk.EventType.KeyPress);
-			return 0; //FALSE
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Control_L || key == Gdk.Key.Control_R)
+				SemiTransparent = pressed;
 		}
 
 		bool SemiTransparent {
 			set {
-				if (semiTransparent != value) {
+				if (semiTransparent != value && window != null) {
 					semiTransparent = value;
 					window.Opacity = semiTransparent? opacity : 1.0;
 				}

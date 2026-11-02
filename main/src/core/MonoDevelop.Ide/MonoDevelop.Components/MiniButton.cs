@@ -25,69 +25,70 @@
 // THE SOFTWARE.
 
 using System;
-using Gtk;
-
+using MonoDevelop.Ide.Gui;
 using MonoDevelop.Components.AtkCocoaHelper;
+
 namespace MonoDevelop.Components
 {
-	class MiniButton: Gtk.EventBox
+	class MiniButton: BinWidget
 	{
 		public event EventHandler Clicked;
-		Gdk.Color normalColor;
+		Gdk.RGBA normalColor;
 		bool pressed;
 		bool highligted;
 		bool backgroundColorSet;
-		
+		bool hilightBackground;
+
 		public MiniButton ()
 		{
-			Events |= Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask;
 			Clickable = true;
 
-			Accessible.Role = Atk.Role.PushButton;
+			this.SetRole (AtkCocoa.Roles.AXButton);
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += PerformPress;
+
+			this.AddClickHandler (OnPressed, OnReleased, 1);
+			this.AddMotionHandler (null, (x, y) => OnEnter (), OnLeave);
 		}
-		
+
 		public MiniButton (Gtk.Widget label): this ()
 		{
-			Add (label);
-			label.Show ();
+			Child = label;
 		}
-		
+
 		public MiniButton (string text): this ()
 		{
-			Label label = new Label (text);
-			Add (label);
-			label.Show ();
+			Child = new Gtk.Label (text);
 		}
-		
+
 		public MiniButton (string text, string icon): this ()
 		{
-			HBox box = new HBox (false, 3);
-			ImageView img = new ImageView (icon, IconSize.Menu);
-			box.PackStart (img, false, false, 0);
-			Label label = new Label (text);
-			label.Xalign = 0;
-			box.PackStart (label, true, true, 0);
-			box.ShowAll ();
-			Add (box);
+			var box = new Gtk.Box (Gtk.Orientation.Horizontal, 3);
+			var img = new ImageView (icon, StockIconSize.Menu);
+			box.Append (img);
+			var label = new Gtk.Label (text) {
+				Xalign = 0,
+				Hexpand = true,
+			};
+			box.Append (label);
+			Child = box;
 		}
-		
+
 		public bool Clickable { get; set; }
-		
+
 		public bool ToggleMode { get; set; }
-		
+
 		public bool ClickOnRelease { get; set; }
-		
-		public Gdk.Color BackroundColor {
+
+		public Gdk.RGBA BackroundColor {
 			get { return normalColor; }
 			set {
 				normalColor = value;
-				ModifyBg (StateType.Normal, normalColor);
 				backgroundColorSet = true;
+				QueueDraw ();
 			}
 		}
-		
+
 		public bool Pressed {
 			get {
 				return pressed;
@@ -99,7 +100,7 @@ namespace MonoDevelop.Components
 				}
 			}
 		}
-		
+
 		protected virtual void OnClicked ()
 		{
 			if (ToggleMode)
@@ -113,57 +114,51 @@ namespace MonoDevelop.Components
 			OnClicked ();
 		}
 
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+		void OnPressed (ClickInfo click)
 		{
-			if (!ClickOnRelease && Clickable && evnt.Button == 1 && !evnt.TriggersContextMenu ()) {
+			if (!ClickOnRelease && Clickable && !click.IsContextMenuTrigger) {
+				click.Claim ();
 				OnClicked ();
-				return true;
 			}
-			return base.OnButtonPressEvent (evnt);
 		}
-		
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
+
+		void OnReleased (ClickInfo click)
 		{
-			if (ClickOnRelease && evnt.Button == 1 && !evnt.TriggersContextMenu ()) {
+			if (ClickOnRelease && !click.IsContextMenuTrigger)
 				OnClicked ();
-				return true;
-			}
-			return base.OnButtonReleaseEvent (evnt);
 		}
-		
-		protected override void OnRealized ()
-		{
-			base.OnRealized ();
-			if (!backgroundColorSet)
-				normalColor = Parent.Style.Background (Gtk.StateType.Normal);
-		}
-		
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
+
+		void OnEnter ()
 		{
 			if (Clickable) {
 				highligted = true;
 				if (!ToggleMode || !pressed)
 					SetBg (true);
 			}
-			return base.OnEnterNotifyEvent (evnt);
 		}
-		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
+
+		void OnLeave ()
 		{
 			if (Clickable) {
 				highligted = false;
 				if (!ToggleMode || !pressed)
 					SetBg (false);
 			}
-			return base.OnLeaveNotifyEvent (evnt);
 		}
-		
+
 		void SetBg (bool hilight)
 		{
-			if (hilight)
-				ModifyBg (StateType.Normal, Style.Base (Gtk.StateType.Normal));
-			else
-				ModifyBg (StateType.Normal, normalColor);
+			hilightBackground = hilight;
+			QueueDraw ();
+		}
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			if (hilightBackground || backgroundColorSet) {
+				var color = hilightBackground ? Styles.BaseBackgroundColor.ToGdkColor () : normalColor;
+				snapshot.AppendColor (color, new Gdk.Rectangle (0, 0, Width, Height).ToGrapheneRect ());
+			}
+			base.OnSnapshot (snapshot);
 		}
 	}
 }

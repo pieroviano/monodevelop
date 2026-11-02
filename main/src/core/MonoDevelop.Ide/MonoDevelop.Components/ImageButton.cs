@@ -23,14 +23,15 @@
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
+
 using System;
-using Gdk;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Ide;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Components
 {
-	public class ImageButton: Gtk.EventBox
+	public class ImageButton: BinWidget
 	{
 		Xwt.Drawing.Image image;
 		Xwt.Drawing.Image inactiveImage;
@@ -44,14 +45,16 @@ namespace MonoDevelop.Components
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformPress += HandlePress;
 
-			Accessible.Role = Atk.Role.PushButton;
+			this.SetRole (AtkCocoa.Roles.AXButton);
 
-			Events |= Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask | Gdk.EventMask.ButtonReleaseMask;
-			VisibleWindow = false;
 			imageWidget = new ImageView ();
-			imageWidget.Accessible.SetShouldIgnore (true);
-			imageWidget.Show ();
-			Add (imageWidget);
+			imageWidget.SetShouldIgnore (true);
+			Child = imageWidget;
+
+			this.AddMotionHandler (null, (x, y) => { hover = true; LoadImage (); }, () => { hover = false; LoadImage (); });
+			this.AddClickHandler (OnPressed, OnReleased, 1);
+			this.AddKeyPressHandler (OnKeyPressed, OnKeyReleased);
+			this.AddFocusHandler (() => { hover = true; LoadImage (); QueueDraw (); }, () => { hover = false; LoadImage (); QueueDraw (); });
 		}
 
 		public Xwt.Drawing.Image Image {
@@ -80,11 +83,13 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			if (!hasInactiveImage && inactiveImage != null)
+			if (disposing && !hasInactiveImage && inactiveImage != null) {
 				inactiveImage.Dispose ();
-			base.OnDestroyed ();
+				inactiveImage = null;
+			}
+			base.Dispose (disposing);
 		}
 
 		void LoadImage ()
@@ -99,79 +104,47 @@ namespace MonoDevelop.Components
 			}
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
+			base.OnSnapshot (snapshot);
 			if (HasFocus && image != null) {
-				Gtk.Style.PaintFocus (Style, GdkWindow, State, Allocation, this, "button",
-				                      Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
+				snapshot.DrawCairo (this, cr => {
+					cr.Rectangle (0.5, 0.5, Width - 1, Height - 1);
+					cr.SetSourceColor (Styles.FocusColor.ToCairoColor ());
+					cr.LineWidth = 1;
+					cr.SetDash (new double [] { 1, 1 }, 0.5);
+					cr.Stroke ();
+				});
 			}
-
-			return base.OnExposeEvent (evnt);
 		}
 
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			hover = true;
-			LoadImage ();
-			return base.OnEnterNotifyEvent (evnt);
-		}
-
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			hover = false;
-			LoadImage ();
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnButtonPressEvent (Gdk.EventButton evnt)
+		void OnPressed (ClickInfo click)
 		{
 			pressed = image != null;
-			return base.OnButtonPressEvent (evnt);
 		}
 
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton evnt)
+		void OnReleased (ClickInfo click)
 		{
-			if (pressed && evnt.Button == 1 && new Gdk.Rectangle (0, 0, Allocation.Width, Allocation.Height).Contains ((int)evnt.X, (int)evnt.Y)) {
+			if (pressed && click.X >= 0 && click.Y >= 0 && click.X < Width && click.Y < Height) {
+				click.Claim ();
 				hover = false;
 				LoadImage ();
-				if (Clicked != null)
-					Clicked (this, EventArgs.Empty);
-				return true;
+				Clicked?.Invoke (this, EventArgs.Empty);
 			}
-			return base.OnButtonReleaseEvent (evnt);
 		}
 
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			pressed = image != null;
-			return base.OnKeyPressEvent (evnt);
+			return false;
 		}
 
-		protected override bool OnKeyReleaseEvent (Gdk.EventKey evnt)
+		void OnKeyReleased (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (pressed && evnt.Key == Gdk.Key.space) {
+			if (pressed && keyval == (uint)Gdk.Key.space) {
 				LoadImage ();
 				Clicked?.Invoke (this, EventArgs.Empty);
-				return true;
 			}
-
-			return base.OnKeyReleaseEvent (evnt);
-		}
-
-		protected override bool OnFocusInEvent (Gdk.EventFocus evnt)
-		{
-			hover = true;
-			LoadImage ();
-			QueueDraw ();
-			return base.OnFocusInEvent (evnt);
-		}
-
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
-		{
-			hover = false;
-			LoadImage ();
-			QueueDraw ();
-			return base.OnFocusOutEvent (evnt);
 		}
 
 		void HandlePress (object o, EventArgs args)
@@ -182,4 +155,3 @@ namespace MonoDevelop.Components
 		public event EventHandler Clicked;
 	}
 }
-

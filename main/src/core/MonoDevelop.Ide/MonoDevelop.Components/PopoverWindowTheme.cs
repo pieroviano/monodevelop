@@ -24,10 +24,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 using System;
-using Gtk;
 using MonoDevelop.Ide;
 using MonoDevelop.Ide.Gui;
-using Gdk;
 using MonoDevelop.Ide.Editor;
 using MonoDevelop.Ide.Editor.Highlighting;
 
@@ -377,9 +375,9 @@ namespace MonoDevelop.Components
 															 Styles.PopoverWindow.PagerTriangleSize,
 															 Styles.PopoverWindow.PagerTriangleSize);
 
-				RenderPagerArrow (context, arrowRect, PagerVertical ? ArrowType.Up : ArrowType.Left);
+				RenderPagerArrow (context, arrowRect, PagerVertical ? Gtk.ArrowType.Up : Gtk.ArrowType.Left);
 				arrowRect.X = boundingBox.X + boundingBox.Width - (pagerArrowPadding + Styles.PopoverWindow.PagerTriangleSize);
-				RenderPagerArrow (context, arrowRect, PagerVertical ? ArrowType.Down : ArrowType.Right);
+				RenderPagerArrow (context, arrowRect, PagerVertical ? Gtk.ArrowType.Down : Gtk.ArrowType.Right);
 
 				RenderPagerText (context, layout, boundingBox);
 			}
@@ -468,28 +466,28 @@ namespace MonoDevelop.Components
 		/// <summary>
 		/// Renders a single pager arrow inside a bounding box.
 		/// </summary>
-		protected virtual void RenderPagerArrow (Cairo.Context context, Gdk.Rectangle bounds, ArrowType direction)
+		protected virtual void RenderPagerArrow (Cairo.Context context, Gdk.Rectangle bounds, Gtk.ArrowType direction)
 		{
 			switch (direction) {
-			case ArrowType.Up:
+			case Gtk.ArrowType.Up:
 				context.MoveTo (bounds.X + bounds.Width / 2.0, bounds.Y);
 				context.LineTo (bounds.X, bounds.Y + bounds.Height);
 				context.LineTo (bounds.X + bounds.Width, bounds.Y + bounds.Height);
 				context.ClosePath ();
 				break;
-			case ArrowType.Down:
+			case Gtk.ArrowType.Down:
 				context.MoveTo (bounds.X + bounds.Width / 2.0, bounds.Y + bounds.Height);
 				context.LineTo (bounds.X, bounds.Y);
 				context.LineTo (bounds.X + bounds.Width, bounds.Y);
 				context.ClosePath ();
 				break;
-			case ArrowType.Left:
+			case Gtk.ArrowType.Left:
 				context.MoveTo (bounds.X, bounds.Y + bounds.Height / 2.0);
 				context.LineTo (bounds.X + bounds.Width, bounds.Y);
 				context.LineTo (bounds.X + bounds.Width, bounds.Y + bounds.Height);
 				context.ClosePath ();
 				break;
-			case ArrowType.Right:
+			case Gtk.ArrowType.Right:
 				context.MoveTo (bounds.X + bounds.Width, bounds.Y + bounds.Height / 2.0);
 				context.LineTo (bounds.X, bounds.Y);
 				context.LineTo (bounds.X, bounds.Y + bounds.Height);

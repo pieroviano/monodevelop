@@ -33,30 +33,28 @@ namespace MonoDevelop.Components
 		{
 		}
 
-		Gdk.EventButton native;
+		ClickInfo native;
 		new bool Handled { get; set; }
 
-		public static implicit operator ButtonEvent (Gdk.EventButton args)
+		/// <summary>The GTK 4 click this event was created from (null when synthesized).</summary>
+		public ClickInfo ClickInfo => native;
+
+		public static implicit operator ButtonEvent (ClickInfo args)
 		{
-			int numPress;
-			if (args.Type == Gdk.EventType.TwoButtonPress)
-				numPress = 2;
-			else if (args.Type == Gdk.EventType.ThreeButtonPress)
-				numPress = 3;
-			else
-				numPress = 1;
+			if (args == null)
+				return null;
 			return new ButtonEvent {
 				native = args,
 				X = args.X,
 				Y = args.Y,
 				Button = (Xwt.PointerButton)args.Button,
-				MultiplePress = numPress,
+				MultiplePress = Math.Max (1, args.NPress),
 			};
 		}
 
-		public static implicit operator Gdk.EventButton (ButtonEvent args)
+		public static implicit operator ClickInfo (ButtonEvent args)
 		{
-			return args.native;
+			return args?.native;
 		}
 	}
 }

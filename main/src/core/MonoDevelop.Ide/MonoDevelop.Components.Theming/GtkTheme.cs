@@ -43,17 +43,15 @@ namespace MonoDevelop.Components.Theming
 
 		public static Cairo.Color GetCairoTextMidColor (Widget widget)
 		{
-			Cairo.Color text_color = CairoExtensions.GdkColorToCairoColor (widget.Style.Foreground (StateType.Normal));
-			Cairo.Color background_color = CairoExtensions.GdkColorToCairoColor (widget.Style.Background (StateType.Normal));
+			// GTK 4 exposes only the foreground color; the background comes from MonoDevelop's palette.
+			Cairo.Color text_color = CairoExtensions.GdkColorToCairoColor (widget.StyleColor);
+			Cairo.Color background_color = MonoDevelop.Ide.Gui.Styles.BackgroundColor.ToCairoColor ();
 			return CairoExtensions.AlphaBlend (text_color, background_color, 0.5);
 		}
 
-		public static Gdk.Color GetGdkTextMidColor (Widget widget)
+		public static Gdk.RGBA GetGdkTextMidColor (Widget widget)
 		{
-			Cairo.Color color = GetCairoTextMidColor (widget);
-			Gdk.Color gdk_color = new Gdk.Color ((byte)(color.R * 255), (byte)(color.G * 255), (byte)(color.B * 255));
-			Gdk.Colormap.System.AllocColor (ref gdk_color, true, true);
-			return gdk_color;
+			return CairoExtensions.CairoColorToGdkColor (GetCairoTextMidColor (widget));
 		}
 
 		protected override void OnColorsRefreshed ()
@@ -61,7 +59,7 @@ namespace MonoDevelop.Components.Theming
 			base.OnColorsRefreshed ();
 			
 			rule_color = CairoExtensions.ColorShade (ViewFill, 0.95);
-			border_color = Colors.GetWidgetColor (GtkColorClass.Dark, StateType.Active);
+			border_color = Colors.GetWidgetColor (GtkColorClass.Dark, StateFlags.Active);
 		}
 
 		public override void DrawPie (double fraction)
@@ -80,7 +78,7 @@ namespace MonoDevelop.Components.Theming
 			Context.Cairo.LineTo (Context.X, Context.Y);
 			
 			// Fill the pie
-			Color color_a = Colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected);
+			Color color_a = Colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected);
 			Color color_b = CairoExtensions.ColorShade (color_a, 1.4);
 			
 			using (RadialGradient fill = new RadialGradient (Context.X, Context.Y, 0, Context.X, Context.Y, 2.0 * Context.Radius)) {
@@ -118,9 +116,9 @@ namespace MonoDevelop.Components.Theming
 				cr.LineTo (x3, y1);
 			}
 			
-			cr.SetSourceColor (Colors.GetWidgetColor (GtkColorClass.Base, StateType.Normal));
+			cr.SetSourceColor (Colors.GetWidgetColor (GtkColorClass.Base, StateFlags.Normal));
 			cr.FillPreserve ();
-			cr.SetSourceColor (Colors.GetWidgetColor (GtkColorClass.Text, StateType.Normal));
+			cr.SetSourceColor (Colors.GetWidgetColor (GtkColorClass.Text, StateFlags.Normal));
 			cr.Stroke ();
 			cr.Translate (-0.5, -0.5);
 		}
@@ -172,7 +170,7 @@ namespace MonoDevelop.Components.Theming
 
 		public override void DrawHeaderBackground (Cairo.Context cr, Gdk.Rectangle alloc)
 		{
-			Color gtk_background_color = Colors.GetWidgetColor (GtkColorClass.Background, StateType.Normal);
+			Color gtk_background_color = Colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Normal);
 			Color light_color = CairoExtensions.ColorShade (gtk_background_color, 1.1);
 			Color dark_color = CairoExtensions.ColorShade (gtk_background_color, 0.95);
 			
@@ -201,7 +199,7 @@ namespace MonoDevelop.Components.Theming
 			double margin = 0.5;
 			double line_width = 0.7;
 			
-			Cairo.Color stroke_color = CairoExtensions.ColorShade (Colors.GetWidgetColor (GtkColorClass.Background, StateType.Selected), 0.8);
+			Cairo.Color stroke_color = CairoExtensions.ColorShade (Colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Selected), 0.8);
 			
 			stroke_color.A = 0.1;
 			cr.SetSourceColor (stroke_color);
@@ -219,7 +217,7 @@ namespace MonoDevelop.Components.Theming
 
 		public override void DrawHeaderSeparator (Cairo.Context cr, Gdk.Rectangle alloc, int x)
 		{
-			Cairo.Color gtk_background_color = Colors.GetWidgetColor (GtkColorClass.Background, StateType.Normal);
+			Cairo.Color gtk_background_color = Colors.GetWidgetColor (GtkColorClass.Background, StateFlags.Normal);
 			Cairo.Color dark_color = CairoExtensions.ColorShade (gtk_background_color, 0.8);
 			Cairo.Color light_color = CairoExtensions.ColorShade (gtk_background_color, 1.1);
 			

@@ -114,11 +114,11 @@ namespace MonoDevelop.Components
 		{
 			switch (severity) {
 			case TaskSeverity.Error:
-				return ImageService.GetIcon ("md-error", Gtk.IconSize.Menu);
+				return ImageService.GetIcon ("md-error", StockIconSize.Menu);
 			case TaskSeverity.Warning:
-				return ImageService.GetIcon ("md-warning", Gtk.IconSize.Menu);
+				return ImageService.GetIcon ("md-warning", StockIconSize.Menu);
 			}
-			return ImageService.GetIcon ("md-information", Gtk.IconSize.Menu);
+			return ImageService.GetIcon ("md-information", StockIconSize.Menu);
 		}
 
 		string GetAccessibilityDescription ()

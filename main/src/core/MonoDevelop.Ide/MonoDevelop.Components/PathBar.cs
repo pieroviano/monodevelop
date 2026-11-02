@@ -27,8 +27,6 @@
 using System;
 using System.Linq;
 
-using Gtk;
-using Gdk;
 using MonoDevelop.Ide;
 using MonoDevelop.Ide.Gui;
 using MonoDevelop.Core.Text;
@@ -146,7 +144,7 @@ namespace MonoDevelop.Components
 		}
 	}
 	
-	class PathBar : Gtk.DrawingArea
+	class PathBar : CairoWidget
 	{
 		const int DefaultTopPadding = 2;
 
@@ -179,33 +177,39 @@ namespace MonoDevelop.Components
 		const int minRegionSelectorWidth = 30;
 		
 		Func<int, Control> createMenuForItem;
-		Widget menuWidget;
+		Gtk.Widget menuWidget;
+		Gtk.Popover menuPopover;
 		bool pressMenuWasVisible;
 		int pressHoverIndex;
 		int menuIndex;
 		uint hideTimeout;
 
+		/// <param name="createMenuForItem">
+		/// Returns the dropdown for an item: a <see cref="Gtk.Popover"/> (anchored to the bar as is), a
+		/// <see cref="Gtk.Window"/> (its content is moved into a popover, the window is destroyed on close) or any
+		/// other widget (shown in a popover).
+		/// </param>
 		public PathBar (Func<int, Control> createMenuForItem, int topPadding = DefaultTopPadding)
 		{
-			Accessible.Name = "PathBar";
-			Accessible.SetLabel (GettextCatalog.GetString ("Breadcrumb Bar"));
-			Accessible.Description = GettextCatalog.GetString ("Jump to definitions in the current file");
-			Accessible.SetRole (AtkCocoa.Roles.AXList);
-			Accessible.SetOrientation (Orientation.Horizontal);
+			this.SetCommonAttributes ("PathBar", GettextCatalog.GetString ("Breadcrumb Bar"), GettextCatalog.GetString ("Jump to definitions in the current file"));
+			this.SetRole (AtkCocoa.Roles.AXList);
+			this.SetOrientation (Gtk.Orientation.Horizontal);
 
 			CanFocus = true;
+			Focusable = true;
 
 			this.topPadding = topPadding;
-			this.Events =  EventMask.ExposureMask | 
-				           EventMask.EnterNotifyMask |
-				           EventMask.LeaveNotifyMask |
-				           EventMask.ButtonPressMask | 
-				           EventMask.ButtonReleaseMask | 
-				           EventMask.KeyPressMask | 
-					       EventMask.PointerMotionMask;
 			boldAtts.Insert (new Pango.AttrWeight (Pango.Weight.Bold));
 			this.createMenuForItem = createMenuForItem;
 			EnsureLayout ();
+
+			this.AddMotionHandler ((x, y) => SetHover (GetItemAt ((int)x, (int)y)), (x, y) => SetHover (GetItemAt ((int)x, (int)y)), () => {
+				pressed = false;
+				SetHover (-1);
+			});
+			this.AddClickHandler (OnPressed, OnReleased);
+			this.AddFocusHandler (null, () => alreadyHaveFocus = false);
+			this.AddKeyPressHandler (OnKeyPressed);
 		}
 
 		internal static string GetFirstLineFromMarkup (string markup)
@@ -242,7 +246,7 @@ namespace MonoDevelop.Components
 				idx++;
 			}
 
-			Accessible.ReplaceAccessibilityElements (elements);
+			this.ReplaceAccessibilityElements (elements);
 		}
 
 		void DisposeProxies()
@@ -300,11 +304,12 @@ namespace MonoDevelop.Components
 			}
 		}
 		
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
 			EnsureWidths ();
-			requisition.Width = Math.Max (WidthRequest, 0);
-			requisition.Height = height + topPadding + bottomPadding;
+			// the width comes from WidthRequest (applied by GTK); items shrink to fit
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? 0 : height + topPadding + bottomPadding;
+			minimum_baseline = natural_baseline = -1;
 		}
 
 		int[] GetCurrentWidths (out bool widthReduced)
@@ -314,7 +319,7 @@ namespace MonoDevelop.Components
 			totalWidth += rightPadding + arrowSize * rightPath.Length - 1;
 			int[] currentWidths = widths;
 			widthReduced = false;
-			int overflow = totalWidth - Allocation.Width;
+			int overflow = totalWidth - Width;
 			if (overflow > 0) {
 				currentWidths = ReduceWidths (overflow);
 				widthReduced = true;
@@ -329,25 +334,25 @@ namespace MonoDevelop.Components
 			}
 
 			int y = topPadding - buttonPadding;
-			int height = Allocation.Height - topPadding - bottomPadding + buttonPadding * 2;
+			int height = Height - topPadding - bottomPadding + buttonPadding * 2;
 			Gdk.Rectangle rect = new Gdk.Rectangle (x, y, width, height);
 
 			entry.Accessible.FrameInGtkParent = rect;
 			entry.Accessible.FrameInParent = rect;
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
+		protected override void OnDraw (Cairo.Context ctx, int allocWidth, int allocHeight)
 		{
 			Gdk.Rectangle focusRect = new Gdk.Rectangle (0, 0, 0, 0);
 
-			using (var ctx = Gdk.CairoHelper.Create (GdkWindow)) {
+			{
 				int index = 0;
-				ctx.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+				ctx.Rectangle (0, 0, allocWidth, allocHeight);
 				ctx.SetSourceColor (Styles.BreadcrumbBackgroundColor.ToCairoColor ());
 				ctx.Fill ();
 
 				if (widths == null)
-					return true;
+					return;
 
 				// Calculate the total required with, and the reduction to be applied in case it doesn't fit the available space
 
@@ -411,7 +416,11 @@ namespace MonoDevelop.Components
 					if (!last) {
 						xpos += arrowLeftPadding;
 						if (leftPath [i].IsPathEnd) {
-							Style.PaintVline (Style, GdkWindow, State, evnt.Area, this, "", ypos, ypos + height, xpos - arrowSize / 2);
+							ctx.MoveTo (xpos - arrowSize / 2 + 0.5, ypos);
+							ctx.LineTo (xpos - arrowSize / 2 + 0.5, ypos + height);
+							ctx.SetSourceColor (Styles.BreadcrumbBottomBorderColor.ToCairoColor ());
+							ctx.LineWidth = 1;
+							ctx.Stroke ();
 						} else {
 							int arrowH = Math.Min (height, arrowSize);
 							int arrowY = ypos + (height - arrowH) / 2;
@@ -421,7 +430,7 @@ namespace MonoDevelop.Components
 					}
 				}
 				
-				int xposRight = Allocation.Width - rightPadding;
+				int xposRight = allocWidth - rightPadding;
 				for (int i = 0; i < rightPath.Length; i++, index++) {
 					//				bool last = i == rightPath.Length - 1;
 
@@ -476,20 +485,23 @@ namespace MonoDevelop.Components
 				}
 
 				if (DrawBottomBorder) {
-					ctx.MoveTo (0, Allocation.Height - 0.5);
-					ctx.RelLineTo (Allocation.Width, 0);
+					ctx.MoveTo (0, allocHeight - 0.5);
+					ctx.RelLineTo (allocWidth, 0);
 					ctx.SetSourceColor (Styles.BreadcrumbBottomBorderColor.ToCairoColor ());
 					ctx.LineWidth = 1;
 					ctx.Stroke ();
 				}
 				if (HasFocus) {
 					int focusY = topPadding - buttonPadding;
-					int focusHeight = Allocation.Height - topPadding - bottomPadding + buttonPadding * 2;
+					int focusHeight = allocHeight - topPadding - bottomPadding + buttonPadding * 2;
 
-					Gtk.Style.PaintFocus (Style, GdkWindow, State, Allocation, this, "label", focusRect.X, focusY, focusRect.Width, focusHeight);
+					ctx.Rectangle (focusRect.X + 0.5, focusY + 0.5, Math.Max (0, focusRect.Width - 1), Math.Max (0, focusHeight - 1));
+					ctx.SetSourceColor (Styles.FocusColor.ToCairoColor ());
+					ctx.LineWidth = 1;
+					ctx.SetDash (new double [] { 1, 1 }, 0.5);
+					ctx.Stroke ();
 				}
 			}
-			return true;
 		}
 
 		void DrawPathSeparator (Cairo.Context ctx, double x, double y, double size)
@@ -507,7 +519,7 @@ namespace MonoDevelop.Components
 			x -= buttonPadding;
 			width += buttonPadding;
 			double y = topPadding - buttonPadding;
-			double height = Allocation.Height - topPadding - bottomPadding + buttonPadding * 2;
+			double height = Height - topPadding - bottomPadding + buttonPadding * 2;
 
 			ctx.Rectangle (x, y, width, height);
 			ctx.SetSourceColor (Styles.BreadcrumbButtonFillColor.ToCairoColor ());
@@ -541,7 +553,7 @@ namespace MonoDevelop.Components
 			return currentWidths;
 		}
 
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		void OnPressed (ClickInfo click)
 		{
 			pressMenuWasVisible = menuVisible;
 			pressHoverIndex = menuIndex;
@@ -551,7 +563,7 @@ namespace MonoDevelop.Components
 				pressed = true;
 				QueueDraw ();
 			}
-			return true;
+			click.Claim ();
 		}
 
 		void PerformShowMenu (object sender, EventArgs e)
@@ -575,18 +587,17 @@ namespace MonoDevelop.Components
 			ShowMenu ();
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
+		void OnReleased (ClickInfo click)
 		{
 			pressed = false;
 			if (hovering) {
 				QueueDraw ();
 				if (pressMenuWasVisible && pressHoverIndex == hoverIndex)
-					return true;
+					return;
 				ShowMenu ();
 			}
-			return true;
 		}
-		
+
 		void ShowMenu ()
 		{
 			if (hoverIndex < 0)
@@ -597,11 +608,28 @@ namespace MonoDevelop.Components
 			menuWidget = createMenuForItem (hoverIndex);
 			if (menuWidget == null)
 				return;
-			menuWidget.Hidden += delegate {
+
+			// GTK 4 cannot position popup windows: every dropdown becomes a popover anchored to the item
+			if (menuWidget is Gtk.Popover popover) {
+				popover.Reparent (this);
+				menuPopover = popover;
+			} else {
+				Gtk.Widget content = menuWidget;
+				if (menuWidget is Gtk.Window window) {
+					content = window.Child;
+					window.Child = null;
+				}
+				menuPopover = PopoverHelper.Create (this, content, Gtk.PositionType.Bottom, autohide: true, hasArrow: false, transient: false);
+			}
+
+			var shownPopover = menuPopover;
+			shownPopover.Closed += delegate {
+				if (menuPopover != shownPopover)
+					return;
 				menuVisible = false;
 				QueueDraw ();
-				
-				//FIXME: for some reason the menu's children don't get activated if we destroy 
+
+				//FIXME: for some reason the menu's children don't get activated if we destroy
 				//directly here, so use a timeout to delay it
 				hideTimeout = GLib.Timeout.Add (100, delegate {
 					hideTimeout = 0;
@@ -610,32 +638,36 @@ namespace MonoDevelop.Components
 				});
 			};
 			menuVisible = true;
-			if (menuWidget is Menu) {
-				((Menu)menuWidget).Popup (null, null, PositionFunc, 0, Gtk.Global.CurrentEventTime);
-			} else {
-				var window = menuWidget as Gtk.Window;
-				PositionWidget (menuWidget);
 
-				if (window != null) {
-					window.TransientFor = this.Toplevel as Gtk.Window;
-				}
-
-				menuWidget.ShowAll ();
-			}
+			int w;
+			int x = GetHoverXPosition (out w);
+			int y = topPadding - buttonPadding;
+			int h = Height - topPadding - bottomPadding + buttonPadding * 2;
+			if (!(menuWidget is Gtk.Popover) && shownPopover.Child != null)
+				shownPopover.Child.WidthRequest = Math.Max (shownPopover.Child.WidthRequest, w);
+			shownPopover.ShowAt (new Gdk.Rectangle (x, y, Math.Max (1, w), Math.Max (1, h)), Gtk.PositionType.Bottom);
+			shownPopover.Child?.GrabFocus ();
 		}
 
 		public void HideMenu ()
 		{
 			if (hideTimeout != 0) {
-				GLib.Source.Remove (hideTimeout); 
+				GLib.Source.Remove (hideTimeout);
+				hideTimeout = 0;
+			}
+			if (menuPopover != null) {
+				var popover = menuPopover;
+				menuPopover = null;
+				popover.Detach ();
 			}
 			if (menuWidget != null) {
-				menuWidget.Destroy ();
+				if (menuWidget is Gtk.Window window)
+					window.Destroy ();
 				menuWidget = null;
 			}
 
 			if (alreadyHaveFocus) {
-				var window = Toplevel as Gtk.Window;
+				var window = Root as Gtk.Window;
 				if (window != null) {
 					// Present the window because on macOS the main window remains unfocused otherwise.
 					window.Present ();
@@ -643,7 +675,7 @@ namespace MonoDevelop.Components
 				GrabFocus ();
 			}
 		}
-		
+
 		public int GetHoverXPosition (out int w)
 		{
 			bool widthReduced;
@@ -660,83 +692,13 @@ namespace MonoDevelop.Components
 				int idx = rightPath.TakeWhile (p => p != Path[hoverIndex]).Count ();
 				if (idx >= 0) {
 					w = currentWidths[idx + leftPath.Length];
-					return Allocation.Width - padding - currentWidths[idx + leftPath.Length] - spacing;
+					return Width - padding - currentWidths[idx + leftPath.Length] - spacing;
 				}
 			}
-			w = Allocation.Width;
+			w = Width;
 			return 0;
 		}
 
-		void PositionWidget (Gtk.Widget widget)
-		{
-			if (!(widget is Gtk.Window))
-				return;
-			int ox, oy;
-			ParentWindow.GetOrigin (out ox, out oy);
-			int w;
-			int itemXPosition = GetHoverXPosition (out w);
-			int dx = ox + this.Allocation.X + itemXPosition;
-			int dy = oy + this.Allocation.Bottom;
-			
-			var req = widget.SizeRequest ();
-
-			Xwt.Rectangle geometry = IdeServices.DesktopService.GetUsableMonitorGeometry (Screen.Number, Screen.GetMonitorAtPoint (dx, dy));
-			int geomWidth = (int)geometry.Width;
-			int geomLeft = (int)geometry.Left;
-			int geomRight = (int)geometry.Right;
-			int width = System.Math.Max (req.Width, w);
-			if (width >= geomWidth - spacing * 2) {
-				width = geomWidth - spacing * 2;
-				dx = geomLeft + spacing;
-			}
-			widget.WidthRequest = width;
-			if (dy + req.Height > geometry.Bottom)
-				dy = oy + this.Allocation.Y - req.Height;
-			if (dx + width > geomRight)
-				dx = geomRight - width;
-			(widget as Gtk.Window).Move (dx, dy);
-			(widget as Gtk.Window).Resize (width, req.Height);
-			widget.GrabFocus ();
-		}
-		
-		
-		
-		void PositionFunc (Menu mn, out int x, out int y, out bool push_in)
-		{
-			this.GdkWindow.GetOrigin (out x, out y);
-			int w;
-			var rect = this.Allocation;
-			y += rect.Height;
-			x += GetHoverXPosition (out w);
-			//if the menu would be off the bottom of the screen, "drop" it upwards
-			if (y + mn.Requisition.Height > this.Screen.Height) {
-				y -= mn.Requisition.Height;
-				y -= rect.Height;
-			}
-			
-			//let GTK reposition the button if it still doesn't fit on the screen
-			push_in = true;
-		}
-		
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
-		{
-			SetHover (GetItemAt ((int)evnt.X, (int)evnt.Y));
-			return true;
-		}
-		
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
-		{
-			pressed = false;
-			SetHover (-1);
-			return true;
-		}
-		
-		protected override bool OnEnterNotifyEvent (EventCrossing evnt)
-		{
-			SetHover (GetItemAt ((int)evnt.X, (int)evnt.Y));
-			return true;
-		}
-		
 		void SetHover (int i)
 		{
 			bool oldHovering = hovering;
@@ -756,7 +718,7 @@ namespace MonoDevelop.Components
 
 		int GetItemAt (int x, int y)
 		{
-			int xpos = padding, xposRight = Allocation.Width - padding;
+			int xpos = padding, xposRight = Width - padding;
 			if (widths == null || x < xpos || x > xposRight)
 				return -1;
 
@@ -781,7 +743,7 @@ namespace MonoDevelop.Components
 		{
 			if (layout != null)
 				layout.Dispose ();
-			layout = new Pango.Layout (PangoContext);
+			layout = CreatePangoLayout (null);
 		}
 		
 		void CreateWidthArray (int[] result, int index, PathEntry[] path)
@@ -822,9 +784,9 @@ namespace MonoDevelop.Components
 			CreateWidthArray (widths, leftPath.Length, rightPath);
 		}
 		
-		protected override void OnStyleSet (Style previous)
+		protected override void OnCssChanged (Gtk.CssStyleChange change)
 		{
-			base.OnStyleSet (previous);
+			base.OnCssChanged (change);
 			KillLayout ();
 			EnsureLayout ();
 		}
@@ -840,26 +802,27 @@ namespace MonoDevelop.Components
 			widths = null;
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			createMenuForItem = null;
-
-			base.OnDestroyed ();
-
-			DisposeProxies ();
-			KillLayout ();
-			this.boldAtts.Dispose ();
+			if (disposing) {
+				createMenuForItem = null;
+				HideMenu ();
+				DisposeProxies ();
+				KillLayout ();
+				this.boldAtts.Dispose ();
+			}
+			base.Dispose (disposing);
 		}
 
 		int focusedPathIndex = -1;
 		bool alreadyHaveFocus = false;
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (Gtk.DirectionType direction)
 		{
 			bool ret = true;
 
 			switch (direction) {
-			case DirectionType.TabForward:
-			case DirectionType.Right:
+			case Gtk.DirectionType.TabForward:
+			case Gtk.DirectionType.Right:
 				if (!alreadyHaveFocus) {
 					focusedPathIndex = 0;
 				} else {
@@ -871,8 +834,8 @@ namespace MonoDevelop.Components
 				}
 				break;
 
-			case DirectionType.TabBackward:
-			case DirectionType.Left:
+			case Gtk.DirectionType.TabBackward:
+			case Gtk.DirectionType.Left:
 				if (!alreadyHaveFocus) {
 					focusedPathIndex = leftPath.Length + rightPath.Length - 1;
 				} else {
@@ -893,13 +856,22 @@ namespace MonoDevelop.Components
 			return ret;
 		}
 
-		protected override bool OnFocusOutEvent(EventFocus evnt)
+		// GTK 2 Widget.Activate (Return/space opens the focused item's dropdown)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			alreadyHaveFocus = false;
-			return base.OnFocusOutEvent(evnt);
+			switch ((Gdk.Key)keyval) {
+			case Gdk.Key.Return:
+			case Gdk.Key.KP_Enter:
+			case Gdk.Key.space:
+				if (focusedPathIndex < 0)
+					return false;
+				ActivateFocusedItem ();
+				return true;
+			}
+			return false;
 		}
 
-		protected override void OnActivate ()
+		void ActivateFocusedItem ()
 		{
 			if (focusedPathIndex < 0) {
 				return;

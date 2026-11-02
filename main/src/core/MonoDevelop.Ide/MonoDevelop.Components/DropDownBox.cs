@@ -26,7 +26,6 @@
 
 using System;
 using System.ComponentModel;
-using Gtk;
 
 using MonoDevelop.Ide;
 
@@ -124,34 +123,34 @@ namespace MonoDevelop.Components
 		
 		public DropDownBox ()
 		{
-			layout = new Pango.Layout (this.PangoContext);
-			this.Events = Gdk.EventMask.KeyPressMask | Gdk.EventMask.FocusChangeMask | Gdk.EventMask.ButtonPressMask | Gdk.EventMask.ButtonReleaseMask | Gdk.EventMask.PointerMotionMask | Gdk.EventMask.LeaveNotifyMask;
+			layout = CreatePangoLayout (null);
 			this.CanFocus = true;
-			BorderWidth = 0;
+			this.Focusable = true;
+
+			this.AddKeyPressHandler (OnKeyPressed);
+			this.AddMotionHandler ((x, y) => QueueDraw (), null, QueueDraw);
+			// Capture phase: open the list on press (GTK 2 behaviour), before the button's own click handling.
+			this.AddClickHandler (OnButtonPressed, null, 0, Gtk.PropagationPhase.Capture);
+		}
+
+		/// <summary>Draws the button background through CSS; without <see cref="DrawButtonShape"/> the button is flat.</summary>
+		protected override void OnRealized ()
+		{
+			base.OnRealized ();
+			if (DrawButtonShape)
+				RemoveCssClass ("flat");
+			else
+				AddCssClass ("flat");
 		}
 		
 		void PositionListWindow ()
 		{
 			if (window == null)
 				return;
-			int ox, oy;
-			ParentWindow.GetOrigin (out ox, out oy);
-			int dx = ox + this.Allocation.X;
-			int dy = oy + this.Allocation.Bottom;
-			window.WidthRequest = Allocation.Width;
-			int width, height;
-			window.GetSizeRequest (out width, out height);
-			Xwt.Rectangle geometry = IdeServices.DesktopService.GetUsableMonitorGeometry (Screen.Number, Screen.GetMonitorAtPoint (dx, dy));
-			
-			if (dy + height > geometry.Bottom)
-				dy = oy + this.Allocation.Y - height;
-			if (dx + width > geometry.Right)
-				dx = (int)geometry.Right - width;
-			
-			window.Move (dx, dy);
-			window.ShowAll ();
-			window.GetSizeRequest (out width, out height);
-			window.GrabFocus ();
+			window.SetSizeRequest (Width, -1);
+			window.Reparent (this);
+			window.ShowAt (new Gdk.Rectangle (0, 0, Width, Height), Gtk.PositionType.Bottom);
+			window.list.GrabFocus ();
 		}
 		
 		public void SetItem (string text, Xwt.Drawing.Image icon, object currentItem)
@@ -172,20 +171,27 @@ namespace MonoDevelop.Components
 			SetItem (DataProvider.GetMarkup (i), DataProvider.GetIcon (i), DataProvider.GetTag (i));
 		}
 		
-		protected override void OnDestroyed ()
+		/// <summary>Releases the list window and the text layout (GTK 2: ::destroy).</summary>
+		public override void Destroy ()
 		{
 			DestroyWindow ();
 			if (layout != null) {
 				layout.Dispose ();
 				layout = null;
 			}
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnUnrealized ()
 		{
-			int width, height;
-			layout.GetPixelSize (out width, out height);
+			DestroyWindow ();
+			base.OnUnrealized ();
+		}
+
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
+			int width = 0, height = 0;
+			layout?.GetPixelSize (out width, out height);
 			
 			if (Pixbuf != null) {
 				width += (int)Pixbuf.Width + pixbufSpacing * 2;
@@ -199,150 +205,150 @@ namespace MonoDevelop.Components
 			int arrowHeight = height / 2; 
 			int arrowWidth = arrowHeight + 1;
 			
-			requisition.Width = FixedWidth > 0 ? FixedWidth : width + arrowWidth + leftSpacing;
-			requisition.Height = FixedHeight >0 ? FixedHeight : height + ySpacing * 2;
+			if (orientation == Gtk.Orientation.Horizontal)
+				minimum = natural = FixedWidth > 0 ? FixedWidth : width + arrowWidth + leftSpacing;
+			else
+				minimum = natural = FixedHeight > 0 ? FixedHeight : height + ySpacing * 2;
+			minimum_baseline = natural_baseline = -1;
 		}
-		
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
-		{
-			DestroyWindow ();
-			return base.OnFocusOutEvent (evnt);
-		}
-
 		
 		DropDownBoxListWindow window = null;
 		internal void DestroyWindow ()
 		{
 			if (window != null) {
-				window.Destroy ();
+				var w = window;
 				window = null;
+				w.Destroy ();
 				QueueDraw ();
 			}
 		}
 		
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (evnt.Key == Gdk.Key.Escape) {
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Escape) {
 				DestroyWindow (); 
 				return true;
 			}
-			if (window != null && window.ProcessKey (evnt.Key, evnt.State))
+			if (window != null && window.ProcessKey (key, state))
 				return true;
-			return base.OnKeyPressEvent (evnt);
+			return false;
 		}
 		
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
+		void OnButtonPressed (ClickInfo e)
 		{
-			QueueDraw ();
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-		
-		protected override bool OnButtonPressEvent (Gdk.EventButton e)
-		{
-			if (e.TriggersContextMenu ()) {
-				return base.OnButtonPressEvent (e);
-			}
-			if (e.Type == Gdk.EventType.ButtonPress) {
-				if (window != null) {
-					DestroyWindow ();
-				} else {
-					this.GrabFocus ();
-					if (DataProvider != null) {
-						DataProvider.Reset ();
-						if (DataProvider.IconCount > 0) {
-							window = new DropDownBoxListWindow (DataProvider, WindowType.Popup);
-							window.list.SelectItem += delegate {
-								SetItem (window.list.Selection);
-							};
-							PositionListWindow ();
-							window.SelectItem (CurrentItem);
-						}
+			if (e.TriggersContextMenu ())
+				return;
+			if (e.NPress != 1)
+				return;
+			if (window != null) {
+				DestroyWindow ();
+			} else {
+				this.GrabFocus ();
+				if (DataProvider != null) {
+					DataProvider.Reset ();
+					if (DataProvider.IconCount > 0) {
+						var w = window = new DropDownBoxListWindow (DataProvider);
+						w.list.SelectItem += delegate {
+							SetItem (w.list.Selection);
+						};
+						w.Destroyed += delegate {
+							if (window == w) {
+								window = null;
+								QueueDraw ();
+							}
+						};
+						PositionListWindow ();
+						w.SelectItem (CurrentItem);
 					}
 				}
 			}
-			return base.OnButtonPressEvent (e);
-		}
-		
-		protected override void OnStateChanged (StateType previous_state)
-		{
-			base.OnStateChanged (previous_state);
-		}
-
-		protected override bool OnButtonReleaseEvent (Gdk.EventButton e)
-		{
-			return base.OnButtonReleaseEvent (e);
-		}
-		
-		protected override bool OnMotionNotifyEvent (Gdk.EventMotion e)
-		{
-			QueueDraw ();
-			return base.OnMotionNotifyEvent (e);
 		}
 	
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			Gdk.Drawable win = args.Window;
-		
+			base.OnSnapshot (snapshot); // CSS button background
+			snapshot.DrawCairo (this, Draw);
+		}
+
+		void Draw (Cairo.Context ctx)
+		{
+			if (layout == null)
+				return;
 			int width, height;
 			layout.GetPixelSize (out width, out height);
+			int allocWidth = Width, allocHeight = Height;
 			
 			int arrowHeight = height / 2; 
 			int arrowWidth = arrowHeight + 1;
-			int arrowXPos = this.Allocation.X + this.Allocation.Width - arrowWidth;
+			int arrowXPos = allocWidth - arrowWidth;
 			if (DrawButtonShape) {
 				arrowXPos -= 4;
 			} else if (DrawRightBorder) {
 				arrowXPos -= 2;
 			}
 
-			//HACK: don't ever draw insensitive, only active/prelight/normal, because insensitive generally looks really ugly
-			//this *might* cause some theme issues with the state of the text/arrows rendering on top of it
-			var state = window != null? StateType.Active
-				: State == StateType.Insensitive? StateType.Normal : State;
-			
-			//HACK: paint the button background as if it were bigger, but it stays clipped to the real area,
-			// so we get the content but not the border. This might break with crazy themes.
-			//FIXME: we can't use the style's actual internal padding because GTK# hasn't wrapped GtkBorder AFAICT
-			// (default-border, inner-border, default-outside-border, etc - see http://git.gnome.org/browse/gtk+/tree/gtk/gtkbutton.c)
-			const int padding = 4;
-			if (DrawButtonShape){
-				Style.PaintBox (Style, args.Window, state, ShadowType.None, args.Area, this, "button", 
-				            Allocation.X, Allocation.Y, Allocation.Width, Allocation.Height);
+			//HACK: don't ever draw insensitive text, because insensitive generally looks really ugly
+			var textColor = StyleContext.Color.ToCairoColor ();
+			textColor.A = 1;
 
-			} else {
-				Style.PaintBox (Style, args.Window, state, ShadowType.None, args.Area, this, "button", 
-				            Allocation.X - padding, Allocation.Y - padding, Allocation.Width + padding * 2, Allocation.Height + padding * 2);
-			}
-
-			int xPos = Allocation.Left;
+			int xPos = 0;
 			if (Pixbuf != null) {
-				using (var ctx = Gdk.CairoHelper.Create (win))
-					ctx.DrawImage (this, Pixbuf, xPos + pixbufSpacing, Allocation.Y + (Allocation.Height - Pixbuf.Height) / 2);
+				ctx.DrawImage (this, Pixbuf, xPos + pixbufSpacing, (allocHeight - Pixbuf.Height) / 2);
 				xPos += (int)Pixbuf.Width + pixbufSpacing * 2;
 			}
 			if (DrawButtonShape)
 				xPos += 4;
 			
 			//constrain the text area so it doesn't get rendered under the arrows
-			var textArea = new Gdk.Rectangle (xPos, Allocation.Y + ySpacing, arrowXPos - xPos - 2, Allocation.Height - ySpacing);
+			var textArea = new Gdk.Rectangle (xPos, ySpacing, arrowXPos - xPos - 2, allocHeight - ySpacing);
 
 			if (FixedWidth > 0) {
 				layout.Ellipsize = Pango.EllipsizeMode.End;
-				layout.Width = Allocation.Width - textArea.X;
+				layout.Width = (allocWidth - textArea.X) * (int)Pango.Scale.PangoScale;
 			}
 
-			Style.PaintLayout (Style, win, state, true, textArea, this, "", textArea.X, textArea.Y + Math.Max (0, (textArea.Height - height) / 2), layout);
+			ctx.Save ();
+			ctx.Rectangle (textArea.X, textArea.Y, Math.Max (0, textArea.Width), Math.Max (0, textArea.Height));
+			ctx.Clip ();
+			ctx.MoveTo (textArea.X, textArea.Y + Math.Max (0, (textArea.Height - height) / 2));
+			ctx.SetSourceColor (textColor);
+			Pango.CairoHelper.ShowLayout (ctx, layout);
+			ctx.Restore ();
 			
-			state = Sensitive ? StateType.Normal : StateType.Insensitive;
-			Gtk.Style.PaintArrow (this.Style, win, state, ShadowType.None, args.Area, this, "", ArrowType.Up, true, arrowXPos, Allocation.Y + (Allocation.Height) / 2 - arrowHeight, arrowWidth, arrowHeight);
-			Gtk.Style.PaintArrow (this.Style, win, state, ShadowType.None, args.Area, this, "", ArrowType.Down, true, arrowXPos, Allocation.Y + (Allocation.Height) / 2, arrowWidth, arrowHeight);
-			if (!DrawButtonShape) {
-				if (DrawRightBorder)
-					win.DrawLine (this.Style.DarkGC (StateType.Normal), Allocation.X + Allocation.Width - 1, Allocation.Y, Allocation.X + Allocation.Width - 1, Allocation.Y + Allocation.Height);			
-				if (DrawLeftBorder)
-					win.DrawLine (this.Style.DarkGC (StateType.Normal), Allocation.X, Allocation.Y, Allocation.X, Allocation.Y + Allocation.Height);			
+			var arrowColor = textColor;
+			if (!Sensitive)
+				arrowColor.A = 0.5;
+			ctx.SetSourceColor (arrowColor);
+			// up arrow
+			double midY = allocHeight / 2;
+			ctx.MoveTo (arrowXPos + arrowWidth / 2.0, midY - arrowHeight);
+			ctx.LineTo (arrowXPos + arrowWidth, midY - 1);
+			ctx.LineTo (arrowXPos, midY - 1);
+			ctx.ClosePath ();
+			ctx.Fill ();
+			// down arrow
+			ctx.MoveTo (arrowXPos, midY + 1);
+			ctx.LineTo (arrowXPos + arrowWidth, midY + 1);
+			ctx.LineTo (arrowXPos + arrowWidth / 2.0, midY + arrowHeight);
+			ctx.ClosePath ();
+			ctx.Fill ();
+
+			if (!DrawButtonShape && (DrawRightBorder || DrawLeftBorder)) {
+				var borderColor = textColor;
+				borderColor.A = 0.3;
+				ctx.SetSourceColor (borderColor);
+				ctx.LineWidth = 1;
+				if (DrawRightBorder) {
+					ctx.MoveTo (allocWidth - 0.5, 0);
+					ctx.LineTo (allocWidth - 0.5, allocHeight);
+				}
+				if (DrawLeftBorder) {
+					ctx.MoveTo (0.5, 0);
+					ctx.LineTo (0.5, allocHeight);
+				}
+				ctx.Stroke ();
 			}
-			return false;
 		}
 		
 		public EventHandler ItemSet;
