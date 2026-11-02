@@ -68,8 +68,30 @@ namespace MonoDevelop.SourceEditor
 		public override void GetRequiredPosition (TextEditor editor, Window tipWindow, out int requiredWidth, out double xalign)
 		{
 			var win = (LanguageItemWindow) tipWindow;
-			requiredWidth = win.SetMaxWidth (win.Screen.Width / 4);
+			var ed = GetExtensibleTextEditor (editor);
+			requiredWidth = win.SetMaxWidth ((ed != null ? ed.Width : 800) / 4);
 			xalign = 0.5;
+		}
+
+		public override void ShowTooltipWindow (TextEditor editor, Window tipWindow, TooltipItem item, Xwt.ModifierKeys modifierState, int mouseX, int mouseY)
+		{
+			var win = tipWindow as LanguageItemWindow;
+			var ed = GetExtensibleTextEditor (editor);
+			if (win == null || ed == null) {
+				base.ShowTooltipWindow (editor, tipWindow, item, modifierState, mouseX, mouseY);
+				return;
+			}
+			// the mouse position is relative to the text view margin
+			win.ShowPopup (ed.TextArea, new Gdk.Rectangle (mouseX + (int)ed.TextViewMargin.XOffset, mouseY, 1, 1));
+		}
+
+		public override bool TryCloseTooltipWindow (Window tipWindow, TooltipCloseReason reason)
+		{
+			if (tipWindow is LanguageItemWindow win) {
+				win.Destroy ();
+				return true;
+			}
+			return base.TryCloseTooltipWindow (tipWindow, reason);
 		}
 		#endregion 
 	}

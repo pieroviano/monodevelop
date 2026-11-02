@@ -283,7 +283,7 @@ namespace MonoDevelop.TextEditor
 			foreach (var template in Imports.ExpansionManager.EnumerateExpansions (contentType, false, null, true, false)) {
 				yield return new SnippetToolboxNode (template) {
 					Category = category,
-					Icon = ImageService.GetIcon ("md-template", Gtk.IconSize.Menu)
+					Icon = ImageService.GetIcon ("md-template", MonoDevelop.Components.StockIconSize.Menu)
 				};
 			}
 		}

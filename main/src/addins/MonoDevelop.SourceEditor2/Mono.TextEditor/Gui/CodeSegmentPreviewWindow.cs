@@ -46,7 +46,7 @@ namespace Mono.TextEditor
 		public bool IsEmptyText => string.IsNullOrWhiteSpace (Text) && string.IsNullOrWhiteSpace (Markup);
 		
 		public CodeSegmentPreviewWindow (MonoTextEditor editor, bool hideFooter, ISegment segment, bool removeIndent = true)
-			: base (editor.GdkWindow, editor.Options.FontName, editor.Options.GetEditorTheme ())
+			: base (editor.TextArea, editor.Options.FontName, editor.Options.GetEditorTheme ())
 		{
 			if (!hideFooter) {
 				FooterText = CodeSegmentPreviewInformString;
@@ -70,10 +70,10 @@ namespace Mono.TextEditor
 			Markup = editor.GetTextEditorData ().GetMarkup (segment.Offset, segment.Length, removeIndent) + (pushedLineLimit ? Environment.NewLine + "..." : "");
 		}
 		
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
 			editor = null;
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 	}
 }

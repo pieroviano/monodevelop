@@ -126,13 +126,13 @@ namespace MonoDevelop.TextTemplating.Gui
 			if (outlineTreeView != null)
 				return outlineTreeView;
 			
-			outlineTreeStore = new Gtk.TreeStore (typeof(string), typeof (Gdk.Color), typeof (Mono.TextTemplating.ISegment));
+			outlineTreeStore = new Gtk.TreeStore (typeof(string), typeof (string), typeof (Mono.TextTemplating.ISegment));
 			outlineTreeView = new MonoDevelop.Ide.Gui.Components.PadTreeView (outlineTreeStore);
 			outlineTreeView.Realized += delegate { RefillOutlineStore (); };
 			
 			outlineTreeView.TextRenderer.Xpad = 0;
 			outlineTreeView.TextRenderer.Ypad = 0;
-			outlineTreeView.AppendColumn ("Node", outlineTreeView.TextRenderer, "text", 0, "foreground-gdk", 1);
+			outlineTreeView.AppendColumn ("Node", outlineTreeView.TextRenderer, "text", 0, "foreground", 1);
 			
 			outlineTreeView.HeadersVisible = false;
 			
@@ -145,8 +145,7 @@ namespace MonoDevelop.TextTemplating.Gui
 			
 			RefillOutlineStore ();
 			var sw = new MonoDevelop.Components.CompactScrolledWindow ();;
-			sw.Add (outlineTreeView);
-			sw.ShowAll ();
+			sw.Child = outlineTreeView;
 			return sw;
 		}
 		
@@ -175,11 +174,11 @@ namespace MonoDevelop.TextTemplating.Gui
 			if (doc == null)
 				return;
 			
-			Gdk.Color normal   = new Gdk.Color (0x00, 0x00, 0x00);
-			Gdk.Color blue     = new Gdk.Color (0x10, 0x40, 0xE0);
-			Gdk.Color green    = new Gdk.Color (0x08, 0xC0, 0x30);
-			Gdk.Color orange   = new Gdk.Color (0xFF, 0xA0, 0x00);
-			Gdk.Color red      = new Gdk.Color (0xC0, 0x00, 0x20);
+			string normal   = "#000000";
+			string blue     = "#1040E0";
+			string green    = "#08C030";
+			string orange   = "#FFA000";
+			string red      = "#C00020";
 			
 			Gtk.TreeIter parent = Gtk.TreeIter.Zero;
 			foreach (Mono.TextTemplating.ISegment segment in doc.TemplateSegments) {
@@ -223,7 +222,6 @@ namespace MonoDevelop.TextTemplating.Gui
 		void RefillOutlineStore ()
 		{
 			Runtime.AssertMainThread ();
-			Gdk.Threads.Enter ();
 			refreshingOutline = false;
 			if (outlineTreeStore == null || !outlineTreeView.IsRealized)
 				return;
@@ -237,7 +235,6 @@ namespace MonoDevelop.TextTemplating.Gui
 				MonoDevelop.Core.LoggingService.LogDebug ("Built outline in {0}ms", (DateTime.Now - start).Milliseconds);
 			}
 			
-			Gdk.Threads.Leave ();
 		}
 
 		void IOutlinedDocument.ReleaseOutlineWidget ()
@@ -245,9 +242,7 @@ namespace MonoDevelop.TextTemplating.Gui
 			if (outlineTreeView == null)
 				return;
 			
-			Gtk.ScrolledWindow w = (Gtk.ScrolledWindow) outlineTreeView.Parent;
-			w.Destroy ();
-			outlineTreeView.Destroy ();
+			outlineTreeView.Parent?.Unparent ();
 			outlineTreeView = null;
 		}
 		

@@ -35,31 +35,37 @@ using MonoDevelop.Ide.Editor.Highlighting;
 
 namespace MonoDevelop.SourceEditor.QuickTasks
 {
-	class QuickTaskMiniMapMode : HBox, IMapMode
+	class QuickTaskMiniMapMode : Gtk.Box, IMapMode
 	{
 		Minimpap minimap;
 		QuickTaskOverviewMode rightMap;
-		Adjustment vadjustment;
+		Gtk.Adjustment vadjustment;
 
-		public QuickTaskMiniMapMode (QuickTaskStrip parent)
+		public QuickTaskMiniMapMode (QuickTaskStrip parent) : base (Gtk.Orientation.Horizontal, 0)
 		{
 			minimap = new Minimpap (parent);
-			PackStart (minimap, true, true, 0);
+			minimap.Hexpand = true;
+			Append (minimap);
 
 			rightMap = new QuickTaskOverviewMode (parent);
-			PackStart (rightMap, true, true, 0);
+			rightMap.Hexpand = true;
+			Append (rightMap);
 			vadjustment = parent.VAdjustment;
 
 			vadjustment.ValueChanged += RedrawOnVAdjustmentChange;
 
 		}
 
+		bool destroyed;
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
-			vadjustment.ValueChanged -= RedrawOnVAdjustmentChange;
+			if (!destroyed) {
+				destroyed = true;
+				vadjustment.ValueChanged -= RedrawOnVAdjustmentChange;
+			}
 
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
 		void RedrawOnVAdjustmentChange (object sender, EventArgs e)
@@ -83,7 +89,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				doc.Folded += HandleFolded;
 			}
 
-			Pixmap backgroundPixbuf, backgroundBuffer;
+			Cairo.ImageSurface backgroundPixbuf, backgroundBuffer;
 			uint redrawTimeout;
 			TextDocument doc;
 
@@ -151,10 +157,11 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				vadjustment.Value = position;
 			}
 
-			protected override void OnSizeRequested (ref Requisition requisition)
+			protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 			{
-				base.OnSizeRequested (ref requisition);
-				requisition.Width = 150;
+				base.OnMeasure (orientation, for_size, out minimum, out natural, out minimum_baseline, out natural_baseline);
+				if (orientation == Orientation.Horizontal)
+					minimum = natural = 150;
 			}
 
 			void DestroyBgBuffer ()
@@ -178,16 +185,16 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				DestroyBgBuffer ();
 			}
 
-			protected override void OnSizeAllocated (Rectangle allocation)
+			protected override void OnSizeAllocate (int width, int height, int baseline)
 			{
-				base.OnSizeAllocated (allocation);
-				if (allocation.Width > 1 && (allocation.Width != curWidth || allocation.Height != curHeight))
+				base.OnSizeAllocate (width, height, baseline);
+				if (width > 1 && (width != curWidth || height != curHeight))
 					CreateBgBuffer ();
 			}
 
 			protected override void OnMapped ()
 			{
-				if (backgroundPixbuf == null && Allocation.Width > 1)
+				if (backgroundPixbuf == null && Width > 1)
 					CreateBgBuffer ();
 				base.OnMapped ();
 			}
@@ -210,16 +217,16 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			void CreateBgBuffer ()
 			{
 				DestroyBgBuffer ();
-				curWidth = Allocation.Width;
-				curHeight = Math.Max (Allocation.Height, (int)(lineHeight * (TextEditor.GetTextEditorData ().VisibleLineCount)));
-				if (GdkWindow == null || curWidth < 1 || curHeight < 1)
+				curWidth = Width;
+				curHeight = Math.Max (Height, (int)(lineHeight * (TextEditor.GetTextEditorData ().VisibleLineCount)));
+				if (!IsRealized || curWidth < 1 || curHeight < 1)
 					return;
 				var displayScale = Platform.IsWindows ? GtkWorkarounds.GetScaleFactor (this) : 1.0;
-				backgroundPixbuf = new Pixmap (GdkWindow, (int)(curWidth * displayScale), (int)(curHeight * displayScale));
-				backgroundBuffer = new Pixmap (GdkWindow, (int)(curWidth * displayScale), (int)(curHeight * displayScale));
-				
+				backgroundPixbuf = new Cairo.ImageSurface (Cairo.Format.ARGB32, (int)(curWidth * displayScale), (int)(curHeight * displayScale));
+				backgroundBuffer = new Cairo.ImageSurface (Cairo.Format.ARGB32, (int)(curWidth * displayScale), (int)(curHeight * displayScale));
+
 				if (TextEditor.EditorTheme != null) {
-					using (var cr = Gdk.CairoHelper.Create (backgroundPixbuf)) {
+					using (var cr = new Cairo.Context (backgroundPixbuf)) {
 						cr.Rectangle (0, 0, curWidth * displayScale, curHeight * displayScale);
 						cr.SetSourceColor (SyntaxHighlightingService.GetColor (TextEditor.EditorTheme, EditorThemeColors.Background));
 						cr.Fill ();
@@ -245,18 +252,18 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				{
 					this.mode = mode;
 
-					cr = Gdk.CairoHelper.Create (mode.backgroundBuffer);
-					
+					cr = new Cairo.Context (mode.backgroundBuffer);
+
 					cr.LineWidth = 1;
-					int w = mode.backgroundBuffer.ClipRegion.Clipbox.Width;
-					int h = mode.backgroundBuffer.ClipRegion.Clipbox.Height;
+					int w = mode.backgroundBuffer.Width;
+					int h = mode.backgroundBuffer.Height;
 					cr.Rectangle (0, 0, w, h);
 					if (mode.TextEditor.EditorTheme != null)
 						cr.SetSourceColor (SyntaxHighlightingService.GetColor (mode.TextEditor.EditorTheme, EditorThemeColors.Background));
 					cr.Fill ();
 
 					maxLine = mode.TextEditor.GetTextEditorData ().VisibleLineCount;
-					sx = w / (double)mode.TextEditor.Allocation.Width;
+					sx = w / (double)mode.TextEditor.Width;
 					sy = Math.Min (1, lineHeight * maxLine / (double)mode.TextEditor.GetTextEditorData ().TotalHeight);
 					cr.Scale (sx, sy);
 
@@ -315,22 +322,27 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			int GetBufferYOffset ()
 			{
 				var displayScale = Platform.IsWindows ? GtkWorkarounds.GetScaleFactor (this) : 1.0;
-				int h = (int)(backgroundPixbuf.ClipRegion.Clipbox.Height / displayScale) - Allocation.Height;
+				int h = (int)(backgroundPixbuf.Height / displayScale) - Height;
 				if (h < 0)
 					return 0;
 				return Math.Max (0, (int)(h * (vadjustment.Value) / (vadjustment.Upper - vadjustment.Lower - vadjustment.PageSize)));
 			}
 
-			protected override bool OnExposeEvent (Gdk.EventExpose e)
+			protected override void OnSnapshot (Gtk.Snapshot snapshot)
 			{
-				if (TextEditor == null)
-					return true;
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (e.Window)) {
+				if (TextEditor == null || Width <= 0 || Height <= 0)
+					return;
+				using (Cairo.Context cr = snapshot.CreateCairoContext (this)) {
 					cr.LineWidth = 1;
 					if (backgroundPixbuf != null) {
-						e.Window.DrawDrawable (Style.BlackGC, backgroundPixbuf, 0, GetBufferYOffset (), 0, 0, Allocation.Width, Allocation.Height);
+						cr.Save ();
+						cr.Rectangle (0, 0, Width, Height);
+						cr.Clip ();
+						cr.SetSourceSurface (backgroundPixbuf, 0, -GetBufferYOffset ());
+						cr.Paint ();
+						cr.Restore ();
 					} else {
-						cr.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+						cr.Rectangle (0, 0, Width, Height);
 						if (TextEditor.EditorTheme != null)
 							cr.SetSourceColor (SyntaxHighlightingService.GetColor (TextEditor.EditorTheme, EditorThemeColors.Background));
 						cr.Fill ();
@@ -351,17 +363,15 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 						cr.Rectangle (0,
 									  dy - y,
-									  Allocation.Width,
+									  Width,
 									  lineHeight * vadjustment.PageSize / TextEditor.LineHeight);
-						var c = (Cairo.Color)(HslColor)Style.Dark (State);
+						var c = MonoDevelop.Ide.Gui.Styles.WidgetBorderColor.ToCairoColor ();
 						c.A = 0.2;
 						cr.SetSourceColor (c);
 						cr.Fill ();
 					}
 					DrawLeftBorder (cr);
 				}
-
-				return true;
 			}
 		}
 	}

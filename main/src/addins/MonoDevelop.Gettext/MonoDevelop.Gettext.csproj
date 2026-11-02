@@ -57,6 +57,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Deployment\MonoDevelop.Deployment\DesignerLayout.cs"><Link>DesignerLayout.cs</Link></Compile>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="MonoDevelop.Gettext.Editor\CatalogEditorView.cs" />
     <Compile Include="MonoDevelop.Gettext.Editor\GtkSpell.cs" />

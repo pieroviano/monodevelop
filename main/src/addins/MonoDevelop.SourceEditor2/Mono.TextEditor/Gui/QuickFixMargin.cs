@@ -109,7 +109,7 @@ namespace Mono.TextEditor
 			}
 		}
 
-		readonly static Cursor textLinkCursor = new Cursor (CursorType.Hand1);
+		readonly static Cursor textLinkCursor = new Cursor ("pointer", null);
 		public MarginMarker HoveredSmartTagMarker {
 			get => hoveredSmartTagMarker; 
 			set {

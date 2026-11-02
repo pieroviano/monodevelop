@@ -46,6 +46,7 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DesignerLayout.cs" />
     <Compile Include="MonoDevelop.Deployment\DeployService.cs" />
     <Compile Include="MonoDevelop.Deployment\PackageBuilder.cs" />
     <Compile Include="MonoDevelop.Deployment\FileCopyConfiguration.cs" />

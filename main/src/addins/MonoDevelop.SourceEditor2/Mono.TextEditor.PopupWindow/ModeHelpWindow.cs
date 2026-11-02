@@ -33,7 +33,11 @@ using MonoDevelop.Components;
 
 namespace Mono.TextEditor.PopupWindow
 {
-	abstract class ModeHelpWindow : Gtk.EventBox
+	/// <summary>
+	/// The help overlay shown by the edit modes. It is embedded in the editor with
+	/// <c>TextArea.AddTopLevelWidget</c> (GTK 4 cannot position toplevel windows).
+	/// </summary>
+	abstract class ModeHelpWindow : Gtk.Widget
 	{
 		public string TitleText {
 			get;
@@ -45,32 +49,22 @@ namespace Mono.TextEditor.PopupWindow
 			set;
 		}
 
+		/// <summary>GTK 4 surfaces are always composited, the rounded shape with the arrow can always be drawn.</summary>
 		public bool SupportsAlpha {
-			get;
-			private set;
+			get { return true; }
 		}
 
 		public ModeHelpWindow ()
 		{
-			VisibleWindow = false;
 			Items = new List<KeyValuePair<string, string>> ();
-			CheckScreenColormap ();
 		}
 
-		void CheckScreenColormap ()
+		/// <summary>The size the help window would like to have.</summary>
+		public Gdk.Size GetNaturalSize ()
 		{
-			Colormap = Screen.RgbaColormap;
-			if (Colormap == null) {
-				Colormap = Screen.RgbColormap;
-				SupportsAlpha = false;
-			} else
-				SupportsAlpha = true;
-		}
-		
-		protected override void OnScreenChanged (Gdk.Screen previous_screen)
-		{
-			base.OnScreenChanged (previous_screen);
-			CheckScreenColormap ();
+			Measure (Gtk.Orientation.Horizontal, -1, out _, out int width, out _, out _);
+			Measure (Gtk.Orientation.Vertical, width, out _, out int height, out _, out _);
+			return new Gdk.Size (width, height);
 		}
 
 	}
@@ -84,9 +78,8 @@ namespace Mono.TextEditor.PopupWindow
 			layout = new Pango.Layout (PangoContext);
 		}
 
-		protected override void OnSizeRequested (ref Gtk.Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			base.OnSizeRequested (ref requisition);
 			int descriptionWidth = 1;
 			int totalHeight = yBorder * 2 + 1;
 			
@@ -108,33 +101,30 @@ namespace Mono.TextEditor.PopupWindow
 				totalHeight += height;
 			}
 			xSpacer += xBorder * 2 + 1;
-			
-			requisition.Width = descriptionWidth + xSpacer + xBorder * 2 + 1;
-			requisition.Height = totalHeight;
+
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? descriptionWidth + xSpacer + xBorder * 2 + 1 : totalHeight;
+			minimum_baseline = natural_baseline = -1;
 		}
-		
+
 		int xSpacer = 0;
-		
-		protected override void OnDestroyed ()
+
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
-			
-			if (layout != null) {
+			if (disposing && layout != null) {
 				layout.Dispose ();
 				layout = null;
 			}
+			base.Dispose (disposing);
 		}
 		
 		const int xBorder = 4;
 		const int yBorder = 2;
 		
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
-		{	
-			using (var g = Gdk.CairoHelper.Create (args.Window)) {
-				g.Translate (Allocation.X, Allocation.Y);
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
+			snapshot.DrawCairo (this, g => {
 				g.LineWidth = 1;
-				
-				Gdk.GC gc = new Gdk.GC (args.Window);
+
 				layout.SetMarkup (TitleText);
 				int width, height;
 				layout.GetPixelSize (out width, out height);
@@ -151,14 +141,14 @@ namespace Mono.TextEditor.PopupWindow
 				g.ShowLayout (layout);
 				g.Restore ();
 
-				FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, false, true, 0.5, height * 2 + yBorder * 2 + 0.5, height, Allocation.Width - 1, Allocation.Height - height * 2 - yBorder * 2 - 1);
+				FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, false, true, 0.5, height * 2 + yBorder * 2 + 0.5, height, Width - 1, Height - height * 2 - yBorder * 2 - 1);
 				g.SetSourceColor (Styles.TableLayoutModeBackgroundColor.ToCairoColor ());
 				g.FillPreserve ();
 				g.SetSourceColor (Styles.TableLayoutModeBorderColor.ToCairoColor ());
 				g.Stroke ();
 				
 				g.MoveTo (xSpacer + 0.5, height * 2 + yBorder * 2);
-				g.LineTo (xSpacer + 0.5, Allocation.Height - 1);
+				g.LineTo (xSpacer + 0.5, Height - 1);
 				g.SetSourceColor (Styles.TableLayoutModeGridColor.ToCairoColor ());
 				g.Stroke ();
 				
@@ -171,7 +161,7 @@ namespace Mono.TextEditor.PopupWindow
 					layout.GetPixelSize (out width, out height);
 					
 					if (i == 0) {
-						FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, false, true, false, false, 0, y + 0.5, height + 1.5, Allocation.Width, height);
+						FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, false, true, false, false, 0, y + 0.5, height + 1.5, Width, height);
 						g.SetSourceColor (Styles.TableLayoutModeCategoryBackgroundColor.ToCairoColor ());
 						g.FillPreserve ();
 						g.SetSourceColor (Styles.TableLayoutModeBorderColor.ToCairoColor ());
@@ -183,7 +173,6 @@ namespace Mono.TextEditor.PopupWindow
 						g.Stroke ();
 					}
 					
-					gc.RgbFgColor = (HslColor)(i == 0 ? Styles.TableLayoutModeBackgroundColor : Styles.TableLayoutModeTextColor).ToCairoColor ();
 					g.Save ();
 					g.SetSourceColor (Styles.TableLayoutModeTextColor.ToCairoColor ());
 					g.Translate (xBorder, y);
@@ -200,16 +189,13 @@ namespace Mono.TextEditor.PopupWindow
 					// draw top line
 					if (i > 0) {
 						g.MoveTo (1, y + 0.5);
-						g.LineTo (Allocation.Width - 1, y + 0.5);
+						g.LineTo (Width - 1, y + 0.5);
 						g.SetSourceColor (Styles.TableLayoutModeGridColor.ToCairoColor ());
 						g.Stroke ();
 					}
 					y += height;
 				}
-				gc.Dispose ();
-			}
-
-			return base.OnExposeEvent (args);
+			});
 		}
 	}
 
@@ -425,9 +411,8 @@ namespace Mono.TextEditor.PopupWindow
 			titleLayout.FontDescription = desc;
 		}
 
-		protected override void OnSizeRequested (ref Gtk.Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			base.OnSizeRequested (ref requisition);
 			int descriptionWidth = 1;
 			int totalHeight = yTitleBorder * 2 + yDescriptionBorder * 2 + 1;
 			
@@ -443,28 +428,29 @@ namespace Mono.TextEditor.PopupWindow
 			xSpacer = System.Math.Max (width, w2);
 
 			xSpacer += xDescriptionBorder * 2 + 1;
-			
-			requisition.Width = triangleWidth + descriptionWidth + xSpacer;
-			requisition.Height = totalHeight;
-		}
-		
-		int xSpacer = 0;
-		
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
 
-			if (descTexts != null) {
-				foreach (var item in descTexts) {
-					item.Dispose ();
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? triangleWidth + descriptionWidth + xSpacer : totalHeight;
+			minimum_baseline = natural_baseline = -1;
+		}
+
+		int xSpacer = 0;
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing) {
+				if (descTexts != null) {
+					foreach (var item in descTexts) {
+						item.Dispose ();
+					}
+					descTexts = null;
 				}
-				descTexts = null;
+
+				if (titleLayout != null) {
+					titleLayout.Dispose ();
+					titleLayout = null;
+				}
 			}
-			
-			if (titleLayout != null) {
-				titleLayout.Dispose ();
-				titleLayout = null;
-			}
+			base.Dispose (disposing);
 		}
 		
 		const int triangleHeight = 16;
@@ -474,10 +460,9 @@ namespace Mono.TextEditor.PopupWindow
 		const int yDescriptionBorder = 8;
 		const int yTitleBorder = 8;
 
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			using (var g = Gdk.CairoHelper.Create (args.Window)) {
-				g.Translate (Allocation.X, Allocation.Y);
+			snapshot.DrawCairo (this, g => {
 				g.LineWidth = 1;
 				titleLayout.SetMarkup (TitleText);
 				int width, height;
@@ -487,9 +472,9 @@ namespace Mono.TextEditor.PopupWindow
 				width += xDescriptionBorder * 2;
 
 				if (SupportsAlpha) {
-					FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, true, true, tw + 0.5, 0.5, 12, Allocation.Width - 1 - tw, Allocation.Height);
+					FoldingScreenbackgroundRenderer.DrawRoundRectangle (g, true, true, tw + 0.5, 0.5, 12, Width - 1 - tw, Height);
 				} else {
-					g.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+					g.Rectangle (0, 0, Width, Height);
 				}
 				g.SetSourceColor (Styles.InsertionCursorBackgroundColor.ToCairoColor ());
 				g.FillPreserve ();
@@ -502,18 +487,18 @@ namespace Mono.TextEditor.PopupWindow
 				g.ShowLayout (titleLayout);
 
 				if (SupportsAlpha) {
-					g.MoveTo (tw, Allocation.Height / 2 - th / 2);
-					g.LineTo (0, Allocation.Height / 2);
-					g.LineTo (tw, Allocation.Height / 2 + th / 2);
-					g.LineTo (tw + 5, Allocation.Height / 2 + th / 2);
-					g.LineTo (tw + 5, Allocation.Height / 2 - th / 2);
+					g.MoveTo (tw, Height / 2 - th / 2);
+					g.LineTo (0, Height / 2);
+					g.LineTo (tw, Height / 2 + th / 2);
+					g.LineTo (tw + 5, Height / 2 + th / 2);
+					g.LineTo (tw + 5, Height / 2 - th / 2);
 					g.ClosePath ();
 					g.SetSourceColor (Styles.InsertionCursorBackgroundColor.ToCairoColor ());
 					g.Fill ();
 
-					g.MoveTo (tw, Allocation.Height / 2 - th / 2);
-					g.LineTo (0, Allocation.Height / 2);
-					g.LineTo (tw, Allocation.Height / 2 + th / 2);
+					g.MoveTo (tw, Height / 2 - th / 2);
+					g.LineTo (0, Height / 2);
+					g.LineTo (tw, Height / 2 + th / 2);
 					g.SetSourceColor (Styles.InsertionCursorBorderColor.ToCairoColor ());
 					g.Stroke ();
 				}
@@ -526,8 +511,7 @@ namespace Mono.TextEditor.PopupWindow
 					desc.Render (g, x, y + 4);
 					y += desc.Height + 8;
 				}
-			}
-			return base.OnExposeEvent (args);
+			});
 		}
 	}
 }

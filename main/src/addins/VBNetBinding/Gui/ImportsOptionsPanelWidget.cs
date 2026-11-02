@@ -31,7 +31,7 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.VBNetBinding
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class ImportsOptionsPanelWidget : Gtk.Bin
+	public partial class ImportsOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		Gtk.ListStore imports = new Gtk.ListStore (typeof (String));
 		List<Import> currentImports;
@@ -81,7 +81,7 @@ namespace MonoDevelop.VBNetBinding
 			bool removed = false;
 
 			Console.WriteLine ("OnCmdRemoveClicked");
-			treeview1.Selection.SelectedForeach (delegate (Gtk.TreeModel model, Gtk.TreePath path, Gtk.TreeIter iter) 
+			treeview1.Selection.SelectedForeach (delegate (Gtk.ITreeModel model, Gtk.TreePath path, Gtk.TreeIter iter) 
 			{
 				string import;
 				GLib.Value value = new GLib.Value ();

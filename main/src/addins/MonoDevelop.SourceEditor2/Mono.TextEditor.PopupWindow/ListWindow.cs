@@ -31,6 +31,8 @@ using Pango;
 using System;
 using System.Text;
 using Mono.TextEditor;
+using Mono.TextEditor.Theatrics;
+using MonoDevelop.Components;
 
 namespace Mono.TextEditor.PopupWindow
 {
@@ -42,37 +44,61 @@ namespace Mono.TextEditor.PopupWindow
 		Complete = 8 
 	}
 	
-	class ListWindow<T> : Gtk.Window
+	/// <summary>
+	/// A popup list of items. GTK 4 cannot position toplevel windows: the list is a <see cref="Gtk.Popover"/>
+	/// attached to the widget it is shown for (see <see cref="ShowAt"/>).
+	/// </summary>
+	class ListWindow<T> : Gtk.Popover
 	{
-		ScrolledWindow scrollbar;
+		SmartScrolledWindow scrollbar;
 		ListWidget<T> list;
 		IListDataProvider<T> provider;
 		Widget footer;
-		VBox vbox;
-		
+		Gtk.Box vbox;
+
 		StringBuilder word;
 		int curPos;
-		
-		public ListWindow () : base (Gtk.WindowType.Popup)
+
+		public ListWindow ()
 		{
-			vbox = new VBox ();
-			
-			HBox box = new HBox ();
+			Autohide = false;
+			HasArrow = false;
+			vbox = new Gtk.Box (Orientation.Vertical, 0);
+
+			var box = new Gtk.Box (Orientation.Horizontal, 0);
 			list = new ListWidget<T> (this);
 			list.SelectionChanged += new EventHandler (OnSelectionChanged);
-			this.BorderWidth = 0;
-			
-			scrollbar = new Gtk.ScrolledWindow ();
+
+			scrollbar = new SmartScrolledWindow ();
 			scrollbar.Child = list;
-			box.PackStart (scrollbar, true, true, 0);
-			list.ButtonPressEvent += delegate (object o, ButtonPressEventArgs args) {
-				if (args.Event.Button == 1 && args.Event.Type == Gdk.EventType.TwoButtonPress)
+			box.Append (scrollbar);
+			list.Pressed += (o, args) => {
+				if (args.Button == 1 && args.NPress == 2)
 					OnDoubleClicked (EventArgs.Empty);
 			};
-			vbox.PackStart (box, true, true, 0);
-			Add (vbox);
-			
-			this.TypeHint = WindowTypeHint.Menu;
+			vbox.Append (box);
+			Child = vbox;
+		}
+
+		/// <summary>Pops the list up below (x, y) in the coordinates of <paramref name="parent"/>.</summary>
+		public void ShowAt (Gtk.Widget parent, int x, int y)
+		{
+			if (Parent != parent) {
+				if (Parent != null)
+					Unparent ();
+				Parent = parent;
+			}
+			PointingTo = new Gdk.Rectangle (x, y, 1, 1);
+			Popup ();
+			ResetSizes ();
+		}
+
+		/// <summary>Closes the list and detaches it from the widget it was shown for.</summary>
+		public override void Destroy ()
+		{
+			if (Handle != IntPtr.Zero && Visible)
+				Popdown ();
+			base.Destroy ();
 		}
 
 		public event EventHandler DoubleClicked;
@@ -84,22 +110,15 @@ namespace Mono.TextEditor.PopupWindow
 				handler (this, e);
 		}
 
-		public new void Show ()
-		{
-			this.ShowAll ();
-			ResetSizes ();
-		}
-		
 		public void SetHeader (Widget w)
 		{
-			vbox.PackStart (w, false, false, 0);
-			vbox.ReorderChild (w, 0);
+			vbox.Prepend (w);
 		}
-		
+
 		public void ShowFooter (Widget w)
 		{
 			HideFooter ();
-			vbox.PackStart (w, false, false, 0);
+			vbox.Append (w);
 			footer = w;
 		}
 		
@@ -129,7 +148,7 @@ namespace Mono.TextEditor.PopupWindow
 		
 		void ResetSizes ()
 		{
-			this.Resize(this.list.WidthRequest, this.list.HeightRequest);
+			list.QueueResize ();
 		}
 		
 		public IListDataProvider<T> DataProvider
@@ -368,18 +387,8 @@ namespace Mono.TextEditor.PopupWindow
 		{
 		}
 		
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
-		{
-			base.OnExposeEvent (args);
-			
-			int winWidth, winHeight;
-			this.GetSize (out winWidth, out winHeight);
-			this.GdkWindow.DrawRectangle (this.Style.ForegroundGC (StateType.Insensitive), false, 0, 0, winWidth-1, winHeight-1);
-			return false;
-		}
-		
 		public int TextOffset {
-			get { return list.TextOffset + (int) this.BorderWidth; }
+			get { return list.TextOffset; }
 		}
 	}
 

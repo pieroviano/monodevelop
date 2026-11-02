@@ -34,7 +34,7 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.WebReferences.Dialogs
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class WCFConfigWidget : Bin
+	public partial class WCFConfigWidget : MonoDevelop.Components.BinWidget
 	{
 		public WCFConfigWidget (ClientOptions options, DotNetProject project)
 		{
@@ -148,7 +148,7 @@ namespace MonoDevelop.WebReferences.Dialogs
 			return pos < 0 ? name : name.Substring (0, pos);
 		}
 		
-		void PopulateBox (ComboBox box, string category, List<Type> types)
+		void PopulateBox (ComboBoxText box, string category, List<Type> types)
 		{
 			var mapping = Options.CollectionMappings.FirstOrDefault (m => m.Category == category);
 			
@@ -167,7 +167,7 @@ namespace MonoDevelop.WebReferences.Dialogs
 			box.Active = types.IndexOf (current);
 		}
 		
-		void UpdateBox (ComboBox box, string category, IList<Type> types)
+		void UpdateBox (ComboBoxText box, string category, IList<Type> types)
 		{
 			var mapping = Options.CollectionMappings.FirstOrDefault (m => m.Category == category);
 			if (mapping == null) {

@@ -316,13 +316,13 @@ namespace Mono.TextEditor
 			RefreshSearchMarker ();
 		}
 
-		void HandleFocusInEvent (object o, FocusInEventArgs args)
+		void HandleFocusInEvent (object o, EventArgs args)
 		{
 			selectionColor = SyntaxHighlightingService.GetColor (EditorTheme, EditorThemeColors.Selection);
 			currentLineColor = SyntaxHighlightingService.GetColor (EditorTheme, EditorThemeColors.LineHighlight);
 		}
 
-		void HandleFocusOutEvent (object o, FocusOutEventArgs args)
+		void HandleFocusOutEvent (object o, EventArgs args)
 		{
 			selectionColor = SyntaxHighlightingService.GetColor (EditorTheme, EditorThemeColors.InactiveSelection);
 			currentLineColor = SyntaxHighlightingService.GetColor (EditorTheme, EditorThemeColors.InactiveLineHighlight);
@@ -509,21 +509,21 @@ namespace Mono.TextEditor
 		}
 
 		System.ComponentModel.BackgroundWorker searchPatternWorker;
-		Lazy<Cursor> xtermCursor = new Lazy<Cursor> (() => new Cursor (CursorType.Xterm));
+		Lazy<Cursor> xtermCursor = new Lazy<Cursor> (() => new Cursor ("text", null));
 		Lazy<Cursor> xtermCursorInverted = new Lazy<Cursor> (() => {
 #if MAC
 			var img = OSXEditor.IBeamCursorImage;
 			if (img != null) {
-				return new Cursor(Display.Default, (InvertCursorPixbuf (img.ToPixbuf())), (int)img.Width / 2, (int)img.Height / 2);
+				return new Cursor (new Gdk.Texture (InvertCursorPixbuf (img.ToPixbuf())), (int)img.Width / 2, (int)img.Height / 2, null);
 			} else {
-				return new Cursor (CursorType.Xterm);
+				return new Cursor ("text", null);
 			}
 #else
-			return new Cursor (CursorType.Xterm);
+			return new Cursor ("text", null);
 #endif
 		});
 
-		Lazy<Cursor> textLinkCursor = new Lazy<Cursor> (() => new Cursor (CursorType.Hand1));
+		Lazy<Cursor> textLinkCursor = new Lazy<Cursor> (() => new Cursor ("pointer", null));
 
 
 		unsafe static Pixbuf InvertCursorPixbuf(Pixbuf src)
@@ -816,8 +816,8 @@ namespace Mono.TextEditor
 
 			GtkWorkarounds.SetImCursorLocation (
 				textEditor.IMContext,
-				textEditor.GdkWindow,
-				new Rectangle ((int)nonPreeditX, (int)nonPreeditY, 0, (int)(LineHeight - 1)));
+				textEditor.TextArea,
+				new Gdk.Rectangle ((int)nonPreeditX, (int)nonPreeditY, 0, (int)(LineHeight - 1)));
 		}
 
 		public static Gdk.Rectangle EmptyRectangle = new Gdk.Rectangle (0, 0, 0, 0);
@@ -846,13 +846,15 @@ namespace Mono.TextEditor
 			return caretChar;
 		}
 
-		public void DrawCaret (Gdk.Drawable win, Gdk.Rectangle rect)
+		public void DrawCaret (Cairo.Context context, Gdk.Rectangle rect)
 		{
 			if (!this.textEditor.IsInDrag && !(this.caretX >= 0 && (!this.textEditor.IsSomethingSelected || this.textEditor.SelectionRange.Length == 0)))
 				return;
-			if (win == null || Settings.Default.CursorBlink && !Caret.IsVisible || !caretBlink)
+			if (context == null || Settings.Default.CursorBlink && !Caret.IsVisible || !caretBlink)
 				return;
-			using (Cairo.Context cr = Gdk.CairoHelper.Create (win)) {
+			var cr = context;
+			cr.Save ();
+			try {
 				cr.Rectangle (XOffset, 0, textEditor.Allocation.Width - XOffset, textEditor.Allocation.Height);
 				cr.Clip ();
 				cr.LineWidth = System.Math.Max (1, System.Math.Floor (textEditor.Options.Zoom));
@@ -919,6 +921,8 @@ namespace Mono.TextEditor
 					             caretRectangle.Y + caretRectangle.Height + 0.5);
 					break;
 				}
+			} finally {
+				cr.Restore ();
 			}
 		}
 
@@ -1173,7 +1177,7 @@ namespace Mono.TextEditor
 								chunkMarker.ChangeForeColor (textEditor, chunk, ref color);
 							}
 							color = StripAlphaValue (color);
-							atts.AddForegroundAttribute ((HslColor)color, si, ei);
+							atts.AddForegroundAttribute ((Gdk.RGBA)(HslColor)color, si, ei);
 
 							if (!chunkStyle.TransparentBackground && GetPixel (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Background)) != GetPixel (chunkStyle.Background)) {
 								wrapper.AddBackground (chunkStyle.Background, (int)si, (int)ei);
@@ -1205,7 +1209,7 @@ namespace Mono.TextEditor
 								chunkMarker.ChangeForeColor (textEditor, chunk, ref color);
 							}
 							color = StripAlphaValue (color);
-							atts.AddForegroundAttribute ((HslColor)color, si, ei);
+							atts.AddForegroundAttribute ((Gdk.RGBA)(HslColor)color, si, ei);
 							if (!wrapper.StartSet)
 								wrapper.SelectionStartIndex = (int)si;
 							wrapper.SelectionEndIndex = (int)ei;
@@ -1235,10 +1239,10 @@ namespace Mono.TextEditor
 						ei += len;
 					}
 
-					atts.AddForegroundAttribute (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Foreground), si, ei);
+					atts.AddForegroundAttribute ((Gdk.RGBA)SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Foreground), si, ei);
 					var hasBackground = wrapper.BackgroundColors.Any (bg => bg.FromIdx <= si && bg.ToIdx >= ei);
 					if (hasBackground)
-						atts.AddBackgroundAttribute (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Background), si, ei);
+						atts.AddBackgroundAttribute ((Gdk.RGBA)SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Background), si, ei);
 					atts.InsertOffsetList (textEditor.preeditAttrs, si, ei);
 				}
 				wrapper.Text = lineText;
@@ -2271,19 +2275,19 @@ namespace Mono.TextEditor
 			cr.Restore ();
 		}
 
-		static internal ulong GetPixel (Color color)
+		static internal ulong GetPixel (Gdk.RGBA color)
 		{
-			return (((ulong)color.Red) << 32) | (((ulong)color.Green) << 16) | ((ulong)color.Blue);
+			return (((ulong)(color.Red * 65535)) << 32) | (((ulong)(color.Green * 65535)) << 16) | ((ulong)(color.Blue * 65535));
 		}
 
 		static internal ulong GetPixel (HslColor color)
 		{
-			return GetPixel ((Color)color);
+			return GetPixel ((Gdk.RGBA)color);
 		}
 
 		static internal ulong GetPixel (Cairo.Color color)
 		{
-			return GetPixel ((Gdk.Color) ((HslColor)color));
+			return GetPixel ((Gdk.RGBA) ((HslColor)color));
 		}
 
 		internal bool InSelectionDrag = false;
@@ -2374,7 +2378,7 @@ namespace Mono.TextEditor
 					return;
 				}
 
-				if (args.Type == EventType.TwoButtonPress) {
+				if (args.ClickCount == 2) {
 					var data = textEditor.GetTextEditorData ();
 					mouseWordStart = data.FindCurrentWordStart (offset);
 					mouseWordEnd = data.FindCurrentWordEnd (offset);
@@ -2393,7 +2397,7 @@ namespace Mono.TextEditor
 						}
 					}
 					return;
-				} else if (args.Type == EventType.ThreeButtonPress) {
+				} else if (args.ClickCount == 3) {
 					int lineNr = Document.OffsetToLineNumber (offset);
 					textEditor.SetSelectLines (lineNr, lineNr);
 
@@ -2533,15 +2537,12 @@ namespace Mono.TextEditor
 				throw new InvalidOperationException ("CodeSegment preview window isn't shown.");
 			var previewSegment = previewWindow.Segment;
 
-			int x = 0, y = 0;
-			this.previewWindow.GdkWindow.GetOrigin (out x, out y);
-			int w = previewWindow.Allocation.Width;
-			int h = previewWindow.Allocation.Height;
+			int w = previewWindow.Width;
+			int h = previewWindow.Height;
 			if (previewWindow.HasFooterText)
 				h -= previewWindow.FooterTextHeight;
 			CodeSegmentEditorWindow codeSegmentEditorWindow = new CodeSegmentEditorWindow (textEditor);
-			codeSegmentEditorWindow.Move (x, y);
-			codeSegmentEditorWindow.Resize (w, h);
+			codeSegmentEditorWindow.SetDefaultSize (w, h);
 			int indentLength = -1;
 
 			StringBuilder textBuilder = StringBuilderCache.Allocate ();
@@ -2565,7 +2566,7 @@ namespace Mono.TextEditor
 			codeSegmentEditorWindow.Text = StringBuilderCache.ReturnAndFree (textBuilder);
 
 			HideCodeSegmentPreviewWindow ();
-			codeSegmentEditorWindow.ShowAll ();
+			codeSegmentEditorWindow.Present ();
 
 			codeSegmentEditorWindow.GrabFocus ();
 
@@ -2589,30 +2590,11 @@ namespace Mono.TextEditor
 					previewWindow = null;
 					return false;
 				}
-				if (textEditor == null || textEditor.GdkWindow == null) {
+				if (textEditor == null || !textEditor.IsRealized) {
 					return false;
 				}
-				int ox = 0, oy = 0;
-				textEditor.GdkWindow.GetOrigin (out ox, out oy);
-				ox += textEditor.Allocation.X;
-				oy += textEditor.Allocation.Y;
-
-				int x = hintRectangle.Right;
-				int y = hintRectangle.Bottom;
-				var req = previewWindow.SizeRequest ();
-				int w = req.Width;
-				int h = req.Height;
-
-				var geometry = this.textEditor.Screen.GetUsableMonitorGeometry (this.textEditor.Screen.GetMonitorAtPoint (ox + x, oy + y));
-
-				if (x + ox + w > geometry.X + geometry.Width)
-					x = hintRectangle.Left - w;
-				if (y + oy + h > geometry.Y + geometry.Height)
-					y = hintRectangle.Top - h;
-				int destX = System.Math.Max (0, ox + x);
-				int destY = System.Math.Max (0, oy + y);
-				previewWindow.Move (destX, destY);
-				previewWindow.ShowAll ();
+				// the preview is a popover pointing to the folding hint; GTK keeps it inside the monitor
+				previewWindow.ShowAt (textEditor.TextArea, hintRectangle);
 				return false;
 			});
 		}
@@ -2692,7 +2674,7 @@ namespace Mono.TextEditor
 
 		Cursor GetDefaultTextCursor()
 		{
-			var baseColor = textEditor.Style.Background(StateType.Normal);
+			var baseColor = SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.Background);
 			return  HslColor.Brightness(baseColor) < 0.5 ? xtermCursorInverted.Value : xtermCursor.Value;
 		}
 
@@ -2822,12 +2804,12 @@ namespace Mono.TextEditor
 
 			//HACK: use cmd as Mac block select modifier because GTK currently makes it impossible to access alt/mod1
 			//NOTE: Mac cmd seems to be mapped as ControlMask from mouse events on older GTK, mod1 on newer
-			var blockSelModifier = !Platform.IsMac ? ModifierType.Mod1Mask
-				: (ModifierType.ControlMask | ModifierType.Mod1Mask);
+			var blockSelModifier = !Platform.IsMac ? ModifierType.AltMask
+				: (ModifierType.ControlMask | ModifierType.AltMask);
 
 			//NOTE: also allow super for block select on X11 because most window managers use the alt modifier already
 			if (Platform.IsLinux)
-				blockSelModifier |= (ModifierType.SuperMask | ModifierType.Mod4Mask);
+				blockSelModifier |= (ModifierType.SuperMask);
 
 			if ((args.ModifierState & blockSelModifier) != 0) {
 				textEditor.SelectionMode = MonoDevelop.Ide.Editor.SelectionMode.Block;

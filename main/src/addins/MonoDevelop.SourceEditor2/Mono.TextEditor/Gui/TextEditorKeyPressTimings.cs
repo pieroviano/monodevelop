@@ -106,7 +106,7 @@ namespace Mono.TextEditor
 			totalTimeCaretDrawing += duration;
 		}
 
-		public void StartTimer (Gdk.EventKey eventKey)
+		public void StartTimer (Gdk.KeyEvent eventKey)
 		{
 			if (telemetry == null)
 				StartTimer (TimeSpan.FromMilliseconds (eventKey.Time));

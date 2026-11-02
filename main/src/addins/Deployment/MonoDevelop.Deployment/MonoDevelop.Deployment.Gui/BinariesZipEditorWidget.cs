@@ -7,7 +7,7 @@ namespace MonoDevelop.Deployment.Gui
 {
 	[System.ComponentModel.Category("MonoDevelop.Deployment")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class BinariesZipEditorWidget : Gtk.Bin
+	internal partial class BinariesZipEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		BinariesZipPackageBuilder builder;
 		bool loading;

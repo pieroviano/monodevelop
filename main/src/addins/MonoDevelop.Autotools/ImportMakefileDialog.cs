@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 
 using Gtk;
 using MonoDevelop.Core;
@@ -20,8 +21,7 @@ namespace MonoDevelop.Autotools
 			Title = GettextCatalog.GetString ("Makefile Project Import");
 			Modal = true;
 			
-			VBox box = new VBox ();
-			box.Spacing = 6;
+			Gtk.Box box = DesignerLayout.VBox (6);
 			
 			Gtk.Label lab = new Gtk.Label ();
 			lab.Wrap = true;
@@ -31,28 +31,26 @@ namespace MonoDevelop.Autotools
 				"{0} is going to create a project bound to a Makefile. Please enter the name you want to give to the new project.",
 				BrandingService.ApplicationName
 			);
-			box.PackStart (lab, false, false, 0);
+			DesignerLayout.Pack (box, lab, false);
 			
-			HBox hb = new HBox ();
-			hb.Spacing = 6;
-			hb.PackStart (new Gtk.Label (GettextCatalog.GetString ("Project Name:")), false, false, 0);
+			Gtk.Box hb = DesignerLayout.HBox (6);
+			DesignerLayout.Pack (hb, new Gtk.Label (GettextCatalog.GetString ("Project Name:")), false);
 			nameEntry = new Gtk.Entry ();
 			nameEntry.Text = name;
-			hb.PackStart (nameEntry, true, true, 0);
-			box.PackStart (hb, false, false, 0);
+			DesignerLayout.Pack (hb, nameEntry, true);
+			DesignerLayout.Pack (box, hb, false);
 			
-			box.PackStart (new Gtk.HSeparator (), false, false, 0);
+			DesignerLayout.Pack (box, new Gtk.Separator (Gtk.Orientation.Horizontal), false);
 			
 			optionsWidget = new MakefileOptionPanelWidget (this, project, tmpData);
 			
-			box.PackStart (optionsWidget, false, false, 0);
-			box.BorderWidth = 6;
+			DesignerLayout.Pack (box, optionsWidget, false);
+			DesignerLayout.Margin (box, 6);
 			
-			this.VBox.PackStart (box, true, true, 0);
+			DesignerLayout.Pack (this.ContentArea, box, true);
 			
-			this.AddButton (Gtk.Stock.Cancel, ResponseType.Cancel);
-			this.AddButton (Gtk.Stock.Ok, ResponseType.Ok);
-			ShowAll ();
+			this.AddButton (GettextCatalog.GetString ("_Cancel"), ResponseType.Cancel);
+			this.AddButton (GettextCatalog.GetString ("_OK"), ResponseType.Ok);
 			
 			optionsWidget.SetImportMode ();
 		}

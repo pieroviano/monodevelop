@@ -12,25 +12,26 @@ namespace PerformanceDiagnosticsAddIn
 
 		public override Control CreatePanelWidget()
 		{
-			var vbox = new Gtk.VBox();
-			vbox.Spacing = 6;
+			var vbox = new Gtk.Box (Gtk.Orientation.Vertical, 6);
 
-			var generalSectionLabel = new Gtk.Label("<b>" + GettextCatalog.GetString("General") + "</b>");
+			var generalSectionLabel = new Gtk.Label ((string)null);
 			generalSectionLabel.UseMarkup = true;
+			generalSectionLabel.LabelProp = "<b>" + GettextCatalog.GetString ("General") + "</b>";
 			generalSectionLabel.Xalign = 0;
-			vbox.PackStart(generalSectionLabel, false, false, 0);
+			generalSectionLabel.Halign = Gtk.Align.Start;
+			vbox.Append (generalSectionLabel);
 
-			var outputDirectoryHBox = new Gtk.HBox();
-			outputDirectoryHBox.BorderWidth = 10;
-			outputDirectoryHBox.Spacing = 6;
+			var outputDirectoryHBox = new Gtk.Box (Gtk.Orientation.Horizontal, 6);
+			outputDirectoryHBox.MarginTop = outputDirectoryHBox.MarginBottom = outputDirectoryHBox.MarginStart = outputDirectoryHBox.MarginEnd = 10;
 			var outputDirectoryLabel = new Gtk.Label (GettextCatalog.GetString ("Output directory:"));
 			outputDirectoryLabel.Xalign = 0;
-			outputDirectoryHBox.PackStart(outputDirectoryLabel, false, false, 0);
+			outputDirectoryHBox.Append (outputDirectoryLabel);
 			folderEntry.Path = Options.OutputPath.Value;
-			folderEntry.SetEntryAccessibleTitleUIElement (outputDirectoryLabel.Accessible);
-			outputDirectoryHBox.PackStart(folderEntry, true, true, 0);
+			folderEntry.SetEntryAccessibleTitleUIElement (outputDirectoryLabel);
+			folderEntry.Hexpand = true;
+			outputDirectoryHBox.Append (folderEntry);
 
-			vbox.PackStart(outputDirectoryHBox, false, false, 0);
+			vbox.Append (outputDirectoryHBox);
 
 			//if (Options.HasMemoryLeakFeature) {
 			//	uiCountersCheck = new Gtk.CheckButton (GettextCatalog.GetString ("Show UI Widget counters in the toolbar"));
@@ -39,7 +40,6 @@ namespace PerformanceDiagnosticsAddIn
 			//	vbox.PackStart (uiCountersCheck, false, false, 0);
 			//}
 
-			vbox.ShowAll();
 			return vbox;
 		}
 

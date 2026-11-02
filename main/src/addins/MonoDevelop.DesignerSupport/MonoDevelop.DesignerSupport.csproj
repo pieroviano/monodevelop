@@ -90,7 +90,6 @@
     <Compile Include="MonoDevelop.DesignerSupport.Toolbox\TypeReference.cs" />
     <Compile Include="MonoDevelop.DesignerSupport\IPropertyProvider.cs" />
     <Compile Include="MonoDevelop.DesignerSupport\CustomDescriptor.cs" />
-    <Compile Include="gtk-gui\generated.cs" />
     <Compile Include="MonoDevelop.DesignerSupport.Toolbox\ComponentSelectorDialog.cs" />
     <Compile Include="gtk-gui\MonoDevelop.DesignerSupport.Toolbox.ComponentSelectorDialog.cs" />
     <Compile Include="MonoDevelop.DesignerSupport.Toolbox\ToolboxConfiguration.cs" />
@@ -154,7 +153,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="MonoDevelop.DesignerSupport.addin.xml" />
-    <EmbeddedResource Include="gtk-gui\gui.stetic" />
 
     <EmbeddedResource Include="icons\compact-display-16.png" />
     <EmbeddedResource Include="icons\compact-display-16%402x.png" />

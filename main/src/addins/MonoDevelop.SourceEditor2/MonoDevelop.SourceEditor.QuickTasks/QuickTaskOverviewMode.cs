@@ -45,7 +45,7 @@ using System.Reflection.Metadata.Ecma335;
 
 namespace MonoDevelop.SourceEditor.QuickTasks
 {
-	partial class QuickTaskOverviewMode : DrawingArea, IMapMode
+	partial class QuickTaskOverviewMode : Gtk.Widget, IMapMode
 	{
 		static Xwt.Drawing.Image searchImage = Xwt.Drawing.Image.FromResource ("issues-busy-16.png");
 		static Xwt.Drawing.Image okImage = Xwt.Drawing.Image.FromResource ("issues-ok-16.png");
@@ -88,29 +88,18 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			}
 		}
 
-		Cairo.Color win81Slider;
-		Cairo.Color win81SliderPrelight;
-		int win81ScrollbarWidth;
+		// Windows scroll bar metrics: GTK 4 has no RC styles to read the native slider from.
+		readonly Cairo.Color win81Slider = new Cairo.Color (0xCD / 255d, 0xCD / 255d, 0xCD / 255d);
+		readonly Cairo.Color win81SliderPrelight = new Cairo.Color (0xA6 / 255d, 0xA6 / 255d, 0xA6 / 255d);
+		readonly int win81ScrollbarWidth = 17;
 
-		protected override void OnStyleSet (Style previous_style)
-		{
-			base.OnStyleSet (previous_style);
-			if (Core.Platform.IsWindows) {
-				using (var scrollstyle = Rc.GetStyleByPaths (Settings, null, null, VScrollbar.GType)) {
-					var scrl = new VScrollbar (null);
-					scrl.Style = scrollstyle;
-					win81Slider = scrollstyle.Background (StateType.Normal).ToCairoColor ();
-					win81SliderPrelight = scrollstyle.Background (StateType.Prelight).ToCairoColor ();
-					win81ScrollbarWidth = (int)scrl.StyleGetProperty ("slider-width");
-					scrl.Destroy ();
-				}
-			}
-		}
+		/// <summary>True while the pointer is over the slider.</summary>
+		bool prelight;
 
 		readonly int barPadding = MonoDevelop.Core.Platform.IsWindows ? 1 : 3;
 
 		readonly QuickTaskStrip parentStrip;
-		protected readonly Adjustment vadjustment;
+		protected readonly Gtk.Adjustment vadjustment;
 		TextViewMargin textViewMargin;
 
 		public Mono.TextEditor.MonoTextEditor TextEditor {
@@ -134,8 +123,14 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 		public QuickTaskOverviewMode (QuickTaskStrip parent)
 		{
 			this.parentStrip = parent;
-			Events |= EventMask.ButtonPressMask | EventMask.ButtonReleaseMask | EventMask.ButtonMotionMask |
-				EventMask.PointerMotionMask | EventMask.LeaveNotifyMask | EventMask.EnterNotifyMask;
+			Vexpand = true;
+			this.AddClickHandler (OnButtonPressed, OnButtonReleased);
+			this.AddMotionHandler (OnMotion, (x, y) => OnPointerEnter (), OnPointerLeave);
+			this.AddFocusHandler (() => QueueDraw (), () => {
+				QueueDraw ();
+				currentFocus = FocusWidget.None;
+			});
+			this.AddKeyPressHandler (OnKeyPressed);
 			vadjustment = this.parentStrip.VAdjustment;
 
 			vadjustment.ValueChanged += RedrawOnVAdjustmentChange;
@@ -169,6 +164,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			fadeInStage.UpdateFrequency = fadeOutStage.UpdateFrequency = 10;
 
 			CanFocus = true;
+			Focusable = true;
 		}
 
 		void BreakpointsChanged (object sender, Mono.Debugging.Client.BreakEventArgs e)
@@ -193,7 +189,27 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			}
 		}
 
-		protected override void OnDestroyed ()
+		bool destroyed;
+
+		public override void Destroy ()
+		{
+			if (!destroyed) {
+				destroyed = true;
+				OnDestroyed ();
+			}
+			base.Destroy ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !destroyed) {
+				destroyed = true;
+				OnDestroyed ();
+			}
+			base.Dispose (disposing);
+		}
+
+		protected virtual void OnDestroyed ()
 		{
 			parentStrip.SourceEditorView.Breakpoints.BreakEventAdded -= BreakpointsChanged;
 			parentStrip.SourceEditorView.Breakpoints.BreakEventRemoved -= BreakpointsChanged;
@@ -224,7 +240,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 			vadjustment.ValueChanged -= RedrawOnVAdjustmentChange;
 			vadjustment.Changed -= RedrawOnVAdjustmentChange;
-			base.OnDestroyed ();
 		}
 
 		void DestroyBackgroundSurface ()
@@ -299,25 +314,22 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			DestroyPreviewWindow ();
 		}
 
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
+		void OnMotion (double x, double y)
 		{
 			RemovePreviewPopupTimeout ();
 
 			if (IsInGrab ()) {
-				var yDelta = evnt.Y - grabY;
+				var yDelta = y - grabY;
 				MovePosition (grabCenter + yDelta);
 			} else {
-				UpdatePrelightState (evnt.X, evnt.Y);
+				UpdatePrelightState (x, y);
 			}
 
-			if ((evnt.State & ModifierType.ShiftMask) == ModifierType.ShiftMask) {
-				if (!ShowPreview (evnt.Y)) {
-					return base.OnMotionNotifyEvent (evnt);
-				}
+			if ((this.GetCurrentModifiers () & ModifierType.ShiftMask) == ModifierType.ShiftMask) {
+				ShowPreview (y);
 			} else {
 				HidePreview ();
 			}
-			return base.OnMotionNotifyEvent (evnt);
 		}
 
 		bool IsInGrab ()
@@ -330,10 +342,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		void UpdatePrelightState (double x, double y)
 		{
-			var newState = StateType.Normal;
-			if (IsInsideBar (x, y))
-				newState = StateType.Prelight;
-			UpdateState (newState);
+			UpdateState (IsInsideBar (x, y));
 		}
 
 		bool IsInsideBar (double x, double y)
@@ -437,10 +446,10 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			return hoverTask;
 		}
 
-		void UpdateState (StateType state)
+		void UpdateState (bool newPrelight)
 		{
-			if (State != state) {
-				State = state;
+			if (prelight != newPrelight) {
+				prelight = newPrelight;
 				QueueDraw ();
 			}
 		}
@@ -464,7 +473,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			{
 				strip.previewPopupTimeout = 0;
 				strip.previewWindow = new CodeSegmentPreviewWindow (strip.TextEditor, true, segment, false);
-				strip.previewWindow.Show ();
 				strip.PositionPreviewWindow (y);
 				return false;
 			}
@@ -475,20 +483,8 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		void PositionPreviewWindow (int my)
 		{
-			int ox, oy;
-			GdkWindow.GetOrigin (out ox, out oy);
-
-			Gdk.Rectangle geometry = Screen.GetMonitorGeometry (Screen.GetMonitorAtPoint (ox, oy));
-
-			var alloc = previewWindow.Allocation;
-			int x = ox - 4 - alloc.Width;
-			if (x < geometry.Left)
-				x = ox + parentStrip.Allocation.Width + 4;
-
-			int y = oy + my - alloc.Height / 2;
-			y = Math.Max (geometry.Top, Math.Min (y, geometry.Bottom));
-
-			previewWindow.Move (x, y);
+			// the preview sits left of the strip (GTK flips it to the right when it does not fit)
+			previewWindow.ShowAt (this, new Gdk.Rectangle (-4, my, Width + 8, 1), PositionType.Left);
 		}
 
 		void RemovePreviewPopupTimeout ()
@@ -518,7 +514,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			fadeTimeOutHandler = 0;
 		}
 
-		protected override bool OnEnterNotifyEvent (EventCrossing evnt)
+		void OnPointerEnter ()
 		{
 			isPointerInside = true;
 			if (!IsInGrab ()) {
@@ -529,7 +525,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 					return false;
 				});
 			}
-			return base.OnEnterNotifyEvent (evnt);
 		}
 
 		void StartFadeInAnimation ()
@@ -542,7 +537,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 		void StartFadeOutAnimation ()
 		{
 			CancelFadeInTimeout ();
-			UpdateState (StateType.Normal);
+			UpdateState (false);
 			if (this.barColorValue == 0.0)
 				return;
 			fadeInStage.Pause ();
@@ -550,15 +545,13 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			fadeOutStage.Play ();
 		}
 
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
+		void OnPointerLeave ()
 		{
 			isPointerInside = false;
 			if (!IsInGrab ())
 				StartFadeOutAnimation ();
 			RemovePreviewPopupTimeout ();
 			DestroyPreviewWindow ();
-
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 
 
@@ -570,7 +563,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		protected virtual void MovePosition (double y)
 		{
-			double position = ((y - IndicatorHeight) / (Allocation.Height - IndicatorHeight)) * vadjustment.Upper - vadjustment.PageSize / 2;
+			double position = ((y - IndicatorHeight) / (Height - IndicatorHeight)) * vadjustment.Upper - vadjustment.PageSize / 2;
 			position = Math.Max (vadjustment.Lower, Math.Min (position, vadjustment.Upper - vadjustment.PageSize));
 			vadjustment.Value = position;
 		}
@@ -584,14 +577,14 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		double grabY = -1, grabCenter;
 
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		void OnButtonPressed (ClickInfo evnt)
 		{
 			if (evnt.Button != 1 || evnt.IsContextMenuButton ())
-				return base.OnButtonPressEvent (evnt);
+				return;
 
 			if (IsOverIndicator (evnt.Y)) {
 				parentStrip.GotoTask (parentStrip.SearchNextTask (GetHoverMode ()));
-				return base.OnButtonPressEvent (evnt);
+				return;
 			}
 
 			var hoverTask = GetHoverTask (evnt.Y);
@@ -599,36 +592,25 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				MoveToTask (hoverTask);
 
 			if (IsInsideBar (evnt.X, evnt.Y)) {
-				Grab.Add (this);
+				// the click gesture keeps delivering the pointer motion to this widget until the button is released
 				grabCenter = GetSliderCenter ();
 				grabY = evnt.Y;
 			} else {
 				MovePosition (evnt.Y);
 			}
-
-			return base.OnButtonPressEvent (evnt);
 		}
 
 		void ClearGrab ()
 		{
-			if (IsInGrab ()) {
-				Grab.Remove (this);
+			if (IsInGrab ())
 				grabY = -1;
-			}
 		}
 
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
+		void OnButtonReleased (ClickInfo evnt)
 		{
 			ClearGrab ();
 			if (!isPointerInside)
 				StartFadeOutAnimation ();
-			return base.OnButtonReleaseEvent (evnt);
-		}
-
-		protected override bool OnGrabBrokenEvent (EventGrabBroken evnt)
-		{
-			ClearGrab ();
-			return base.OnGrabBrokenEvent (evnt);
 		}
 
 		void MoveToTask (QuickTask task)
@@ -682,18 +664,18 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		void DrawIndicator (Cairo.Context cr, Xwt.Drawing.Image img)
 		{
-			cr.DrawImage (this, img, Math.Round ((Allocation.Width - img.Width) / 2), -1);
+			cr.DrawImage (this, img, Math.Round ((Width - img.Width) / 2), -1);
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			base.OnSizeRequested (ref requisition);
-			requisition.Width = MonoDevelop.Core.Platform.IsWindows ? win81ScrollbarWidth : 15;
+			minimum = natural = orientation == Orientation.Horizontal ? (MonoDevelop.Core.Platform.IsWindows ? win81ScrollbarWidth : 15) : 0;
+			minimum_baseline = natural_baseline = -1;
 		}
 
 		double LineToY (int logicalLine)
 		{
-			var h = Allocation.Height - IndicatorHeight;
+			var h = Height - IndicatorHeight;
 			var p = TextEditor.LineToY (logicalLine);
 			var q = Math.Max (TextEditor.GetTextEditorData ().TotalHeight, TextEditor.Allocation.Height)
 				+ TextEditor.Allocation.Height
@@ -703,7 +685,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		int YToLine (double y)
 		{
-			var line = 0.5 + (y - IndicatorHeight) / (Allocation.Height - IndicatorHeight) * (double)(TextEditor.GetTextEditorData ().VisibleLineCount);
+			var line = 0.5 + (y - IndicatorHeight) / (Height - IndicatorHeight) * (double)(TextEditor.GetTextEditorData ().VisibleLineCount);
 			return TextEditor.GetTextEditorData ().VisualToLogicalLine ((int)line);
 		}
 
@@ -716,8 +698,8 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			drawnCaretY = (int)((GetYPosition (drawnCaretLine) - 1) * displayScale);
 
 			cr.SetSourceColor (SyntaxHighlightingService.GetColor (TextEditor.EditorTheme, EditorThemeColors.Foreground));
-			var w = Math.Floor (Allocation.Width * 0.618);
-			cr.Rectangle (Allocation.Width - w, drawnCaretY, w, 2);
+			var w = Math.Floor (Width * 0.618);
+			cr.Rectangle (Width - w, drawnCaretY, w, 2);
 			cr.Fill ();
 		}
 
@@ -837,16 +819,15 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			cr.Stroke ();
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
 			yPositionCache.Clear ();
-			base.OnSizeAllocated (allocation);
 			DrawIndicatorSurface (0);
 		}
 
 		void GetBarDimensions (out double x, out double y, out double w, out double h)
 		{
-			var alloc = Allocation;
+			var alloc = new Gdk.Rectangle (0, 0, Width, Height);
 
 			x = MonoDevelop.Core.Platform.IsWindows ? 0 : 1 + barPadding;
 			var adjUpper = vadjustment.Upper;
@@ -875,8 +856,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			} else {
 				MonoDevelop.Components.CairoExtensions.RoundedRectangle (cr, x, y, w, h, 4);
 			}
-
-			bool prelight = State == StateType.Prelight;
 
 			Cairo.Color c;
 			if (MonoDevelop.Core.Platform.IsWindows) {
@@ -937,15 +916,15 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 		}
 		IndicatorDrawingState currentDrawingState = IndicatorDrawingState.Create ();
 		SurfaceWrapper backgroundSurface, indicatorSurface, swapIndicatorSurface;
-		protected override bool OnExposeEvent (Gdk.EventExpose e)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			if (TextEditor == null)
-				return true;
+			if (TextEditor == null || Width <= 0 || Height <= 0)
+				return;
 
-			using (Cairo.Context cr = Gdk.CairoHelper.Create (e.Window)) {
+			using (Cairo.Context cr = snapshot.CreateCairoContext (this)) {
 
 				cr.Save ();
-				var allocation = Allocation;
+				var allocation = new Gdk.Rectangle (0, 0, Width, Height);
 				var displayScale = Core.Platform.IsMac ? GtkWorkarounds.GetScaleFactor (this) : 1.0;
 				cr.Scale (1 / displayScale, 1 / displayScale);
 				if (indicatorSurface != null) {
@@ -954,11 +933,11 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				} else {
 					CachedDraw (cr,
 					            ref backgroundSurface,
-					            e.Area,
+					            allocation,
 					            draw: (c, o) => DrawBackground (c, allocation), forceScale: displayScale);
 				}
 				if (TextEditor == null)
-					return true;
+					return;
 
 				DrawCaret (cr, displayScale);
 				if (QuickTaskStrip.MergeScrollBarAndQuickTasks)
@@ -972,7 +951,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 						cr.LineWidth = 1.0;
 
 						cr.SetSourceColor (Styles.FocusColor.ToCairoColor ());
-						cr.Rectangle (1, 1, Allocation.Width - 2, Allocation.Width - 2);
+						cr.Rectangle (1, 1, Width - 2, Width - 2);
 						cr.SetDash (new double [] { 1, 1 }, 0.5);
 						cr.Stroke ();
 						break;
@@ -985,8 +964,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 					}
 				}
 			}
-
-			return false;
 		}
 
 		CancellationTokenSource src;
@@ -1006,7 +983,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			indicatorIdleTimout = 0;
 			if (!IsRealized)
 				return;
-			var allocation = Allocation;
+			var allocation = new Gdk.Rectangle (0, 0, Width, Height);
 			src?.Cancel ();
 			src = new CancellationTokenSource ();
 			new IdleUpdater (this, src.Token) { ForceUpdate = forceUpdate }.Start ();
@@ -1089,18 +1066,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			DrawIndicatorSurface (0);
 		}
 
-		protected override bool OnFocusInEvent (EventFocus evnt)
-		{
-			QueueDraw ();
-			return base.OnFocusInEvent (evnt);
-		}
-
-		protected override bool OnFocusOutEvent (EventFocus evnt)
-		{
-			QueueDraw ();
-			currentFocus = FocusWidget.None;
-			return base.OnFocusOutEvent (evnt);
-		}
 
 		enum FocusWidget
 		{
@@ -1213,7 +1178,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			return (currentFocus != FocusWidget.None);
 		}
 
-		protected override bool OnFocused (DirectionType direction)
+		protected override bool OnFocus (DirectionType direction)
 		{
 			bool ret = true;
 
@@ -1279,7 +1244,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			return ret;
 		}
 
-		protected override void OnActivate ()
+		void DoActivate ()
 		{
 			HidePreview ();
 
@@ -1292,16 +1257,20 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			} else if (currentFocus == FocusWidget.Indicator) {
 				parentStrip.GotoTask (parentStrip.SearchNextTask (GetHoverMode ()));
 			}
-			base.OnActivate ();
 		}
 
-		protected override bool OnKeyPressEvent (EventKey evnt)
+		bool OnKeyPressed (uint keyval, uint keycode, ModifierType state)
 		{
-			if (evnt.Key == Gdk.Key.Escape) {
+			var key = (Gdk.Key)keyval;
+			if (key == Gdk.Key.Escape) {
 				HidePreview ();
 				return true;
 			}
-			return base.OnKeyPressEvent (evnt);
+			if (key == Gdk.Key.Return || key == Gdk.Key.KP_Enter || key == Gdk.Key.space) {
+				DoActivate ();
+				return true;
+			}
+			return false;
 		}
 
 #region Accessibility

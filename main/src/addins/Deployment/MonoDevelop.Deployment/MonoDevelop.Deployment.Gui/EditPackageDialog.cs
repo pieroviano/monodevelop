@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 
 using System;
 using MonoDevelop.Ide;
@@ -20,10 +21,10 @@ namespace MonoDevelop.Deployment.Gui
 			target = package.PackageBuilder.Clone ();
 			this.Title = target.Description;
 			
-			this.Icon = ImageService.GetIcon (target.Icon, Gtk.IconSize.Menu).ToPixbuf ();
+
 			entryName.Text = package.Name;
 			
-			targetBox.PackStart (new PackageBuilderEditor (target), true, true, 0);
+			DesignerLayout.Pack (targetBox, new PackageBuilderEditor (target), true);
 			
 			entrySelector.Fill (target, null);
 			entrySelector.SetSelection (target.RootSolutionItem, target.GetChildEntries ());

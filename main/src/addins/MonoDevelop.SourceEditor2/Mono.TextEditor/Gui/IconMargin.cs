@@ -111,7 +111,7 @@ namespace Mono.TextEditor
 			}
 		}
 
-		Gdk.Cursor textLinkCursor = new Gdk.Cursor (Gdk.CursorType.Hand1);
+		Gdk.Cursor textLinkCursor = new Gdk.Cursor ("pointer", null);
 
 		internal protected override void MouseHover (MarginMouseEventArgs args)
 		{

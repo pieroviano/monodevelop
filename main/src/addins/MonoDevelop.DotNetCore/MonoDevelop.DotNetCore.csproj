@@ -74,6 +74,7 @@
     <Compile Include="MonoDevelop.DotNetCore\DotNetCoreRuntimeVersions.cs" />
     <Compile Include="MonoDevelop.DotNetCore.Templating\DotNetCoreProjectTemplateWizardPage.cs" />
     <Compile Include="MonoDevelop.DotNetCore.Gui\GtkDotNetCoreProjectTemplateWizardPageWidget.cs" />
+    <Compile Include="MonoDevelop.DotNetCore.Gui\WidgetBackground.cs" />
     <Compile Include="MonoDevelop.DotNetCore\MSBuildSdksPathGlobalPropertyProvider.cs" />
     <Compile Include="MonoDevelop.DotNetCore.Templating\DotNetCoreProjectTemplateStringTagProvider.cs" />
     <Compile Include="MonoDevelop.DotNetCore.Gui\DotNetCoreSdkLocationPanel.cs" />

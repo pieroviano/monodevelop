@@ -26,6 +26,7 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
+using MonoDevelop.Components;
 using MonoDevelop.Core.Instrumentation;
 using MonoDevelop.Core.Serialization;
 using MonoDevelop.Components.Chart;
@@ -35,7 +36,7 @@ using System.Globalization;
 namespace Mono.Instrumentation.Monitor
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class InstrumentationChartView : Gtk.Bin
+	internal partial class InstrumentationChartView : MonoDevelop.Components.BinWidget
 	{
 		InstrumentationViewerDialog parent;
 		ListStore seriesStore;
@@ -91,12 +92,12 @@ namespace Mono.Instrumentation.Monitor
 			listView.RowActivated += HandleListViewRowActivated;
 
 			listViewScrolled = new ScrolledWindow ();
-			listViewScrolled.Add (listView);
-			listViewScrolled.ShadowType = ShadowType.In;
+			listViewScrolled.Child = listView;
+			listViewScrolled.HasFrame = true;
+			listViewScrolled.Vexpand = true;
 			listViewScrolled.HscrollbarPolicy = PolicyType.Automatic;
 			listViewScrolled.VscrollbarPolicy = PolicyType.Automatic;
-			listViewScrolled.ShowAll ();
-			boxCharts.PackStart (listViewScrolled, true, true, 0);
+			boxCharts.Append (listViewScrolled);
 
 			// The series list
 
@@ -151,9 +152,8 @@ namespace Mono.Instrumentation.Monitor
 			timeChart.SelectionStart.LabelAxis = timeAxisX;
 			timeChart.SelectionEnd.LabelAxis = timeAxisX;
 
-			frameCharts.PackStart (countChart, true, true, 0);
-			frameCharts.PackStart (timeChart, true, true, 0);
-			frameCharts.ShowAll ();
+			AppendChart (countChart);
+			AppendChart (timeChart);
 
 			if (App.FromFile) {
 				if (visibleTime > App.Service.EndTime - App.Service.StartTime)
@@ -172,7 +172,7 @@ namespace Mono.Instrumentation.Monitor
 			chartScroller.Adjustment.Lower = st.Ticks;
 
 			UpdateCharts ();
-			chartScroller.Value = chartScroller.Adjustment.Upper;
+			chartScroller.Adjustment.Value = chartScroller.Adjustment.Upper;
 
 			if (!App.FromFile)
 				StartAutoscroll ();
@@ -319,7 +319,7 @@ namespace Mono.Instrumentation.Monitor
 
 		bool IsShowingLatest {
 			get {
-				return (chartScroller.Value == chartScroller.Adjustment.Upper - chartScroller.Adjustment.PageSize);
+				return (chartScroller.Adjustment.Value == chartScroller.Adjustment.Upper - chartScroller.Adjustment.PageSize);
 			}
 		}
 
@@ -328,7 +328,7 @@ namespace Mono.Instrumentation.Monitor
 			double ticks = DateTime.Now.Ticks;
 			if (IsShowingLatest) {
 				chartScroller.Adjustment.Upper = ticks;
-				chartScroller.Value = chartScroller.Adjustment.Upper - chartScroller.Adjustment.PageSize;
+				chartScroller.Adjustment.Value = chartScroller.Adjustment.Upper - chartScroller.Adjustment.PageSize;
 			} else
 				chartScroller.Adjustment.Upper = ticks;
 
@@ -369,26 +369,23 @@ namespace Mono.Instrumentation.Monitor
 			}
 		}
 
-		protected override void OnDestroyed ()
+		void AppendChart (BasicChart chart)
+		{
+			var widget = chart.GetNativeWidget<Widget> ();
+			widget.Hexpand = true;
+			widget.Vexpand = true;
+			chartsBox.Append (widget);
+		}
+
+		public override void Destroy ()
 		{
 			StopAutoscroll ();
-			base.OnDestroyed ();
-		}
-
-
-		protected virtual void OnButtonOkClicked (object sender, System.EventArgs e)
-		{
-			Destroy ();
-		}
-
-		protected virtual void OnDeleteEvent (object o, Gtk.DeleteEventArgs args)
-		{
-			Destroy ();
+			base.Destroy ();
 		}
 
 		protected virtual void OnChartScrollerValueChanged (object sender, System.EventArgs e)
 		{
-			startTime = new DateTime ((long)chartScroller.Value);
+			startTime = new DateTime ((long)chartScroller.Adjustment.Value);
 			endTime = startTime + visibleTime;
 			UpdateCharView ();
 		}
@@ -427,7 +424,7 @@ namespace Mono.Instrumentation.Monitor
 				}
 			}
 			UpdatePageSize ();
-			chartScroller.Value = startTime.Ticks;
+			chartScroller.Adjustment.Value = startTime.Ticks;
 			UpdateCharView ();
 		}
 
@@ -441,7 +438,7 @@ namespace Mono.Instrumentation.Monitor
 			endTime += new TimeSpan (diff/2);
 			startTime = endTime - visibleTime;
 			UpdatePageSize ();
-			chartScroller.Value = startTime.Ticks;
+			chartScroller.Adjustment.Value = startTime.Ticks;
 			UpdateCharView ();
 		}
 
@@ -527,8 +524,8 @@ namespace Mono.Instrumentation.Monitor
 		protected virtual void OnButtonAddCounterClicked (object sender, System.EventArgs e)
 		{
 			CounterSelectorDialog dlg = new CounterSelectorDialog ();
-			dlg.TransientFor = (Gtk.Window) this.Toplevel;
-			if (dlg.Run () == (int) ResponseType.Ok) {
+			dlg.TransientFor = this.Root as Gtk.Window;
+			if (dlg.RunModal () == (int) ResponseType.Ok) {
 				foreach (Counter c in dlg.Selection)
 					view.Add (c);
 				FillSelectedSeries ();

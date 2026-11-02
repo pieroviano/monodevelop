@@ -30,7 +30,7 @@ using MonoDevelop.Ide.Gui.Dialogs;
 namespace MonoDevelop.DocFood.Options
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class NoTheReorderingWidget : Gtk.Bin
+	partial class NoTheReorderingWidget : MonoDevelop.Components.BinWidget
 	{
 //		DocConfig config;
 		

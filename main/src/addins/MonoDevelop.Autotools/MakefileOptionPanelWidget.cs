@@ -11,10 +11,10 @@ using MonoDevelop.Projects;
 
 namespace MonoDevelop.Autotools
 {
-	public partial class MakefileOptionPanelWidget : Gtk.Bin
+	public partial class MakefileOptionPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		MakefileData data;
-		ComboBox [] combos = null;
+		ComboBoxText [] combos = null;
 		bool isDotNetProject;
 		bool loading = true;
 		Window parentDialog;
@@ -106,13 +106,14 @@ namespace MonoDevelop.Autotools
 
 			HandleComboMessageTypeChanged (comboMessageType);
 
-			this.fileEntryMakefilePath.FocusChildSet += new FocusChildSetHandler (OnMakefilePathFocusChildSet);
+			// Reload the Makefile when the focus leaves the path entry (was: FocusChildSet)
+			MonoDevelop.Components.EventControllerExtensions.AddFocusHandler (this.fileEntryMakefilePath, null, OnMakefilePathFocusLeave);
 			
-			((Gtk.Container) comboAssemblyName.Parent).Remove (comboAssemblyName);
-			((Gtk.Container) lblAssemblyNameVar.Parent).Remove (lblAssemblyNameVar);
+			comboAssemblyName.Unparent ();
+			lblAssemblyNameVar.Unparent ();
 
-			((Gtk.Container) comboOutputDir.Parent).Remove (comboOutputDir);
-			((Gtk.Container) lblOutputDirVar.Parent).Remove (lblOutputDirVar);
+			comboOutputDir.Unparent ();
+			lblOutputDirVar.Unparent ();
 			
 			loading = false;
 		}
@@ -137,7 +138,7 @@ namespace MonoDevelop.Autotools
 		public MakefileOptionPanelWidget()
 		{
 			this.Build();
-			combos = new ComboBox [7] {
+			combos = new ComboBoxText [7] {
 				comboFilesVar, comboDeployFilesVar, comboResourcesVar, comboOthersVar, 
 				comboPackageRefVar, comboAsmRefVar, comboProjectRefVar}; 
 				//comboAssemblyName, comboOutputDir};
@@ -298,7 +299,7 @@ namespace MonoDevelop.Autotools
 			return true;
 		}
 		
-		string GetActiveVar (ComboBox combo)
+		string GetActiveVar (ComboBoxText combo)
 		{
 			Gtk.TreeIter iter;
 			if (!combo.GetActiveIter (out iter))
@@ -311,7 +312,7 @@ namespace MonoDevelop.Autotools
 				return var.Trim ();
 		}
 
-		void SetActiveVar (ComboBox combo, string val)
+		void SetActiveVar (ComboBoxText combo, string val)
 		{
 			if (String.IsNullOrEmpty (val)) {
 				combo.Active = 0;
@@ -698,7 +699,7 @@ namespace MonoDevelop.Autotools
 			this.fileEntryConfigureInPath.Sensitive = state;
 		}
 
-		void OnMakefilePathFocusChildSet (object sender, FocusChildSetArgs e)
+		void OnMakefilePathFocusLeave ()
 		{
 			if (data.AbsoluteMakefileName != fileEntryMakefilePath.Path) {
 				ResetAll ();
@@ -758,9 +759,6 @@ namespace MonoDevelop.Autotools
 			return vars;
 		}
 		
-		protected virtual void OnFileEntryMakefilePathFocusOutEvent (object sender, System.EventArgs e)
-		{
-		}
 
 		protected virtual void OnCbKeepFilesSyncClicked(object sender, System.EventArgs e)
 		{
@@ -835,7 +833,7 @@ namespace MonoDevelop.Autotools
 			HandleComboMessageTypeChanged (comboMessageType);
 		}
 		
-		void HandleComboMessageTypeChanged (ComboBox cb)
+		void HandleComboMessageTypeChanged (ComboBoxText cb)
 		{
 			string active = GetActiveVar (cb);
 			bool isCustom = (active == "Custom");
@@ -893,10 +891,10 @@ namespace MonoDevelop.Autotools
 
 		protected virtual void OnComboPackageRefVarChanged (object sender, System.EventArgs e)
 		{
-			HandleComboPackageRefVarChanged ((ComboBox) sender);
+			HandleComboPackageRefVarChanged ((ComboBoxText) sender);
 		}
 
-		void HandleComboPackageRefVarChanged (ComboBox cb)
+		void HandleComboPackageRefVarChanged (ComboBoxText cb)
 		{
 			string active = GetActiveVar (cb);
 			entryPackageRefPattern.Text = GuessRefPrefix (data.Makefile.GetListVariable (active));
@@ -904,10 +902,10 @@ namespace MonoDevelop.Autotools
 
 		protected virtual void OnComboAsmRefVarChanged (object sender, System.EventArgs e)
 		{
-			HandleComboAsmRefVarChanged ((ComboBox) sender);
+			HandleComboAsmRefVarChanged ((ComboBoxText) sender);
 		}
 
-		void HandleComboAsmRefVarChanged (ComboBox cb)
+		void HandleComboAsmRefVarChanged (ComboBoxText cb)
 		{
 			string active = GetActiveVar (cb);
 			entryAsmRefPattern.Text = GuessRefPrefix (data.Makefile.GetListVariable (active));
@@ -915,10 +913,10 @@ namespace MonoDevelop.Autotools
 
 		protected virtual void OnComboProjectRefVarChanged (object sender, System.EventArgs e)
 		{
-			HandleComboProjectRefVarChanged ((ComboBox) sender);
+			HandleComboProjectRefVarChanged ((ComboBoxText) sender);
 		}
 
-		void HandleComboProjectRefVarChanged (ComboBox cb)
+		void HandleComboProjectRefVarChanged (ComboBoxText cb)
 		{
 			string active = GetActiveVar (cb);
 			entryProjectRefPattern.Text = GuessRefPrefix (data.Makefile.GetListVariable (active));
@@ -926,10 +924,10 @@ namespace MonoDevelop.Autotools
 
 		protected virtual void OnComboResourcesVarChanged (object sender, System.EventArgs e)
 		{
-			HandleComboResourcesVarChanged ((ComboBox) sender);
+			HandleComboResourcesVarChanged ((ComboBoxText) sender);
 		}
 
-		void HandleComboResourcesVarChanged (ComboBox cb)
+		void HandleComboResourcesVarChanged (ComboBoxText cb)
 		{
 			string active = GetActiveVar (cb);
 			entryResourcesPattern.Text = GuessResPrefix (data.Makefile.GetListVariable (active));

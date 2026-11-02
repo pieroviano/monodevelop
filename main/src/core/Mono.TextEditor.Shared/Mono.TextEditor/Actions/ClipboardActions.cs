@@ -32,7 +32,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
 
-using Gtk;
+using MonoDevelop.Components;
 using Mono.TextEditor.Highlighting;
 using Mono.TextEditor.Utils;
 using System.Linq;
@@ -58,27 +58,23 @@ namespace Mono.TextEditor
 		{
 			CopyOperation operation = new CopyOperation ();
 			
-			Clipboard clipboard = Clipboard.Get (CopyOperation.CLIPBOARD_ATOM);
 			operation.CopyData (data);
 
-			clipboard.SetWithData (CopyOperation.TargetEntries, operation.ClipboardGetFunc, operation.ClipboardClearFunc);
+			var clipboard = ClipboardHelper.Clipboard;
+			if (clipboard != null)
+				clipboard.SetContent (operation.CreateContentProvider ());
 		}
 	
 		internal class CopyOperation
 		{
-			public const int TextType     = 1;
-			public const int HTMLTextType = 2;
-			public const int RichTextType = 3;
+			/// <summary>Mime type of the MonoDevelop-private payload (block/line mode flags + paste handler data + text).</summary>
+			public const string MonoMimeType = "MD_CLIPBOARD_FORMAT";
+			public const string HtmlMimeType = "text/html";
+			public const string RtfMimeType = "text/rtf";
+			public const string PlainTextMimeType = "text/plain;charset=utf-8";
 
-			public const int MonoTextType = 99;
-
-			const int UTF8_FORMAT = 8;
-			
-			public static readonly Gdk.Atom CLIPBOARD_ATOM        = Gdk.Atom.Intern ("CLIPBOARD", false);
-			public static readonly Gdk.Atom PRIMARYCLIPBOARD_ATOM = Gdk.Atom.Intern ("PRIMARY", false);
-			public static readonly Gdk.Atom RTF_ATOM;
-			public static readonly Gdk.Atom MD_ATOM  = Gdk.Atom.Intern ("MD_CLIPBOARD_FORMAT", false);
-			public static readonly Gdk.Atom HTML_ATOM;
+			/// <summary>The content formats a copy offers, in order of preference (plain text first).</summary>
+			public static readonly string [] MimeTypes = { PlainTextMimeType, HtmlMimeType, RtfMimeType, MonoMimeType };
 
 			public CopyOperation ()	
 			{
@@ -102,100 +98,49 @@ namespace Mono.TextEditor
 				return StringBuilderCache.ReturnAndFree (plainText);
 			}
 
-			public void SetData (SelectionData selection_data, uint info)
+			byte[] GetMonoData ()
 			{
-				if (selection_data == null)
-					return;
-				switch (info) {
-				case TextType:
-					selection_data.Text = GetCopiedPlainText ();
-					break;
-				case RichTextType:
-					var rtf = RtfWriter.GenerateRtf (copiedColoredChunks, docStyle, options);
-					selection_data.Set (RTF_ATOM, UTF8_FORMAT, Encoding.UTF8.GetBytes (rtf));
-					break;
-				case HTMLTextType:
-					var html = HtmlWriter.GenerateHtml (copiedColoredChunks, docStyle, options);
-//					Console.WriteLine ("html:" + html);
-					selection_data.Set (HTML_ATOM, UTF8_FORMAT, Encoding.UTF8.GetBytes (html));
-					break;
-				case MonoTextType:
-					byte[] rawText = Encoding.UTF8.GetBytes (GetCopiedPlainText ());
-					var copyDataLength = (byte)(copyData != null ? copyData.Length : 0);
-					var dataOffset = 1 + 1 + copyDataLength;
-					byte[] data = new byte [rawText.Length + dataOffset];
-					data [1] = copyDataLength;
-					if (copyDataLength > 0)
-						copyData.CopyTo (data, 2);
-					rawText.CopyTo (data, dataOffset);
-					data [0] = 0;
-					if (isBlockMode)
-						data [0] |= 1;
-					if (isLineSelectionMode)
-						data [0] |= 2;
-					selection_data.Set (MD_ATOM, UTF8_FORMAT, data);
-					break;
-				}
+				byte[] rawText = Encoding.UTF8.GetBytes (GetCopiedPlainText ());
+				var copyDataLength = (byte)(copyData != null ? copyData.Length : 0);
+				var dataOffset = 1 + 1 + copyDataLength;
+				byte[] data = new byte [rawText.Length + dataOffset];
+				data [1] = copyDataLength;
+				if (copyDataLength > 0)
+					copyData.CopyTo (data, 2);
+				rawText.CopyTo (data, dataOffset);
+				data [0] = 0;
+				if (isBlockMode)
+					data [0] |= 1;
+				if (isLineSelectionMode)
+					data [0] |= 2;
+				return data;
 			}
+
+			/// <summary>
+			/// Builds the clipboard / drag content: plain text, HTML, RTF and the MonoDevelop private format.
+			/// </summary>
+			public Gdk.ContentProvider CreateContentProvider ()
+			{
+				if (copiedColoredChunks == null)
+					return new Gdk.ContentProvider (new Gdk.ContentProvider [0]);
+				var providers = new List<Gdk.ContentProvider> ();
+				providers.Add (new Gdk.ContentProvider (new GLib.Value (GetCopiedPlainText ())));
+				providers.Add (new Gdk.ContentProvider (PlainTextMimeType, new GLib.Bytes (Encoding.UTF8.GetBytes (GetCopiedPlainText ()))));
+				providers.Add (new Gdk.ContentProvider (HtmlMimeType, new GLib.Bytes (Encoding.UTF8.GetBytes (HtmlWriter.GenerateHtml (copiedColoredChunks, docStyle, options)))));
+				providers.Add (new Gdk.ContentProvider (RtfMimeType, new GLib.Bytes (Encoding.UTF8.GetBytes (RtfWriter.GenerateRtf (copiedColoredChunks, docStyle, options)))));
+				providers.Add (new Gdk.ContentProvider (MonoMimeType, new GLib.Bytes (GetMonoData ())));
+				return new Gdk.ContentProvider (providers.ToArray ());
+			}
+
 			bool isLineSelectionMode = false;
 			bool isBlockMode         = false;
-			
-			public void ClipboardGetFunc (Clipboard clipboard, SelectionData selection_data, uint info)
-			{
-				SetData (selection_data, info);
-			}
-			
-			public void ClipboardClearFunc (Clipboard clipboard)
-			{
-				// NOTHING ?
-			}
-	
+
 			internal List<List<ClipboardColoredText>> copiedColoredChunks;
 			byte[] copyData;
 
 			internal MonoDevelop.Ide.Editor.Highlighting.EditorTheme docStyle;
 			ITextEditorOptions options;
 
-			public static readonly TargetEntry[] TargetEntries;
-			public static readonly TargetList TargetList;
-
-			static CopyOperation ()
-			{
-				if (Platform.IsMac) {
-					RTF_ATOM = Gdk.Atom.Intern ("NSRTFPboardType", false); //TODO: use public.rtf when dep on MacOS 10.6
-					const string NSHTMLPboardType = "Apple HTML pasteboard type";
-					HTML_ATOM = Gdk.Atom.Intern (NSHTMLPboardType, false);
-				} else if (Platform.IsWindows) {
-					RTF_ATOM = Gdk.Atom.Intern ("Rich Text Format", false);
-					HTML_ATOM = Gdk.Atom.Intern ("HTML Format", false);
-				} else {
-					RTF_ATOM = Gdk.Atom.Intern ("text/rtf", false);
-					HTML_ATOM = Gdk.Atom.Intern ("text/html", false);
-				}
-
-				var newTargets = new List<TargetEntry> ();
-
-				newTargets.Add (new TargetEntry ("SAVE_TARGETS", TargetFlags.App, TextType));
-
-				newTargets.Add (new TargetEntry (HTML_ATOM.Name, TargetFlags.OtherApp, HTMLTextType));
-				newTargets.Add (new TargetEntry ("UTF8_STRING", TargetFlags.App, TextType));
-
-				newTargets.Add (new TargetEntry (RTF_ATOM.Name, TargetFlags.OtherApp, RichTextType));
-				newTargets.Add (new TargetEntry (MD_ATOM.Name, TargetFlags.App, MonoTextType));
-
-				newTargets.Add (new TargetEntry ("text/plain;charset=utf-8", TargetFlags.App, TextType));
-				newTargets.Add (new TargetEntry ("text/plain", TargetFlags.App, TextType));
-
-				//HACK: work around gtk_selection_data_set_text causing crashes on Mac w/ QuickSilver, Clipbard History etc.
-				if (!Platform.IsMac) {
-					newTargets.Add (new TargetEntry ("COMPOUND_TEXT", TargetFlags.App, TextType));
-					newTargets.Add (new TargetEntry ("STRING", TargetFlags.App, TextType));
-					newTargets.Add (new TargetEntry ("TEXT", TargetFlags.App, TextType));
-				}
-				TargetEntries = newTargets.ToArray ();
-				TargetList = new TargetList (TargetEntries);
-			}
-			
 			async void CopyData (TextEditorData data, MonoDevelop.Ide.Editor.Selection selection)
 			{
 				if (!selection.IsEmpty && data != null && data.Document != null) {
@@ -267,122 +212,162 @@ namespace Mono.TextEditor
 		{
 			if (Platform.IsWindows) // disable middle click on windows.
 				return;
-			Clipboard clipboard = Clipboard.Get (CopyOperation.PRIMARYCLIPBOARD_ATOM);
-			clipboard.Text = data.SelectedText;
+			ClipboardHelper.SetText (data.SelectedText, true);
 		}
 		
 		public static void ClearPrimary ()
 		{
-			Clipboard clipboard = Clipboard.Get (CopyOperation.PRIMARYCLIPBOARD_ATOM);
-			clipboard.Clear ();
+			ClipboardHelper.PrimaryClipboard?.SetContent (null);
 		}
 		
-		static int PasteFrom (Clipboard clipboard, TextEditorData data, bool preserveSelection, int insertionOffset)
+		static int PasteFrom (Gdk.Clipboard clipboard, TextEditorData data, bool preserveSelection, int insertionOffset)
 		{
 			return PasteFrom (clipboard, data, preserveSelection, insertionOffset, false);
 		}
 
-		static int PasteFrom (Clipboard clipboard, TextEditorData data, bool preserveSelection, int insertionOffset, bool preserveState)
+		static int PasteFrom (Gdk.Clipboard clipboard, TextEditorData data, bool preserveSelection, int insertionOffset, bool preserveState)
 		{
 			int result = -1;
 			if (!data.CanEdit (data.Document.OffsetToLineNumber (insertionOffset)))
 				return result;
-			if (clipboard.WaitIsTargetAvailable (CopyOperation.MD_ATOM)) {
-				clipboard.RequestContents (CopyOperation.MD_ATOM, (ClipboardReceivedFunc)delegate (Clipboard clp, SelectionData selectionData) {
-					if (selectionData.Length > 0) {
-						byte[] selBytes = selectionData.Data;
-						var upperBound = System.Math.Max (0, System.Math.Min (selBytes [1], selBytes.Length - 2));
-						byte[] copyData = new byte[upperBound];
-						Array.Copy (selBytes, 2, copyData, 0, copyData.Length);
-						var rawTextOffset = 1 + 1 + copyData.Length;
-						string text = Encoding.UTF8.GetString (selBytes, rawTextOffset, selBytes.Length - rawTextOffset);
-						bool pasteBlock = (selBytes [0] & 1) == 1;
-						bool pasteLine = (selBytes [0] & 2) == 2;
-						if (pasteBlock) {
-							using (var undo = data.OpenUndoGroup ()) {
-								var version = data.Document.Version;
-								if (!preserveSelection)
-									data.DeleteSelectedText (!data.IsSomethingSelected || data.MainSelection.SelectionMode != MonoDevelop.Ide.Editor.SelectionMode.Block);
-								int startLine = data.Caret.Line;
-								data.EnsureCaretIsNotVirtual ();
-								insertionOffset = version.MoveOffsetTo (data.Document.Version, insertionOffset);
+			if (clipboard == null)
+				return result;
+			byte[] selBytes = clipboard.Formats.ContainMimeType (CopyOperation.MonoMimeType) ? ReadBytes (clipboard, CopyOperation.MonoMimeType) : null;
+			if (selBytes != null && selBytes.Length > 1) {
+				var upperBound = System.Math.Max (0, System.Math.Min (selBytes [1], selBytes.Length - 2));
+				byte[] copyData = new byte[upperBound];
+				Array.Copy (selBytes, 2, copyData, 0, copyData.Length);
+				var rawTextOffset = 1 + 1 + copyData.Length;
+				string text = Encoding.UTF8.GetString (selBytes, rawTextOffset, selBytes.Length - rawTextOffset);
+				bool pasteBlock = (selBytes [0] & 1) == 1;
+				bool pasteLine = (selBytes [0] & 2) == 2;
+				if (pasteBlock) {
+					using (var undo = data.OpenUndoGroup ()) {
+						var version = data.Document.Version;
+						if (!preserveSelection)
+							data.DeleteSelectedText (!data.IsSomethingSelected || data.MainSelection.SelectionMode != MonoDevelop.Ide.Editor.SelectionMode.Block);
+						int startLine = data.Caret.Line;
+						data.EnsureCaretIsNotVirtual ();
+						insertionOffset = version.MoveOffsetTo (data.Document.Version, insertionOffset);
 
-								data.Caret.PreserveSelection = true;
-								var lines = new List<string> ();
-								int offset = 0;
-								while (true) {
-									var delimiter = LineSplitter.NextDelimiter (text, offset);
-									if (delimiter.IsInvalid)
-										break;
+						data.Caret.PreserveSelection = true;
+						var lines = new List<string> ();
+						int offset = 0;
+						while (true) {
+							var delimiter = LineSplitter.NextDelimiter (text, offset);
+							if (delimiter.IsInvalid)
+								break;
 
-									int delimiterEndOffset = delimiter.EndOffset;
-									lines.Add (text.Substring (offset, delimiter.Offset - offset));
-									offset = delimiterEndOffset;
-								}
-								if (offset < text.Length)
-									lines.Add (text.Substring (offset, text.Length - offset));
-
-								int lineNr = data.Document.OffsetToLineNumber (insertionOffset);
-								int col = insertionOffset - data.Document.GetLine (lineNr).Offset;
-								int visCol = data.Document.GetLine (lineNr).GetVisualColumn (data, col);
-								DocumentLine curLine;
-								int lineCol = col;
-								result = 0;
-								for (int i = 0; i < lines.Count; i++) {
-									while (data.Document.LineCount <= lineNr + i) {
-										data.Insert ((int)data.Document.Length, Environment.NewLine);
-										result += Environment.NewLine.Length;
-									}
-									curLine = data.Document.GetLine (lineNr + i);
-									if (lines [i].Length > 0) {
-										lineCol = curLine.GetLogicalColumn (data, visCol);
-										if (curLine.Length + 1 < lineCol) {
-											result += lineCol - curLine.Length;
-											data.Insert (curLine.Offset + curLine.Length, new string (' ', lineCol - curLine.Length));
-										}
-										data.Insert (curLine.Offset + lineCol, lines [i]);
-										result += lines [i].Length;
-									}
-									if (!preserveState)
-										data.Caret.Offset = curLine.Offset + lineCol + lines [i].Length;
-								}
-								if (!preserveState)
-									data.ClearSelection ();
-								data.FixVirtualIndentation (startLine); 
-								data.Caret.PreserveSelection = false;
-							}
-						} else if (pasteLine) {
-							using (var undo = data.OpenUndoGroup ()) {
-								if (!preserveSelection)
-									data.DeleteSelectedText (!data.IsSomethingSelected || data.MainSelection.SelectionMode != MonoDevelop.Ide.Editor.SelectionMode.Block);
-								data.EnsureCaretIsNotVirtual ();
-
-								data.Caret.PreserveSelection = true;
-								result = text.Length;
-								DocumentLine curLine = data.Document.GetLine (data.Caret.Line);
-								result = PastePlainText (data, curLine.Offset, text + data.EolMarker, preserveSelection, copyData);
-								if (!preserveState)
-									data.ClearSelection ();
-								data.Caret.PreserveSelection = false;
-								data.FixVirtualIndentation (curLine.LineNumber); 
-							}
-						} else {
-							result = PastePlainText (data, insertionOffset, text, preserveSelection, copyData);
+							int delimiterEndOffset = delimiter.EndOffset;
+							lines.Add (text.Substring (offset, delimiter.Offset - offset));
+							offset = delimiterEndOffset;
 						}
+						if (offset < text.Length)
+							lines.Add (text.Substring (offset, text.Length - offset));
+
+						int lineNr = data.Document.OffsetToLineNumber (insertionOffset);
+						int col = insertionOffset - data.Document.GetLine (lineNr).Offset;
+						int visCol = data.Document.GetLine (lineNr).GetVisualColumn (data, col);
+						DocumentLine curLine;
+						int lineCol = col;
+						result = 0;
+						for (int i = 0; i < lines.Count; i++) {
+							while (data.Document.LineCount <= lineNr + i) {
+								data.Insert ((int)data.Document.Length, Environment.NewLine);
+								result += Environment.NewLine.Length;
+							}
+							curLine = data.Document.GetLine (lineNr + i);
+							if (lines [i].Length > 0) {
+								lineCol = curLine.GetLogicalColumn (data, visCol);
+								if (curLine.Length + 1 < lineCol) {
+									result += lineCol - curLine.Length;
+									data.Insert (curLine.Offset + curLine.Length, new string (' ', lineCol - curLine.Length));
+								}
+								data.Insert (curLine.Offset + lineCol, lines [i]);
+								result += lines [i].Length;
+							}
+							if (!preserveState)
+								data.Caret.Offset = curLine.Offset + lineCol + lines [i].Length;
+						}
+						if (!preserveState)
+							data.ClearSelection ();
+						data.FixVirtualIndentation (startLine); 
+						data.Caret.PreserveSelection = false;
 					}
-				});
-				// we got MD_ATOM text - no need to request text. (otherwise buffer may get copied twice).
+				} else if (pasteLine) {
+					using (var undo = data.OpenUndoGroup ()) {
+						if (!preserveSelection)
+							data.DeleteSelectedText (!data.IsSomethingSelected || data.MainSelection.SelectionMode != MonoDevelop.Ide.Editor.SelectionMode.Block);
+						data.EnsureCaretIsNotVirtual ();
+
+						data.Caret.PreserveSelection = true;
+						result = text.Length;
+						DocumentLine curLine = data.Document.GetLine (data.Caret.Line);
+						result = PastePlainText (data, curLine.Offset, text + data.EolMarker, preserveSelection, copyData);
+						if (!preserveState)
+							data.ClearSelection ();
+						data.Caret.PreserveSelection = false;
+						data.FixVirtualIndentation (curLine.LineNumber); 
+					}
+				} else {
+					result = PastePlainText (data, insertionOffset, text, preserveSelection, copyData);
+				}
+				// we got MD_CLIPBOARD_FORMAT text - no need to request text. (otherwise buffer may get copied twice).
 				return result;
 			}
 			
-			if (result < 0 && clipboard.WaitIsTextAvailable ()) {
-				clipboard.RequestText (delegate(Clipboard clp, string text) {
-					if (string.IsNullOrEmpty (text))
-						return;
+			if (result < 0 && clipboard.Formats.ContainGtype (GLib.GType.String)) {
+				var text = ReadText (clipboard);
+				if (!string.IsNullOrEmpty (text))
 					result = PastePlainText (data, insertionOffset, text, preserveSelection);
-				});
 			}
 			
+			return result;
+		}
+
+		/// <summary>Blocks (iterating the main loop) until the clipboard text has been read.</summary>
+		static string ReadText (Gdk.Clipboard clipboard)
+		{
+			bool done = false;
+			string result = null;
+			clipboard.ReadTextAsync (null, (source, res, data) => {
+				try {
+					result = clipboard.ReadTextFinish (res);
+				} catch (Exception e) {
+					LoggingService.LogError ("Error reading clipboard text", e);
+				}
+				done = true;
+			});
+			ModalRunner.RunUntil (() => done);
+			return result;
+		}
+
+		/// <summary>Blocks (iterating the main loop) until the clipboard content of the given mime type has been read.</summary>
+		static byte[] ReadBytes (Gdk.Clipboard clipboard, string mimeType)
+		{
+			bool done = false;
+			byte[] result = null;
+			clipboard.ReadAsync (new [] { mimeType }, 0, null, (source, res, data) => {
+				try {
+					using (var stream = clipboard.ReadFinish (res, out _)) {
+						var ms = new System.IO.MemoryStream ();
+						while (true) {
+							using (var bytes = stream.ReadBytes (65536, null)) {
+								var chunk = bytes?.Data;
+								if (chunk == null || chunk.Length == 0)
+									break;
+								ms.Write (chunk, 0, chunk.Length);
+							}
+						}
+						stream.Close (null);
+						result = ms.ToArray ();
+					}
+				} catch (Exception e) {
+					LoggingService.LogError ("Error reading clipboard data", e);
+				}
+				done = true;
+			});
+			ModalRunner.RunUntil (() => done);
 			return result;
 		}
 
@@ -430,7 +415,7 @@ namespace Mono.TextEditor
 		
 		public static int PasteFromPrimary (TextEditorData data, int insertionOffset)
 		{
-			var result = PasteFrom (Clipboard.Get (CopyOperation.PRIMARYCLIPBOARD_ATOM), data, true, insertionOffset, true);
+			var result = PasteFrom (ClipboardHelper.PrimaryClipboard, data, true, insertionOffset, true);
 			data.Document.CommitLineUpdate (data.GetLineByOffset (insertionOffset));
 			return result;
 		}
@@ -444,15 +429,15 @@ namespace Mono.TextEditor
 		{
 			if (!data.CanEditSelection)
 				return false;
-			return PasteFrom (Clipboard.Get (CopyOperation.CLIPBOARD_ATOM), data, false, data.IsSomethingSelected ? data.SelectionRange.Offset : data.Caret.Offset) > 0;
+			return PasteFrom (ClipboardHelper.Clipboard, data, false, data.IsSomethingSelected ? data.SelectionRange.Offset : data.Caret.Offset) > 0;
 		}
 
 		public static string GetClipboardContent()
 		{
-			var clipboard = Clipboard.Get (CopyOperation.CLIPBOARD_ATOM);
-			if (!clipboard.WaitIsTextAvailable ())
+			var clipboard = ClipboardHelper.Clipboard;
+			if (clipboard == null || !clipboard.Formats.ContainGtype (GLib.GType.String))
 				return null;
-			return clipboard.WaitForText ();
+			return ReadText (clipboard);
 		}
 	}
 }

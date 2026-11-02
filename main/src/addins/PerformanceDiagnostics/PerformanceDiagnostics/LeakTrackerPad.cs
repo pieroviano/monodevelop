@@ -98,7 +98,7 @@ namespace PerformanceDiagnosticsAddIn
 
 		Control CreateControl ()
 		{
-			return new Gtk.HBox ();
+			return new Gtk.Box (Gtk.Orientation.Horizontal, 0);
 		}
 	}
 }

@@ -25,21 +25,21 @@
 // THE SOFTWARE.
 
 using System;
-using Gdk;
 using Gtk;
 using MonoDevelop.Components;
 using MonoDevelop.Ide;
 using MonoDevelop.Ide.Gui;
+using MonoDevelop.Ide.Projects;
 using MonoDevelop.Ide.Tasks;
 using MonoDevelop.Packaging.Templating;
 
 namespace MonoDevelop.Packaging.Gui
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	public partial class GtkPackagingProjectTemplateWizardPageWidget : Gtk.Bin
+	public partial class GtkPackagingProjectTemplateWizardPageWidget : MonoDevelop.Components.BinWidget
 	{
 		PackagingProjectTemplateWizardPage wizardPage;
-		Color backgroundColor;
+		Xwt.Drawing.Color backgroundColor;
 		EventBoxTooltip idTooltip;
 		ImageView backgroundImageView;
 		Xwt.Drawing.Image backgroundImage;
@@ -52,19 +52,21 @@ namespace MonoDevelop.Packaging.Gui
 			backgroundImageView = new ImageView (backgroundImage);
 			backgroundImageView.Xalign = 1.0f;
 			backgroundImageView.Yalign = 0.5f;
-			backgroundLargeImageVBox.PackStart (backgroundImageView, true, true, 0);
+			backgroundImageView.Hexpand = true;
+			backgroundImageView.Vexpand = true;
+			backgroundLargeImageVBox.Append (backgroundImageView);
 
-			var separatorColor = Styles.NewProjectDialog.ProjectConfigurationSeparatorColor.ToGdkColor ();
-			separator.ModifyBg (StateType.Normal, separatorColor);
+			var separatorColor = Styles.NewProjectDialog.ProjectConfigurationSeparatorColor;
+			WidgetCss.SetBackground (separator, separatorColor);
 
-			backgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor.ToGdkColor ();
-			leftBorderEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTopEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTableEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationBottomEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			backgroundLargeImageEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			topPadding.ModifyBg (StateType.Normal, backgroundColor);
-			bottomPadding.ModifyBg (StateType.Normal, backgroundColor);
+			backgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor;
+			WidgetCss.SetBackground (leftBorderEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationTopEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationTableEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationBottomEventBox, backgroundColor);
+			WidgetCss.SetBackground (backgroundLargeImageEventBox, backgroundColor);
+			WidgetCss.SetBackground (topPadding, backgroundColor);
+			WidgetCss.SetBackground (bottomPadding, backgroundColor);
 		}
 
 		internal GtkPackagingProjectTemplateWizardPageWidget (PackagingProjectTemplateWizardPage wizardPage)
@@ -88,9 +90,9 @@ namespace MonoDevelop.Packaging.Gui
 			packageDescriptionTextBox.TruncateMultiline = true;
 		}
 
-		protected override void OnFocusGrabbed ()
+		protected override bool OnGrabFocus ()
 		{
-			packageIdTextBox.GrabFocus ();
+			return packageIdTextBox.GrabFocus ();
 		}
 
 		void PackageIdTextInserted (object o, TextInsertedArgs args)
@@ -131,12 +133,14 @@ namespace MonoDevelop.Packaging.Gui
 			wizardPage.Description = packageDescriptionTextBox.Text;
 		}
 
-		public override void Dispose ()
+		protected override void Dispose (bool disposing)
 		{
-			Dispose (idTooltip);
-			Dispose (backgroundImage);
+			if (disposing) {
+				Dispose (idTooltip);
+				Dispose (backgroundImage);
+			}
 
-			base.Dispose ();
+			base.Dispose (disposing);
 		}
 
 		void Dispose (IDisposable disposable)
@@ -146,13 +150,12 @@ namespace MonoDevelop.Packaging.Gui
 			}
 		}
 
-		EventBoxTooltip ShowErrorTooltip (EventBox eventBox, string tooltipText)
+		EventBoxTooltip ShowErrorTooltip (Gtk.Box eventBox, string tooltipText)
 		{
-			eventBox.ModifyBg (StateType.Normal, backgroundColor);
-			Xwt.Drawing.Image image = ImageService.GetIcon ("md-error", IconSize.Menu);
+			WidgetCss.SetBackground (eventBox, backgroundColor);
+			Xwt.Drawing.Image image = ImageService.GetIcon ("md-error", StockIconSize.Menu);
 
-			eventBox.Add (new ImageView (image));
-			eventBox.ShowAll ();
+			eventBox.Append (new ImageView (image));
 
 			return new EventBoxTooltip (eventBox) {
 				ToolTip = tooltipText,
@@ -160,10 +163,12 @@ namespace MonoDevelop.Packaging.Gui
 			};
 		}
 
-		void HideTooltip (EventBox eventBox, EventBoxTooltip tooltip)
+		void HideTooltip (Gtk.Box eventBox, EventBoxTooltip tooltip)
 		{
 			Dispose (tooltip);
-			eventBox.Foreach (eventBox.Remove);
+			Widget child;
+			while ((child = eventBox.FirstChild) != null)
+				eventBox.Remove (child);
 		}
 	}
 }

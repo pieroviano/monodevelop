@@ -32,28 +32,25 @@ using MonoDevelop.Components.AtkCocoaHelper;
 
 namespace MonoDevelop.Xml.Editor
 {
-	class XmlEditorOptionsPanelWidget : VBox
+	class XmlEditorOptionsPanelWidget : Box
 	{
 		readonly CheckButton autoCompleteElementsCheck, autoAddPunctuationCheck, showSchemaAnnotationCheck;
 
-		public XmlEditorOptionsPanelWidget ()
+		public XmlEditorOptionsPanelWidget () : base (Orientation.Vertical, 6)
 		{
-			Spacing = 6;
-
-			autoCompleteElementsCheck = new CheckButton (GettextCatalog.GetString ("Automatically insert closing tags"));
+			autoCompleteElementsCheck = new CheckButton { Label = GettextCatalog.GetString ("Automatically insert closing tags") };
 			autoCompleteElementsCheck.SetCommonAccessibilityAttributes ("XmlOptionsPanel.autoComplete", "",
 			                                                            GettextCatalog.GetString ("Check to enable automatic close tag insertion"));
-			autoAddPunctuationCheck = new CheckButton (GettextCatalog.GetString ("Automatically insert punctuation (=\"\", />, etc.)"));
+			autoAddPunctuationCheck = new CheckButton { Label = GettextCatalog.GetString ("Automatically insert punctuation (=\"\", />, etc.)") };
 			autoAddPunctuationCheck.SetCommonAccessibilityAttributes ("XmlOptionsPanel.autoAdd", "",
 			                                                          GettextCatalog.GetString ("Check to enable automatic punctuation insertion"));
-			showSchemaAnnotationCheck = new CheckButton (GettextCatalog.GetString ("Show schema annotation"));
+			showSchemaAnnotationCheck = new CheckButton { Label = GettextCatalog.GetString ("Show schema annotation") };
 
-			PackStart (autoCompleteElementsCheck, false, false, 0);
-			PackStart (autoAddPunctuationCheck, false, false, 0);
+			Append (autoCompleteElementsCheck);
+			Append (autoAddPunctuationCheck);
 
-			//PackStart (showSchemaAnnotationCheck, false, false, 0);
+			//Append (showSchemaAnnotationCheck);
 
-			ShowAll ();
 		}
 		
 		public bool AutoCompleteElements {

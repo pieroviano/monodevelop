@@ -5,7 +5,7 @@ using MonoDevelop.Deployment.Targets;
 
 namespace MonoDevelop.Deployment.Gui
 {
-	internal partial class LocalFileCopyConfigurationEditorWidget : Gtk.Bin
+	internal partial class LocalFileCopyConfigurationEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		LocalFileCopyConfiguration config;
 		

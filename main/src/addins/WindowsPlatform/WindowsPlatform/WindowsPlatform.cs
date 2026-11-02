@@ -178,7 +178,7 @@ namespace MonoDevelop.Platform
 
 			// Only initialize elements for Win7+.
 			if (TaskbarManager.IsPlatformSupported) {
-				TaskbarManager.Instance.SetApplicationIdForSpecificWindow (GdkWin32.HgdiobjGet (window.GdkWindow), BrandingService.ApplicationName);
+				TaskbarManager.Instance.SetApplicationIdForSpecificWindow (GdkWin32.HgdiobjGet (window), BrandingService.ApplicationName);
 			}
 		}
 
@@ -187,7 +187,7 @@ namespace MonoDevelop.Platform
 			if (!TaskbarManager.IsPlatformSupported)
 				return;
 
-			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow.GdkWindow);
+			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow);
 			if (progress >= 1.0) {
 				TaskbarManager.Instance.SetProgressState (TaskbarProgressBarState.NoProgress, handle);
 			} else {
@@ -201,7 +201,7 @@ namespace MonoDevelop.Platform
 			if (!TaskbarManager.IsPlatformSupported)
 				return;
 				
-			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow.GdkWindow);
+			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow);
 			TaskbarManager.Instance.SetProgressState (TaskbarProgressBarState.Indeterminate, handle);
 		}
 
@@ -210,7 +210,7 @@ namespace MonoDevelop.Platform
 			if (!TaskbarManager.IsPlatformSupported)
 				return;
 
-			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow.GdkWindow);
+			IntPtr handle = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow);
 			TaskbarManager.Instance.SetProgressState (TaskbarProgressBarState.Error, handle);
 			TaskbarManager.Instance.SetProgressValue (1, 1, handle);
 
@@ -275,75 +275,16 @@ namespace MonoDevelop.Platform
 			}
 		}
 
-		// Note: we can't reuse RectangleF because the layout is different...
-		[StructLayout (LayoutKind.Sequential)]
-		struct Rect {
-			public int Left;
-			public int Top;
-			public int Right;
-			public int Bottom;
-
-			public int X { get { return Left; } }
-			public int Y { get { return Top; } }
-			public int Width { get { return Right - Left; } }
-			public int Height { get { return Bottom - Top; } }
-		}
-
-		const int MonitorInfoFlagsPrimary = 0x01;
-
-		[StructLayout (LayoutKind.Sequential)]
-		struct MonitorInfo {
-			public int Size;
-			public Rect Frame;         // Monitor
-			public Rect VisibleFrame;  // Work
-			public int Flags;
-			[MarshalAs(UnmanagedType.ByValTStr, SizeConst=32)]
-			public string Device;
-		}
-
-		[UnmanagedFunctionPointer (CallingConvention.Winapi)]
-		delegate int EnumMonitorsCallback (IntPtr hmonitor, IntPtr hdc, IntPtr prect, IntPtr user_data);
-
-		[DllImport (Win32.USER32)]
-		extern static int EnumDisplayMonitors (IntPtr hdc, IntPtr clip, EnumMonitorsCallback callback, IntPtr user_data);
-
-		[DllImport (Win32.USER32)]
-		extern static int GetMonitorInfoA (IntPtr hmonitor, ref MonitorInfo info);
-
 		public override Xwt.Rectangle GetUsableMonitorGeometry (int screenNumber, int monitor_id)
 		{
-			var screen = Gdk.Display.Default.GetScreen (screenNumber);
-			Gdk.Rectangle geometry = screen.GetMonitorGeometry (monitor_id);
-			List<MonitorInfo> screens = new List<MonitorInfo> ();
-
-			EnumDisplayMonitors (IntPtr.Zero, IntPtr.Zero, delegate (IntPtr hmonitor, IntPtr hdc, IntPtr prect, IntPtr user_data) {
-				var info = new MonitorInfo ();
-
-				info.Size = Marshal.SizeOf (info);
-
-				GetMonitorInfoA (hmonitor, ref info);
-
-				// In order to keep the order the same as Gtk, we need to put the primary monitor at the beginning.
-				if ((info.Flags & MonitorInfoFlagsPrimary) != 0)
-					screens.Insert (0, info);
-				else
-					screens.Add (info);
-
-				return 1;
-			}, IntPtr.Zero);
-
-			MonitorInfo monitor = screens[monitor_id];
-			Rect visible = monitor.VisibleFrame;
-			Rect frame = monitor.Frame;
-
-			// Rebase the VisibleFrame off of Gtk's idea of this monitor's geometry (since they use different coordinate systems)
-			int x = geometry.X + (visible.Left - frame.Left);
-			int width = visible.Width;
-
-			int y = geometry.Y + (visible.Top - frame.Top);
-			int height = visible.Height;
-
-			return new Xwt.Rectangle (x, y, width, height);
+			// GTK 4 has a single list of monitors per display (no screens); the work area is queried from Win32.
+			var monitors = MonoDevelop.Components.GtkWorkarounds.GetMonitors ();
+			if (monitors.Count == 0)
+				return Xwt.Rectangle.Zero;
+			if (monitor_id < 0 || monitor_id >= monitors.Count)
+				monitor_id = 0;
+			var area = MonoDevelop.Components.GtkWorkarounds.GetUsableMonitorGeometry (monitors [monitor_id]);
+			return new Xwt.Rectangle (area.X, area.Y, area.Width, area.Height);
 		}
 
 		static ProcessStartInfo CreateConsoleStartInfo (

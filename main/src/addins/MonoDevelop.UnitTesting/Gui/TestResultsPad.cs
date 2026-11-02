@@ -54,12 +54,12 @@ namespace MonoDevelop.UnitTesting
 	class TestResultsPad: PadContent, ITestProgressMonitor
 	{
 		IPadWindow window;
-		VBox panel;
-		HPaned book;
+		Gtk.Box panel;
+		Paned book;
 		
 		Label infoLabel = new Label ();
 		Label infoCurrent = new Label ();
-		HBox labels;
+		Gtk.Box labels;
 		
 		Label resultLabel = new Label ();
 		
@@ -70,7 +70,7 @@ namespace MonoDevelop.UnitTesting
 		TextTag bold;
 		Dictionary<UnitTest,int> outIters = new Dictionary<UnitTest,int> ();
 		Widget outputViewScrolled;
-		VSeparator infoSep;
+		Separator infoSep;
 		Gtk.TreeIter startMessageIter;
 		
 		Button buttonStop;
@@ -109,13 +109,12 @@ namespace MonoDevelop.UnitTesting
 			UnitTestService.TestSuiteChanged += new EventHandler (OnTestSuiteChanged);
 			IdeApp.Workspace.WorkspaceItemClosed += OnWorkspaceItemClosed;
 
-			panel = new VBox { Name = "testResultBox" };
+			panel = new Gtk.Box (Orientation.Vertical, 0) { Name = "testResultBox" };
 			
 			// Results notebook
 			
-			book = new HPaned ();
-			panel.PackStart (book, true, true, 0);
-			panel.FocusChain = new Gtk.Widget [] { book };
+			book = new Paned (Orientation.Horizontal) { Vexpand = true };
+			panel.Append (book);
 
 			// Failures tree
 			failuresTreeView = new MonoDevelop.Ide.Gui.Components.PadTreeView { Name = "testResultsTree" };
@@ -136,32 +135,33 @@ namespace MonoDevelop.UnitTesting
 			failuresTreeView.Model = failuresStore;
 		
 			var sw = new MonoDevelop.Components.CompactScrolledWindow ();
-			sw.ShadowType = ShadowType.None;
-			sw.Add (failuresTreeView);
-			book.Pack1 (sw, true, true);
+			sw.Child = failuresTreeView;
+			book.StartChild = sw;
+			book.ResizeStartChild = true;
+			book.ShrinkStartChild = true;
 
 			outputView = new MonoDevelop.Ide.Gui.Components.LogView.LogTextView { Name = "testResultOutput" };
-			outputView.ModifyFont (IdeServices.FontService.MonospaceFont);
+			// GTK 4: ModifyFont is gone; the custom monospace font preference is not applied (only TextView.Monospace).
+			outputView.Monospace = true;
 			outputView.Editable = false;
 			bold = new TextTag ("bold");
 			bold.Weight = Pango.Weight.Bold;
 			outputView.Buffer.TagTable.Add (bold);
 			sw = new MonoDevelop.Components.CompactScrolledWindow ();
-			sw.ShadowType = ShadowType.None;
-			sw.Add (outputView);
-			book.Pack2 (sw, true, true);
+			sw.Child = outputView;
+			book.EndChild = sw;
+			book.ResizeEndChild = true;
+			book.ShrinkEndChild = true;
 			outputViewScrolled = sw;
 			
 			failuresTreeView.RowActivated += OnRowActivated;
 			failuresTreeView.Selection.Changed += OnRowSelected;
-			failuresTreeView.DoPopupMenu = delegate (EventButton evt) {
+			failuresTreeView.DoPopupMenu = delegate (ClickInfo evt) {
 				IdeApp.CommandService.ShowContextMenu (failuresTreeView, evt,
 					"/MonoDevelop/UnitTesting/ContextMenu/TestResultsPad");
 			};
 			
-			panel.ShowAll ();
-			
-			outputViewScrolled.Hide ();
+			outputViewScrolled.Visible = false;
 		}
 		
 		protected override void Initialize (IPadWindow window)
@@ -172,76 +172,62 @@ namespace MonoDevelop.UnitTesting
 			
 			buttonSuccess = new ToggleButton ();
 			buttonSuccess.Label = GettextCatalog.GetString ("Successful Tests");
-			buttonSuccess.Accessible.Name = "TestResultsPad.SuccessfulTests";
-			buttonSuccess.Accessible.Description = GettextCatalog.GetString ("Show the results for the successful tests");
+			buttonSuccess.SetCommonAccessibilityAttributes ("TestResultsPad.SuccessfulTests", (string)null, GettextCatalog.GetString ("Show the results for the successful tests"));
 			buttonSuccess.Active = false;
-			buttonSuccess.Image = new ImageView (TestStatusIcon.Success);
-			buttonSuccess.Image.Show ();
+			SetButtonContent (buttonSuccess, new ImageView (TestStatusIcon.Success));
 			buttonSuccess.Toggled += new EventHandler (OnShowSuccessfulToggled);
 			buttonSuccess.TooltipText = GettextCatalog.GetString ("Show Successful Tests");
 			toolbar.Add (buttonSuccess);
 
 			buttonInconclusive = new ToggleButton ();
 			buttonInconclusive.Label = GettextCatalog.GetString ("Inconclusive Tests");
-			buttonInconclusive.Accessible.Name = "TestResultsPad.InconclusiveTests";
-			buttonInconclusive.Accessible.Description = GettextCatalog.GetString ("Show the results for the inconclusive tests");
+			buttonInconclusive.SetCommonAccessibilityAttributes ("TestResultsPad.InconclusiveTests", (string)null, GettextCatalog.GetString ("Show the results for the inconclusive tests"));
 			buttonInconclusive.Active = true;
-			buttonInconclusive.Image = new ImageView (TestStatusIcon.Inconclusive);
-			buttonInconclusive.Image.Show ();
+			SetButtonContent (buttonInconclusive, new ImageView (TestStatusIcon.Inconclusive));
 			buttonInconclusive.Toggled += new EventHandler (OnShowInconclusiveToggled);
 			buttonInconclusive.TooltipText = GettextCatalog.GetString ("Show Inconclusive Tests");
 			toolbar.Add (buttonInconclusive);
 			
 			buttonFailures = new ToggleButton ();
 			buttonFailures.Label = GettextCatalog.GetString ("Failed Tests");
-			buttonFailures.Accessible.Name = "TestResultsPad.FailedTests";
-			buttonFailures.Accessible.Description = GettextCatalog.GetString ("Show the results for the failed tests");
+			buttonFailures.SetCommonAccessibilityAttributes ("TestResultsPad.FailedTests", (string)null, GettextCatalog.GetString ("Show the results for the failed tests"));
 			buttonFailures.Active = true;
-			buttonFailures.Image = new ImageView (TestStatusIcon.Failure);
-			buttonFailures.Image.Show ();
+			SetButtonContent (buttonFailures, new ImageView (TestStatusIcon.Failure));
 			buttonFailures.Toggled += new EventHandler (OnShowFailuresToggled);
 			buttonFailures.TooltipText = GettextCatalog.GetString ("Show Failed Tests");
 			toolbar.Add (buttonFailures);
 
 			buttonIgnored = new ToggleButton ();
 			buttonIgnored.Label = GettextCatalog.GetString ("Ignored Tests");
-			buttonIgnored.Accessible.Name = "TestResultsPad.IgnoredTests";
-			buttonIgnored.Accessible.Description = GettextCatalog.GetString ("Show the results for the ignored tests");
+			buttonIgnored.SetCommonAccessibilityAttributes ("TestResultsPad.IgnoredTests", (string)null, GettextCatalog.GetString ("Show the results for the ignored tests"));
 			buttonIgnored.Active = true;
-			buttonIgnored.Image = new ImageView (TestStatusIcon.NotRun);
-			buttonIgnored.Image.Show ();
+			SetButtonContent (buttonIgnored, new ImageView (TestStatusIcon.NotRun));
 			buttonIgnored.Toggled += new EventHandler (OnShowIgnoredToggled);
 			buttonIgnored.TooltipText = GettextCatalog.GetString ("Show Ignored Tests");
 			toolbar.Add (buttonIgnored);
 			
 			buttonOutput = new ToggleButton ();
 			buttonOutput.Label = GettextCatalog.GetString ("Output");
-			buttonOutput.Accessible.Name = "TestResultsPad.Output";
-			buttonOutput.Accessible.Description = GettextCatalog.GetString ("Show the test output");
+			buttonOutput.SetCommonAccessibilityAttributes ("TestResultsPad.Output", (string)null, GettextCatalog.GetString ("Show the test output"));
 			buttonOutput.Active = false;
-			buttonOutput.Image = new ImageView (MonoDevelop.Ide.Gui.Stock.OutputIcon, IconSize.Menu);
-			buttonOutput.Image.Show ();
+			SetButtonContent (buttonOutput, new ImageView (MonoDevelop.Ide.Gui.Stock.OutputIcon, MonoDevelop.Components.StockIconSize.Menu));
 			buttonOutput.Toggled += new EventHandler (OnShowOutputToggled);
 			buttonOutput.TooltipText = GettextCatalog.GetString ("Show Output");
 			toolbar.Add (buttonOutput);
 			
-			toolbar.Add (new SeparatorToolItem ());
+			toolbar.Add (new Separator (Orientation.Vertical));
 			
 			buttonRun = new Button ();
 			buttonRun.Label = GettextCatalog.GetString ("Rerun Tests");
-			buttonRun.Accessible.Name = "TestResultsPad.Run";
-			buttonRun.Accessible.Description = GettextCatalog.GetString ("Start a test run and run all the tests");
-			buttonRun.Image = new ImageView ("md-execute-all", IconSize.Menu);
-			buttonRun.Image.Show ();
+			buttonRun.SetCommonAccessibilityAttributes ("TestResultsPad.Run", (string)null, GettextCatalog.GetString ("Start a test run and run all the tests"));
+			SetButtonContent (buttonRun, new ImageView ("md-execute-all", MonoDevelop.Components.StockIconSize.Menu));
 			buttonRun.Sensitive = false;
 			toolbar.Add (buttonRun);
 			
-			buttonStop = new Button (new ImageView (Ide.Gui.Stock.Stop, Gtk.IconSize.Menu));
-			buttonStop.Accessible.Name = "TestResultsPad.Stop";
-			buttonStop.Accessible.SetTitle (GettextCatalog.GetString ("Stop"));
-			buttonStop.Accessible.Description = GettextCatalog.GetString ("Stop the current test run");
+			buttonStop = new Button ();
+			SetButtonContent (buttonStop, new ImageView (Ide.Gui.Stock.Stop, MonoDevelop.Components.StockIconSize.Menu));
+			buttonStop.SetCommonAccessibilityAttributes ("TestResultsPad.Stop", GettextCatalog.GetString ("Stop"), GettextCatalog.GetString ("Stop the current test run"));
 			toolbar.Add (buttonStop);
-			toolbar.ShowAll ();
 			
 			buttonStop.Clicked += new EventHandler (OnStopClicked);
 			buttonRun.Clicked += new EventHandler (OnRunClicked);
@@ -250,7 +236,7 @@ namespace MonoDevelop.UnitTesting
 			
 			DockItemToolbar runPanel = window.GetToolbar (DockPositionType.Bottom);
 			
-			infoSep = new VSeparator ();
+			infoSep = new Separator (Orientation.Vertical);
 			
 			resultLabel.UseMarkup = true;
 			infoCurrent.Ellipsize = Pango.EllipsizeMode.Start;
@@ -259,20 +245,18 @@ namespace MonoDevelop.UnitTesting
 			runPanel.Add (progressBar);
 			runPanel.Add (infoCurrent, true, 10);	
 			
-			labels = new HBox (false, 10);
+			labels = new Gtk.Box (Orientation.Horizontal, 10);
 			
 			infoLabel.UseMarkup = true;
 
-			labels.PackStart (infoLabel, true, false, 0);
+			labels.Append (infoLabel);
 
 			runPanel.Add (new Gtk.Label (), true);
 			runPanel.Add (labels);
 			runPanel.Add (infoSep, false, 10);
 			
-			progressBar.HeightRequest = infoLabel.SizeRequest ().Height;
-			runPanel.ShowAll ();
-			progressBar.Hide ();
-			infoSep.Hide ();
+			progressBar.Visible = false;
+			infoSep.Visible = false;
 			resultSummary = new UnitTestResult ();
 			UpdateCounters ();
 		}
@@ -314,6 +298,16 @@ namespace MonoDevelop.UnitTesting
 			UpdateCounters ();
 		}
 		
+		static void SetButtonContent (Button button, ImageView image)
+		{
+			var text = button.Label;
+			var box = new Gtk.Box (Orientation.Horizontal, 4);
+			box.Append (image);
+			if (!string.IsNullOrEmpty (text))
+				box.Append (new Label (text));
+			button.Child = box;
+		}
+
 		bool Running {
 			get { return running; }
 			set {
@@ -384,7 +378,7 @@ namespace MonoDevelop.UnitTesting
 		public void AddStartMessage (bool isRunning = true)
 		{
 			if (rootTest != null) {
-				var infoIcon = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Information, Gtk.IconSize.Menu);
+				var infoIcon = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Information, MonoDevelop.Components.StockIconSize.Menu);
 				string msg = string.Format (isRunning ? GettextCatalog.GetString ("Running tests for <b>{0}</b> configuration <b>{1}</b>") : GettextCatalog.GetString ("Test results for <b>{0}</b> configuration <b>{1}</b>"), rootTest.Name, configuration);
 				startMessageIter = failuresStore.AppendValues (infoIcon, msg, rootTest, null, 0);
 			} else {
@@ -412,7 +406,7 @@ namespace MonoDevelop.UnitTesting
 					msg += ": " + Escape (errorMessage);
 			}
 
-			var stock = ImageService.GetIcon (Ide.Gui.Stock.Error, Gtk.IconSize.Menu);
+			var stock = ImageService.GetIcon (Ide.Gui.Stock.Error, MonoDevelop.Components.StockIconSize.Menu);
 			TreeIter testRow = failuresStore.AppendValues (stock, msg, null, null, 0);
 			string name = error is RemoteUnhandledException ? ((RemoteUnhandledException)error).RemoteExceptionName : error.GetType ().Name;
 			failuresStore.AppendValues (testRow, null, Escape (name + ": " + error.Message), null);
@@ -422,7 +416,7 @@ namespace MonoDevelop.UnitTesting
 
 		public void ReportExecutionError (string message)
 		{
-			var stock = ImageService.GetIcon (Ide.Gui.Stock.Error, Gtk.IconSize.Menu);
+			var stock = ImageService.GetIcon (Ide.Gui.Stock.Error, MonoDevelop.Components.StockIconSize.Menu);
 			TreeIter testRow = failuresStore.AppendValues (stock, message, null, null, 0);
 		}
 
@@ -536,31 +530,29 @@ namespace MonoDevelop.UnitTesting
 				if (last == null)
 					return;
 
-				Gtk.TreeModel foo;
+				Gtk.ITreeModel foo;
 				Gtk.TreeIter iter;
 				if (!failuresTreeView.Selection.GetSelected (out foo, out iter))
 					return;
 
 				int type = (int)failuresStore.GetValue (iter, 5);
 
-				var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-				switch (type) {
+								switch (type) {
 					case ErrorMessage:
-					clipboard.Text = last.Message;
+					ClipboardHelper.SetText (last.Message);
 					break;
 					case StackTrace:
-					clipboard.Text = last.StackTrace;
+					ClipboardHelper.SetText (last.StackTrace);
 					break;
 					default:
-					clipboard.Text = last.Message + Environment.NewLine + GettextCatalog.GetString("Stack trace:") + Environment.NewLine + last.StackTrace;
+					ClipboardHelper.SetText (last.Message + Environment.NewLine + GettextCatalog.GetString("Stack trace:") + Environment.NewLine + last.StackTrace);
 					break;
 				}
 			} else {
 				if (error == null)
 					return;
-				var clipboard = Clipboard.Get (Gdk.Atom.Intern ("CLIPBOARD", false));
-
-				Gtk.TreeModel foo;
+				
+				Gtk.ITreeModel foo;
 				Gtk.TreeIter iter;
 				if (!failuresTreeView.Selection.GetSelected (out foo, out iter))
 					return;
@@ -569,13 +561,13 @@ namespace MonoDevelop.UnitTesting
 
 				switch (type) {
 				case ErrorMessage:
-					clipboard.Text = error.Message;
+					ClipboardHelper.SetText (error.Message);
 					break;
 				case StackTrace:
-					clipboard.Text = error.StackTrace;
+					ClipboardHelper.SetText (error.StackTrace);
 					break;
 				default:
-					clipboard.Text = error.Message + Environment.NewLine + GettextCatalog.GetString("Stack trace:") + Environment.NewLine + error.StackTrace;
+					ClipboardHelper.SetText (error.Message + Environment.NewLine + GettextCatalog.GetString("Stack trace:") + Environment.NewLine + error.StackTrace);
 					break;
 				}
 			}
@@ -588,7 +580,7 @@ namespace MonoDevelop.UnitTesting
 			if (test != null) {
 				var last = test.GetLastResult ();
 
-				Gtk.TreeModel foo;
+				Gtk.ITreeModel foo;
 				Gtk.TreeIter iter;
 				if (!failuresTreeView.Selection.GetSelected (out foo, out iter)) {
 					info.Enabled = false;
@@ -671,7 +663,7 @@ namespace MonoDevelop.UnitTesting
 		
 		UnitTest GetSelectedTest ()
 		{
-			Gtk.TreeModel foo;
+			Gtk.ITreeModel foo;
 			Gtk.TreeIter iter;
 			if (!failuresTreeView.Selection.GetSelected (out foo, out iter))
 				return null;

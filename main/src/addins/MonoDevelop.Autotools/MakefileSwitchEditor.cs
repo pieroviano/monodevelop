@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 // 
 // MakefileSwitchEditor.cs
 //  
@@ -39,8 +40,7 @@ namespace MonoDevelop.Autotools
 		{
 			this.Build();
 			MakefileSwitchEditorWidget widg = new MakefileSwitchEditorWidget (target);
-			align.Add (widg);
-			widg.ShowAll ();
+			DesignerLayout.Pack (align, widg, true);
 		}
 	}
 }

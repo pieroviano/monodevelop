@@ -50,6 +50,11 @@
       <Project>{AA0C00CB-8699-4F37-BFAE-40CA87ACC06D}</Project>
       <Name>Shell</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\..\..\external\xwt\Xwt.Gtk4\Xwt.Gtk4.csproj">
+      <Project>{5B1A7C0E-3D42-4F0A-9E61-0A4C7D2B8F11}</Project>
+      <Name>Xwt.Gtk4</Name>
+      <Private>False</Private>
+    </ProjectReference>
     <ProjectReference Include="..\..\..\..\external\xwt\Xwt.Gtk4.Windows\Xwt.Gtk4.Windows.csproj">
       <Project>{7C2E9D14-6A53-4B8F-A1D7-3E8B5F90C622}</Project>
       <Name>Xwt.Gtk4.Windows</Name>

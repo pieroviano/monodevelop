@@ -11,7 +11,7 @@ namespace MonoDevelop.Deployment.Gui
 {
 	[System.ComponentModel.Category("MonoDevelop.Deployment")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class SourcesZipEditorWidget : Gtk.Bin
+	internal partial class SourcesZipEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		MSBuildFileFormat[] formats;
 		SourcesZipPackageBuilder target;

@@ -11,7 +11,7 @@ namespace MonoDevelop.TextEditor
 	partial class TextViewContent<TView, TImports> :
 		IToolboxConsumer
 	{
-		TargetEntry [] IToolboxConsumer.DragTargets { get; } = new TargetEntry [0];
+		string [] IToolboxConsumer.DragTargets { get; } = new string [0];
 
 		ToolboxItemFilterAttribute [] IToolboxConsumer.ToolboxFilterAttributes { get; } = new ToolboxItemFilterAttribute [0];
 
@@ -32,8 +32,9 @@ namespace MonoDevelop.TextEditor
 			return false;
 		}
 
-		void IToolboxConsumer.DragItem (ItemToolboxNode item, Widget source, DragContext ctx)
+		Gdk.ContentProvider IToolboxConsumer.DragItem (ItemToolboxNode item, Widget source)
 		{
+			return null;
 		}
 	}
 }

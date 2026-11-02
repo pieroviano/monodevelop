@@ -37,7 +37,7 @@ using MonoDevelop.Components.Extensions;
 
 namespace MonoDevelop.SourceEditor.OptionPanels
 {
-	partial class GeneralOptionsPanel : Gtk.Bin, IOptionsPanel
+	partial class GeneralOptionsPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 		readonly Xwt.CheckBox wordWrapCheckBox;
 		readonly Xwt.CheckBox wordWrapVisualGlyphsCheckBox;
@@ -64,10 +64,10 @@ namespace MonoDevelop.SourceEditor.OptionPanels
 			wordWrapVisualGlyphsCheckBox.Toggled += HandleNewEditorOptionToggled;
 			newEditorOptionsBox.PackStart (wordWrapVisualGlyphsCheckBox);
 
-			if (Xwt.Toolkit.CurrentEngine.Type == Xwt.ToolkitType.Gtk)
-				vbox4.PackStart ((Gtk.Widget)Xwt.Toolkit.CurrentEngine.GetNativeWidget (newEditorOptionsBox), false, false, 0);
+			if (Xwt.Toolkit.CurrentEngine.Type == Xwt.ToolkitType.Gtk4)
+				vbox4.Append ((Gtk.Widget)Xwt.Toolkit.CurrentEngine.GetNativeWidget (newEditorOptionsBox));
 			else
-				LoggingService.LogError ("GeneralOptionsPanel: Xwt.Toolkit.CurrentEngine.Type != Xwt.ToolkitType.Gtk - currently unsupported");
+				LoggingService.LogError ("GeneralOptionsPanel: Xwt.Toolkit.CurrentEngine.Type != Xwt.ToolkitType.Gtk4 - currently unsupported");
 
 			HandleNewEditorOptionToggled (this, EventArgs.Empty);
 

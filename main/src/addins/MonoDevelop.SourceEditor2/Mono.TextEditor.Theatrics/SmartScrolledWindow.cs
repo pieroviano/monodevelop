@@ -8,16 +8,27 @@ using MonoDevelop.Components;
 namespace Mono.TextEditor.Theatrics
 {
 	/// <summary>
+	/// Implemented by scrollable children of the <see cref="SmartScrolledWindow"/>: the child scrolls its content
+	/// virtually and keeps the bounds of the adjustments up to date (replaces GTK 2 <c>SetScrollAdjustments</c>).
+	/// </summary>
+	interface IScrollAdjustable
+	{
+		void SetScrollAdjustments (Gtk.Adjustment hAdjustment, Gtk.Adjustment vAdjustment);
+	}
+
+	/// <summary>
 	/// A scrolled window with the ability to put widgets beside the scrollbars.
 	/// </summary>
-	class SmartScrolledWindow : Bin
+	class SmartScrolledWindow : ContainerWidget
 	{
-		Adjustment vAdjustment;
+		Gtk.Adjustment vAdjustment;
 		Gtk.Widget vScrollBar;
 		
-		Adjustment hAdjustment;
-		Gtk.HScrollbar hScrollBar;
-		
+		Gtk.Adjustment hAdjustment;
+		Gtk.Scrollbar hScrollBar;
+
+		Gtk.Widget child;
+
 		List<SmartScrolledWindowContainerChild> children = new List<SmartScrolledWindowContainerChild> ();
 		public enum ChildPosition {
 			Top,
@@ -26,246 +37,230 @@ namespace Mono.TextEditor.Theatrics
 			Right
 		}
 		
-		public Adjustment Vadjustment {
+		public Gtk.Adjustment Vadjustment {
 			get { return this.vAdjustment; }
 		}
 
-		public Adjustment Hadjustment {
+		public Gtk.Adjustment Hadjustment {
 			get { return this.hAdjustment; }
 		}
 
 		public bool BorderVisible { get; set; }
-		
-		public override ContainerChild this [Widget w] {
-			get {
-				foreach (ContainerChild info in children.ToArray ()) {
-					if (info.Child == w)
-						return info;
-				}
-				return null;
+
+		/// <summary>The vertical scroll bar (or the widget that replaced it).</summary>
+		public Gtk.Widget VScrollbar {
+			get { return vScrollBar; }
+		}
+
+		bool suppressVScrollbar;
+
+		/// <summary>
+		/// Keeps the vertical scroll bar hidden (and scrolling by wheel and adjustment working). Used when another
+		/// widget (the quick task strip) replaces the scroll bar visually.
+		/// </summary>
+		public bool SuppressVScrollbar {
+			get { return suppressVScrollbar; }
+			set {
+				if (suppressVScrollbar == value)
+					return;
+				suppressVScrollbar = value;
+				HandleAdjustmentChanged (vAdjustment, EventArgs.Empty);
 			}
 		}
-		
-		internal class SmartScrolledWindowContainerChild : Container.ContainerChild
+
+		/// <summary>The horizontal scroll bar.</summary>
+		public Gtk.Scrollbar HScrollbar {
+			get { return hScrollBar; }
+		}
+
+		/// <summary>The scrolled widget. If it implements <see cref="IScrollAdjustable"/> it receives the adjustments.</summary>
+		public Gtk.Widget Child {
+			get { return child; }
+			set {
+				if (child == value)
+					return;
+				if (child != null) {
+					RemoveChild (child);
+					child = null;
+				}
+				if (value != null) {
+					child = value;
+					InsertChild (value, 0);
+					(value as IScrollAdjustable)?.SetScrollAdjustments (hAdjustment, vAdjustment);
+				}
+			}
+		}
+
+		/// <summary>Removes the scrolled child without destroying it.</summary>
+		public void RemoveScrolledChild ()
 		{
+			Child = null;
+		}
+		
+		internal class SmartScrolledWindowContainerChild
+		{
+			public Gtk.Widget Child { get; }
+
 			public ChildPosition ChildPosition {
 				get;
 				set;
 			}
 			
-			public SmartScrolledWindowContainerChild (Container parent, Widget child) : base (parent, child)
+			public SmartScrolledWindowContainerChild (Gtk.Widget child)
 			{
+				Child = child;
 			}
-		}
-		
-		protected override void OnMapped ()
-		{
-			base.OnMapped ();
-			QueueDraw ();
 		}
 		
 		public SmartScrolledWindow (Gtk.Widget vScrollBar = null)
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-			
-			vAdjustment = new Adjustment (0, 0, 0, 0, 0, 0);
+			Overflow = Overflow.Hidden;
+			Hexpand = true;
+			Vexpand = true;
+
+			vAdjustment = new Gtk.Adjustment (0, 0, 0, 0, 0, 0);
 			vAdjustment.Changed += HandleAdjustmentChanged;
 			
-			this.vScrollBar = vScrollBar ?? new VScrollbar (vAdjustment);
-			this.vScrollBar.Parent = this;
-			this.vScrollBar.Show ();
+			this.vScrollBar = vScrollBar ?? new Gtk.Scrollbar (Orientation.Vertical, vAdjustment);
+			AddChild (this.vScrollBar);
 			
-			hAdjustment = new Adjustment (0, 0, 0, 0, 0, 0);
+			hAdjustment = new Gtk.Adjustment (0, 0, 0, 0, 0, 0);
 			hAdjustment.Changed += HandleAdjustmentChanged;
 			
-			hScrollBar = new HScrollbar (hAdjustment);
-			hScrollBar.Parent = this;
-			hScrollBar.Show ();
+			hScrollBar = new Gtk.Scrollbar (Orientation.Horizontal, hAdjustment);
+			AddChild (hScrollBar);
 		}
 		
 		public void ReplaceVScrollBar (Gtk.Widget widget)
 		{
 			if (vScrollBar != null) {
-				vScrollBar.Unparent ();
-				vScrollBar.Destroy ();
+				RemoveChild (vScrollBar);
 			}
 			this.vScrollBar = widget;
-			this.vScrollBar.Parent = this;
-			this.vScrollBar.Show ();
+			AddChild (widget);
 		}
-		
-		protected override void OnDestroyed ()
+
+		bool destroyed;
+
+		public override void Destroy ()
 		{
-			if (Child != null)
-				Child.Destroy ();
-			if (vAdjustment != null) {
-				vAdjustment.Changed -= HandleAdjustmentChanged;
-				vAdjustment.Destroy ();
-				vAdjustment = null;
+			if (!destroyed) {
+				destroyed = true;
+				if (vAdjustment != null)
+					vAdjustment.Changed -= HandleAdjustmentChanged;
+				if (hAdjustment != null)
+					hAdjustment.Changed -= HandleAdjustmentChanged;
 			}
-			if (hAdjustment != null) {
-				hAdjustment.Changed -= HandleAdjustmentChanged;
-				hAdjustment.Destroy ();
-				hAdjustment = null;
-			}
-			if (vScrollBar != null) {
-				vScrollBar.Destroy ();
-				vScrollBar = null;
-			}
-			if (hScrollBar != null) {
-				hScrollBar.Destroy ();
-				hScrollBar = null;
-			}
-			foreach (var c in children) {
-				c.Child.Destroy ();
-			}
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 		
 		void HandleAdjustmentChanged (object sender, EventArgs e)
 		{
-			var adjustment = (Adjustment)sender;
+			var adjustment = (Gtk.Adjustment)sender;
 			var scrollbar = adjustment == vAdjustment ? vScrollBar : hScrollBar;
-			if (!(scrollbar is Scrollbar))
+			if (!(scrollbar is Gtk.Scrollbar))
 				return;
 			bool newVisible = adjustment.Upper - adjustment.Lower > adjustment.PageSize;
+			if (adjustment == vAdjustment && suppressVScrollbar)
+				newVisible = false;
 			if (scrollbar.Visible != newVisible) {
 				scrollbar.Visible = newVisible;
 				QueueResize ();
 			}
 		}
 		
-		public override GLib.GType ChildType ()
-		{
-			return Gtk.Widget.GType;
-		}
-		
-		protected override void ForAll (bool include_internals, Gtk.Callback callback)
-		{
-			if (!include_internals) 
-				return;
-			if (Child != null)
-				callback (Child);
-			callback (vScrollBar);
-			callback (hScrollBar);
-			children.ForEach (child => callback (child.Child));
-		}
-		
 		public void AddChild (Gtk.Widget child, ChildPosition position)
 		{
-			child.Parent = this;
-			child.Show ();
-			children.Add (new SmartScrolledWindowContainerChild (this, child) { ChildPosition = position });
+			base.AddChild (child);
+			children.Add (new SmartScrolledWindowContainerChild (child) { ChildPosition = position });
 		}
-		
-		protected override void OnAdded (Widget widget)
-		{
-			base.OnAdded (widget);
-			if (widget == Child)
-				widget.SetScrollAdjustments (hAdjustment, vAdjustment);
-		}
-		
-		protected override void OnRemoved (Widget widget)
+
+		public override void RemoveChild (Gtk.Widget widget)
 		{
 			foreach (var info in children.ToArray ()) {
 				if (info.Child == widget) {
-					info.Child.Unparent ();
 					children.Remove (info);
-					return;
+					break;
 				}
 			}
-			if (widget == vScrollBar) {
+			if (widget == vScrollBar)
 				vScrollBar = null;
-				return;
-			}
-			if (widget == hScrollBar) {
-				vScrollBar = null;
-				return;
-			}
-			base.OnRemoved (widget);
+			else if (widget == hScrollBar)
+				hScrollBar = null;
+			base.RemoveChild (widget);
 		}
-		protected override void OnSizeAllocated (Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
 
+		static int NaturalWidth (Gtk.Widget widget)
+		{
+			return widget != null && widget.Visible ? GetChildNaturalSize (widget).Width : 0;
+		}
+
+		static int NaturalHeight (Gtk.Widget widget)
+		{
+			return widget != null && widget.Visible ? GetChildNaturalSize (widget).Height : 0;
+		}
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
 			int margin = BorderVisible ? 1 : 0;
-			int vwidth = vScrollBar.Visible ? vScrollBar.Requisition.Width : 0;
-			int hheight = hScrollBar.Visible ? hScrollBar.Requisition.Height : 0; 
-			var childRectangle = new Rectangle (allocation.X + margin, allocation.Y + margin, allocation.Width - vwidth - margin*2, allocation.Height - hheight - margin*2);
+			int vwidth = vScrollBar.Visible ? NaturalWidth (vScrollBar) : 0;
+			int hheight = hScrollBar.Visible ? NaturalHeight (hScrollBar) : 0; 
+			var childRectangle = new Gdk.Rectangle (margin, margin, width - vwidth - margin*2, height - hheight - margin*2);
 
 			if (Child != null) 
-				Child.SizeAllocate (childRectangle);
+				AllocateChild (Child, childRectangle);
 			if (vScrollBar.Visible) {
 				int vChildTopHeight = -1;
 				foreach (var child in children.Where (child => child.ChildPosition == ChildPosition.Top)) {
-					child.Child.SizeAllocate (new Rectangle (childRectangle.RightInside (), childRectangle.Y + vChildTopHeight, allocation.Width - vwidth, child.Child.Requisition.Height));
-					vChildTopHeight += child.Child.Requisition.Height;
+					var childHeight = NaturalHeight (child.Child);
+					AllocateChild (child.Child, new Gdk.Rectangle (childRectangle.RightInside (), childRectangle.Y + vChildTopHeight, width - vwidth, childHeight));
+					vChildTopHeight += childHeight;
 				}
-				int v = vScrollBar is Scrollbar && hScrollBar.Visible ? hScrollBar.Requisition.Height : 0;
-				vScrollBar.SizeAllocate (new Rectangle (childRectangle.X + childRectangle.Width + margin, childRectangle.Y + vChildTopHeight, vwidth, Allocation.Height - v - vChildTopHeight - margin));
+				int v = vScrollBar is Gtk.Scrollbar && hScrollBar.Visible ? hheight : 0;
+				AllocateChild (vScrollBar, new Gdk.Rectangle (childRectangle.X + childRectangle.Width + margin, childRectangle.Y + vChildTopHeight, vwidth, height - v - vChildTopHeight - margin));
 				vAdjustment.Value = System.Math.Max (System.Math.Min (vAdjustment.Upper - vAdjustment.PageSize, vAdjustment.Value), vAdjustment.Lower);
 			}
 			
 			if (hScrollBar.Visible) {
-				int v = vScrollBar.Visible ? vScrollBar.Requisition.Width : 0;
-				hScrollBar.SizeAllocate (new Rectangle (allocation.X, childRectangle.Y + childRectangle.Height + margin, allocation.Width - v, hheight));
-				hScrollBar.Value = System.Math.Max (System.Math.Min (hAdjustment.Upper - hAdjustment.PageSize, hScrollBar.Value), hAdjustment.Lower);
+				int v = vScrollBar.Visible ? vwidth : 0;
+				AllocateChild (hScrollBar, new Gdk.Rectangle (0, childRectangle.Y + childRectangle.Height + margin, width - v, hheight));
+				hAdjustment.Value = System.Math.Max (System.Math.Min (hAdjustment.Upper - hAdjustment.PageSize, hAdjustment.Value), hAdjustment.Lower);
 			}
 		}
 		
-		static double Clamp (double min, double val, double max)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			return System.Math.Max (min, System.Math.Min (val, max));
+			// the scrolled child can be any size: only the scroll bars have a minimum
+			minimum = natural = 0;
+			minimum_baseline = natural_baseline = -1;
+			if (orientation == Gtk.Orientation.Horizontal) {
+				minimum = natural = NaturalWidth (vScrollBar);
+			} else {
+				minimum = natural = NaturalHeight (hScrollBar);
+			}
 		}
 		
-		protected override bool OnScrollEvent (EventScroll evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			var alloc = Allocation;
-			double dx, dy;
-			evnt.GetPageScrollPixelDeltas (alloc.Width, alloc.Height, out dx, out dy);
-			
-			if (dx != 0.0 && hScrollBar.Visible)
-				hAdjustment.AddValueClamped (dx);
-			
-			if (dy != 0.0 && vScrollBar.Visible)
-				vAdjustment.AddValueClamped (dy);
-			
-			return (dx != 0.0 || dy != 0.0) || base.OnScrollEvent (evnt);
-		}
-		
-		protected override void OnSizeRequested (ref Gtk.Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
-			if (Child != null)
-				Child.SizeRequest ();
-			vScrollBar.SizeRequest ();
-			hScrollBar.SizeRequest ();
-			children.ForEach (child => child.Child.SizeRequest ());
-		}
-		
-		protected override bool OnExposeEvent (EventExpose evnt)
-		{
+			base.OnSnapshot (snapshot);
 			if (BorderVisible) {
-				using (Cairo.Context cr = Gdk.CairoHelper.Create (evnt.Window)) {
+				snapshot.DrawCairo (this, cr => {
 					cr.LineWidth = 1;
 					
-					var alloc = Allocation;
-					int right = alloc.RightInside ();
-					int bottom = alloc.BottomInside ();
+					int right = Width - 1;
+					int bottom = Height - 1;
 					
-					cr.SharpLineX (alloc.X, alloc.Y, alloc.X, bottom);
-					cr.SharpLineX (right, alloc.Y, right, bottom);
+					cr.SharpLineX (0, 0, 0, bottom);
+					cr.SharpLineX (right, 0, right, bottom);
 					
-					cr.SharpLineY (alloc.X, alloc.Y, right, alloc.Y);
-					cr.SharpLineY (alloc.X, bottom, right, bottom);
+					cr.SharpLineY (0, 0, right, 0);
+					cr.SharpLineY (0, bottom, right, bottom);
 					
-					cr.SetSourceColor ((HslColor)Style.Dark (State));
+					cr.SetSourceColor (MonoDevelop.Ide.Gui.Styles.WidgetBorderColor.ToCairoColor ());
 					cr.Stroke ();
-				}
+				});
 			}
-			return base.OnExposeEvent (evnt);
 		}
 		
 	}
 }
-

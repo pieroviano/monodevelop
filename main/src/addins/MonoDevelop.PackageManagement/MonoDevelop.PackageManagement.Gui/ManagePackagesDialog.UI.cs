@@ -172,7 +172,7 @@ namespace MonoDevelop.PackageManagement
 			errorMessageHBox.Visible = false;
 			var errorImage = new ImageView ();
 			errorImage.Margin = new WidgetSpacing (10, 0, 0, 0);
-			errorImage.Image = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Warning, Gtk.IconSize.Menu);
+			errorImage.Image = ImageService.GetIcon (MonoDevelop.Ide.Gui.Stock.Warning, MonoDevelop.Components.StockIconSize.Menu);
 			errorImage.HorizontalPlacement = WidgetPlacement.End;
 			errorMessageHBox.PackStart (errorImage);
 			errorMessageLabel = new Label ();

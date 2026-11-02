@@ -30,7 +30,7 @@ using MonoDevelop.VersionControl;
 
 namespace MonoDevelop.ChangeLogAddIn
 {	
-	partial class ProjectOptionPanelWidget : Gtk.Bin
+	partial class ProjectOptionPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		readonly ProjectOptionPanel parent;
 		CommitMessageStyle style;

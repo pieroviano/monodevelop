@@ -6,15 +6,14 @@ namespace MonoDevelop.Autotools
 {
 	
 	
-	public partial class TarballBuilderEditorWidget : Gtk.Bin
+	public partial class TarballBuilderEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		TarballDeployTarget target;
 		
 		public TarballBuilderEditorWidget (TarballDeployTarget target)
 		{
 			this.Build();
-			alignment1.Xalign = 0.16f;
-			alignment1.Xscale = 0.04f;
+			alignment1.Halign = Gtk.Align.Start;
 			
 			this.target = target;
 			SolutionFolderItem targetCombine = target.RootSolutionItem;
@@ -81,8 +80,7 @@ namespace MonoDevelop.Autotools
 		protected virtual void OnAutofooPropertiesClicked (object sender, System.EventArgs e)
 		{
 			using (MakefileSwitchEditor editor = new MakefileSwitchEditor (target)) {
-				editor.ShowAll ();
-				MonoDevelop.Ide.MessageService.ShowCustomDialog (editor, this.Toplevel as Gtk.Window);
+				MonoDevelop.Ide.MessageService.ShowCustomDialog (editor, this.Root as Gtk.Window);
 			}
 		}
 	}

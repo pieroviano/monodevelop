@@ -32,7 +32,7 @@ using Gtk;
 namespace ILAsmBinding
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class CompilerParametersPanelWidget : Bin
+	partial class CompilerParametersPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		public CompilerParametersPanelWidget()
 		{
@@ -76,7 +76,6 @@ namespace ILAsmBinding
 		public override void LoadConfigData ()
 		{
 			widget.Load (ConfiguredProject as DotNetProject, (DotNetProjectConfiguration) CurrentConfiguration);
-			widget.ShowAll ();
 		}
 		
 		public override void ApplyChanges ()

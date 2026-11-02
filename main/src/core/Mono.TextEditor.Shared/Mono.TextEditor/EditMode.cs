@@ -258,7 +258,7 @@ namespace Mono.TextEditor
 			uint m =       (uint)(((modifier & Gdk.ModifierType.ControlMask) != 0)? 1 : 0);
 			m = (m << 1) | (uint)(((modifier & Gdk.ModifierType.ShiftMask)   != 0)? 1 : 0);
 			m = (m << 1) | (uint)(((modifier & Gdk.ModifierType.MetaMask)    != 0)? 1 : 0);
-			m = (m << 1) | (uint)(((modifier & Gdk.ModifierType.Mod1Mask)    != 0)? 1 : 0);
+			m = (m << 1) | (uint)(((modifier & Gdk.ModifierType.AltMask)    != 0)? 1 : 0);
 			m = (m << 1) | (uint)(((modifier & Gdk.ModifierType.SuperMask)   != 0)? 1 : 0);
 			
 			return GetKeyCode (key) | (int)(m << 16);

@@ -39,19 +39,26 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
 
         private void DataContext_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
         {
-            while (vb.Children.Length > 0)
-                vb.Remove(vb.Children[0]);
+            RemoveAllChildren(vb);
             if (DataContext != null)
             {
-                vb.PackStart(DataContext.SignatureWpfViewVisualElement, true, true, 0);
-                vb.PackStart(descriptionBox, true, true, 0);
+                DataContext.SignatureWpfViewVisualElement.Hexpand = DataContext.SignatureWpfViewVisualElement.Vexpand = true;
+                descriptionBox.Hexpand = descriptionBox.Vexpand = true;
+                vb.Append(DataContext.SignatureWpfViewVisualElement);
+                vb.Append(descriptionBox);
             }
             ShowTooltipInfo();
         }
 
-        VBox descriptionBox = new VBox(false, 0);
-        VBox vb = new VBox(false, 0);
-        VBox vb2 = new VBox(false, 0);
+        static void RemoveAllChildren(Gtk.Box box)
+        {
+            while (box.FirstChild != null)
+                box.Remove(box.FirstChild);
+        }
+
+        Gtk.Box descriptionBox = new Gtk.Box(Orientation.Vertical, 0);
+        Gtk.Box vb = new Gtk.Box(Orientation.Vertical, 0);
+        Gtk.Box vb2 = new Gtk.Box(Orientation.Vertical, 0);
         Cairo.Color foreColor;
         public Xwt.Widget Content;
         private XwtPopupWindowTheme Theme { get => ((XwtThemedPopup)Content.ParentWindow).Theme; }
@@ -60,14 +67,16 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
             descriptionBox.Spacing = 4;
 
 
-            HBox hb = new HBox(false, 0);
-            hb.PackStart(vb, true, true, 0);
+            Gtk.Box hb = new Gtk.Box(Orientation.Horizontal, 0);
+            vb.Hexpand = vb.Vexpand = true;
+            hb.Append(vb);
 
             vb2.Spacing = 4;
-            vb2.PackStart(hb, true, true, 0);
+            hb.Hexpand = hb.Vexpand = true;
+            vb2.Append(hb);
 
-            vb2.ShowAll();
-            vb2.ParentSet += Vb2_ParentSet;
+            // GTK 4 widgets have no ParentSet signal: the parent window is checked when the widget is mapped.
+            vb2.Mapped += Vb2_Mapped;
             Content = Xwt.Toolkit.CurrentEngine.WrapWidget(vb2, Xwt.NativeWidgetSizing.DefaultPreferredSize);
 
             Styles.Changed += HandleThemeChanged;
@@ -75,7 +84,7 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
             Content.Disposed += Content_Disposed;
         }
 
-        private void Vb2_ParentSet(object o, ParentSetArgs args)
+        private void Vb2_Mapped(object o, EventArgs args)
         {
             ShowTooltipInfo();
         }
@@ -92,7 +101,7 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
 
             if (DataContext != null)
             {
-                DataContext.SignatureWpfViewVisualElement.ModifyFg(StateType.Normal, foreColor.ToGdkColor());
+                MonoDevelop.SourceEditor.EditorWidgetStyle.SetForeground(DataContext.SignatureWpfViewVisualElement, foreColor);
                 DataContext.SignatureWpfViewVisualElement.FontDescription = IdeServices.FontService.GetFontDescription("Editor").CopyModified(Styles.FontScale11);
             }
             //if (this.Visible)
@@ -143,9 +152,13 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
                 DataContext.SignatureWpfViewVisualElement.WidthRequest = DataContext.SignatureWpfViewVisualElement.RealWidth + 70;
 
             if (!string.IsNullOrEmpty(dataContext.Session.SelectedSignature.Documentation))
-                descriptionBox.PackStart(CreateCategory(TooltipInformationWindow.GetHeaderMarkup(GettextCatalog.GetString("Summary")), dataContext.Session.SelectedSignature.Documentation), true, true, 4);
+            {
+                var category = CreateCategory(TooltipInformationWindow.GetHeaderMarkup(GettextCatalog.GetString("Summary")), dataContext.Session.SelectedSignature.Documentation);
+                category.Hexpand = category.Vexpand = true;
+                category.MarginTop = category.MarginBottom = 4;
+                descriptionBox.Append(category);
+            }
 
-            descriptionBox.ShowAll();
             Content.QueueForReallocate();
         }
 
@@ -159,15 +172,10 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
 
         void ClearDescriptions()
         {
-            while (descriptionBox.Children.Length > 0)
-            {
-                var child = descriptionBox.Children[0];
-                descriptionBox.Remove(child);
-                child.Destroy();
-            }
+            RemoveAllChildren(descriptionBox);
         }
 
-        VBox CreateCategory(string categoryName, string categoryContentMarkup)
+        Gtk.Box CreateCategory(string categoryName, string categoryContentMarkup)
         {
             return TooltipInformationWindow.CreateCategory(categoryName, categoryContentMarkup, foreColor, Theme.Font.ToPangoFont());
         }

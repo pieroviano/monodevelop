@@ -42,7 +42,7 @@ namespace MonoDevelop.DotNetCore
 
 		public override Control CreatePanelWidget ()
 		{
-			return new VBox ();
+			return new Gtk.Box (Gtk.Orientation.Vertical, 0);
 		}
 
 		public override bool IsVisible ()

@@ -1,4 +1,5 @@
-﻿//
+using MonoDevelop.Components.Designer;
+//
 // POEditorWidget.cs
 //
 // Author:
@@ -49,7 +50,7 @@ using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Gettext
 {
-	partial class POEditorWidget : Gtk.Bin, IUndoHandler
+	partial class POEditorWidget : MonoDevelop.Components.BinWidget, IUndoHandler
 	{
 		TranslationProject project;
 		CatalogHeadersWidget headersEditor;
@@ -91,18 +92,17 @@ namespace MonoDevelop.Gettext
 			}
 		}
 		
-		internal static readonly Gdk.Color errorColor = new Gdk.Color (210, 32, 32);
+		/// <summary>CSS class used to flag invalid user input (search expression, translation format).</summary>
+		const string ErrorCssClass = "error";
 		public POEditorWidget (TranslationProject project)
 		{
 			this.project = project;
 			this.Build ();
 			
 			//FIXME: avoid unnecessary creation of old treeview
-			scrolledwindow1.Remove (treeviewEntries);
-			treeviewEntries.Destroy ();
+			scrolledwindow1.Child = null;
 			treeviewEntries = new MonoDevelop.Components.ContextMenuTreeView ();
-			treeviewEntries.ShowAll ();
-			scrolledwindow1.Add (treeviewEntries);
+			scrolledwindow1.Child = treeviewEntries;
 			((MonoDevelop.Components.ContextMenuTreeView)treeviewEntries).DoPopupMenu = ShowPopup;
 			
 			this.headersEditor = new CatalogHeadersWidget ();
@@ -233,8 +233,9 @@ namespace MonoDevelop.Gettext
 			searchEntryFilter.Ready = true;
 			searchEntryFilter.Visible = true;
 			searchEntryFilter.ForceFilterButtonVisible = true;
+			BuildOptionsMenu ();
 			searchEntryFilter.RequestMenu += delegate {
-				searchEntryFilter.Menu = CreateOptionsMenu ();
+				UpdateOptionsMenuState ();
 			};
 			
 			widgets.Add (this);
@@ -243,23 +244,35 @@ namespace MonoDevelop.Gettext
 
 			this.scrolledwindowOriginal.Child = this.texteditorOriginal;
 			this.scrolledwindowPlural.Child = this.texteditorPlural;
-			this.scrolledwindowOriginal.Child.Show ();
-			this.scrolledwindowPlural.Child.Show ();
-			scrolledwindowOriginal.Child.ModifyBase (Gtk.StateType.Normal, Style.Base (Gtk.StateType.Insensitive));
-			scrolledwindowPlural.Child.ModifyBase (Gtk.StateType.Normal, Style.Base (Gtk.StateType.Insensitive));
+
 			this.texteditorOriginal.Options = DefaultSourceEditorOptions.PlainEditor;
 			this.texteditorPlural.Options = DefaultSourceEditorOptions.PlainEditor;
 			this.texteditorOriginal.IsReadOnly = true;
 			this.texteditorPlural.IsReadOnly = true;
-			toolbarPages.ModifyBg (StateType.Normal, Styles.POEditor.TabBarBackgroundColor);
+			UpdateToolbarStyle ();
 
 			MonoDevelop.Ide.Gui.Styles.Changed += HandleStylesChanged;
+		}
+
+		static Gtk.CssProvider toolbarProvider;
+
+		/// <summary>Applies the tab bar background color of the current theme to the page toolbar.</summary>
+		void UpdateToolbarStyle ()
+		{
+			if (toolbarProvider == null) {
+				toolbarProvider = new Gtk.CssProvider ();
+				Gtk.StyleContext.AddProviderForDisplay (Gdk.Display.Default, toolbarProvider, (uint)Gtk.StyleProviderPriority.Application);
+			}
+			toolbarPages.AddCssClass ("md-po-tabbar");
+			var c = Styles.POEditor.TabBarBackgroundColor;
+			toolbarProvider.LoadFromData (string.Format (System.Globalization.CultureInfo.InvariantCulture,
+				".md-po-tabbar {{ background-color: rgb({0},{1},{2}); }}", (int)(c.Red * 255), (int)(c.Green * 255), (int)(c.Blue * 255)));
 		}
 
 		void HandleStylesChanged (object sender, EventArgs e)
 		{
 			UpdateFromCatalog ();
-			toolbarPages.ModifyBg (StateType.Normal, Styles.POEditor.TabBarBackgroundColor);
+			UpdateToolbarStyle ();
 		}
 
 		void HandleCellRendFuzzyToggled (object sender, ToggledArgs args)
@@ -272,34 +285,34 @@ namespace MonoDevelop.Gettext
 			}
 		}
 
-		void CatalogIconDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void CatalogIconDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CatalogEntry entry = (CatalogEntry)model.GetValue (iter, 0);
-			((CellRendererImage)cell).Image = ImageService.GetIcon (GetStockForEntry (entry), IconSize.Menu);
-			cell.CellBackgroundGdk = GetRowColorForEntry (entry);
+			((CellRendererImage)cell).Image = ImageService.GetIcon (GetStockForEntry (entry), StockIconSize.Menu);
+			cell.CellBackgroundRgba = GetRowColorForEntry (entry);
 		}
 		
-		void FuzzyToggleDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void FuzzyToggleDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CatalogEntry entry = (CatalogEntry)model.GetValue (iter, 0);
 			((CellRendererToggle)cell).Active = entry.IsFuzzy;
-			cell.CellBackgroundGdk = GetRowColorForEntry (entry);
+			cell.CellBackgroundRgba = GetRowColorForEntry (entry);
 		}
 		
-		void OriginalTextDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void OriginalTextDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CatalogEntry entry = (CatalogEntry)model.GetValue (iter, 0);
 			((CellRendererText)cell).Text = EscapeForTreeView (entry.String);
-			cell.CellBackgroundGdk = GetRowColorForEntry (entry);
-			((CellRendererText)cell).ForegroundGdk = GetForeColorForEntry (entry);
+			cell.CellBackgroundRgba = GetRowColorForEntry (entry);
+			((CellRendererText)cell).ForegroundRgba = GetForeColorForEntry (entry);
 		}
 		
-		void TranslationTextDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.TreeModel model, Gtk.TreeIter iter)
+		void TranslationTextDataFunc (Gtk.TreeViewColumn column, Gtk.CellRenderer cell, Gtk.ITreeModel model, Gtk.TreeIter iter)
 		{
 			CatalogEntry entry = (CatalogEntry)model.GetValue (iter, 0);
 			((CellRendererText)cell).Text = EscapeForTreeView (entry.GetTranslation (0));
-			cell.CellBackgroundGdk = GetRowColorForEntry (entry);
-			((CellRendererText)cell).ForegroundGdk = GetForeColorForEntry (entry);
+			cell.CellBackgroundRgba = GetRowColorForEntry (entry);
+			((CellRendererText)cell).ForegroundRgba = GetForeColorForEntry (entry);
 		}
 		
 		void CheckbuttonWhiteSpacesToggled (object sender, EventArgs e)
@@ -367,90 +380,86 @@ namespace MonoDevelop.Gettext
 		}
 		#endregion
 		
-		public Menu CreateOptionsMenu ()
+		GLib.SimpleAction searchInAction, regexSearchAction, caseSensitiveAction, wholeWordsOnlyAction;
+
+		static string SearchInName (SearchIn value)
 		{
-			Menu menu = new Menu ();
-			
-			MenuItem searchInMenu = new MenuItem (GettextCatalog.GetString ("_Search in"));
-			Menu sub = new Menu ();
-			searchInMenu.Submenu = sub;
-			Gtk.RadioMenuItem  original = null, translated = null, both = null;
-			GLib.SList group = new GLib.SList (IntPtr.Zero);
-			original = new Gtk.RadioMenuItem (group, GettextCatalog.GetString ("_Original"));
-			group = original.Group;
-			original.ButtonPressEvent += delegate { original.Activate (); };
-			sub.Append (original);
-			
-			translated = new Gtk.RadioMenuItem (group, GettextCatalog.GetString ("_Translated"));
-			translated.ButtonPressEvent += delegate { translated.Activate (); };
-			group = translated.Group;
-			sub.Append (translated);
-			
-			both = new Gtk.RadioMenuItem (group, GettextCatalog.GetString ("_Both"));
-			both.ButtonPressEvent += delegate { both.Activate (); };
-			sub.Append (both);
-			switch (DoSearchIn) {
-			case SearchIn.Both:
-				both.Activate ();
-				break;
-			case SearchIn.Original:
-				original.Activate ();
-				break;
-			case SearchIn.Translated:
-				translated.Activate ();
-				break;
+			switch (value) {
+			case SearchIn.Original: return "original";
+			case SearchIn.Translated: return "translated";
+			default: return "both";
 			}
-			menu.Append (searchInMenu);
-			both.Activated += delegate {
-				if (DoSearchIn != SearchIn.Both) {
-					DoSearchIn = SearchIn.Both;
-					UpdateFromCatalog ();
-					menu.Destroy ();
-				}
-			};
-			original.Activated += delegate {
-				if (DoSearchIn != SearchIn.Original) {
-					DoSearchIn = SearchIn.Original;
-					UpdateFromCatalog ();
-					menu.Destroy ();
-				}
-			};
-			translated.Activated += delegate {
-				if (DoSearchIn != SearchIn.Translated) {
-					DoSearchIn = SearchIn.Translated;
-					UpdateFromCatalog ();
-					menu.Destroy ();
-				}
-			};
-			
-			Gtk.CheckMenuItem regexSearch = new Gtk.CheckMenuItem (MonoDevelop.Core.GettextCatalog.GetString ("_Regex search"));
-			regexSearch.Active = RegexSearch;
-			regexSearch.ButtonPressEvent += delegate { 
-				RegexSearch = !RegexSearch;
-				UpdateFromCatalog ();
-			};
-			menu.Append (regexSearch);
-			
-			Gtk.CheckMenuItem caseSensitive = new Gtk.CheckMenuItem (MonoDevelop.Core.GettextCatalog.GetString ("_Case sensitive"));
-			caseSensitive.Active = IsCaseSensitive;
-			caseSensitive.ButtonPressEvent += delegate { 
-				IsCaseSensitive = !IsCaseSensitive;
-				UpdateFromCatalog ();
-			};
-			menu.Append (caseSensitive);
-			
-			Gtk.CheckMenuItem wholeWordsOnly = new Gtk.CheckMenuItem (MonoDevelop.Core.GettextCatalog.GetString ("_Whole words only"));
-			wholeWordsOnly.Active = IsWholeWordOnly;
-			wholeWordsOnly.Sensitive = !RegexSearch;
-			wholeWordsOnly.ButtonPressEvent += delegate {
-				IsWholeWordOnly = !IsWholeWordOnly;
-				UpdateFromCatalog ();
-			};
-			menu.Append (wholeWordsOnly);
-			menu.ShowAll ();
-			return menu;
 		}
-		
+
+		static SearchIn SearchInFromName (string name)
+		{
+			switch (name) {
+			case "original": return SearchIn.Original;
+			case "translated": return SearchIn.Translated;
+			default: return SearchIn.Both;
+			}
+		}
+
+		/// <summary>Creates the options menu of the search entry (search scope radio group and check options).</summary>
+		void BuildOptionsMenu ()
+		{
+			const string prefix = MonoDevelop.Components.SearchEntry.MenuActionPrefix + ".";
+			var menu = searchEntryFilter.Menu;
+			var actions = searchEntryFilter.MenuActions;
+
+			var searchInMenu = new GLib.Menu ();
+			searchInMenu.Append (GettextCatalog.GetString ("_Original"), prefix + "search-in::original");
+			searchInMenu.Append (GettextCatalog.GetString ("_Translated"), prefix + "search-in::translated");
+			searchInMenu.Append (GettextCatalog.GetString ("_Both"), prefix + "search-in::both");
+			menu.AppendSubmenu (GettextCatalog.GetString ("_Search in"), searchInMenu);
+
+			searchInAction = new GLib.SimpleAction ("search-in", new GLib.VariantType ("s"), new GLib.Variant (SearchInName (DoSearchIn)));
+			searchInAction.Activated += (o, e) => {
+				var value = SearchInFromName ((string)e.Parameter);
+				searchInAction.ChangeState (new GLib.Variant (SearchInName (value)));
+				if (DoSearchIn != value) {
+					DoSearchIn = value;
+					UpdateFromCatalog ();
+				}
+			};
+			actions.Insert (searchInAction);
+
+			var optionsSection = new GLib.Menu ();
+			menu.AppendSection (null, optionsSection);
+
+			regexSearchAction = AddOptionsMenuToggle (actions, optionsSection, "regex", GettextCatalog.GetString ("_Regex search"), () => RegexSearch, v => {
+				RegexSearch = v;
+				wholeWordsOnlyAction.Enabled = !v;
+			});
+			caseSensitiveAction = AddOptionsMenuToggle (actions, optionsSection, "case-sensitive", GettextCatalog.GetString ("_Case sensitive"), () => IsCaseSensitive, v => IsCaseSensitive = v);
+			wholeWordsOnlyAction = AddOptionsMenuToggle (actions, optionsSection, "whole-words", GettextCatalog.GetString ("_Whole words only"), () => IsWholeWordOnly, v => IsWholeWordOnly = v);
+			wholeWordsOnlyAction.Enabled = !RegexSearch;
+		}
+
+		GLib.SimpleAction AddOptionsMenuToggle (GLib.SimpleActionGroup actions, GLib.Menu section, string name, string label, Func<bool> getter, Action<bool> setter)
+		{
+			var action = new GLib.SimpleAction (name, null, new GLib.Variant (getter ()));
+			action.Activated += (o, e) => {
+				bool value = !getter ();
+				setter (value);
+				action.ChangeState (new GLib.Variant (value));
+				UpdateFromCatalog ();
+			};
+			actions.Insert (action);
+			section.Append (label, MonoDevelop.Components.SearchEntry.MenuActionPrefix + "." + name);
+			return action;
+		}
+
+		/// <summary>Refreshes the state of the options menu items from the (shared) search options.</summary>
+		void UpdateOptionsMenuState ()
+		{
+			searchInAction.ChangeState (new GLib.Variant (SearchInName (DoSearchIn)));
+			regexSearchAction.ChangeState (new GLib.Variant (RegexSearch));
+			caseSensitiveAction.ChangeState (new GLib.Variant (IsCaseSensitive));
+			wholeWordsOnlyAction.ChangeState (new GLib.Variant (IsWholeWordOnly));
+			wholeWordsOnlyAction.Enabled = !RegexSearch;
+		}
+
 		public static void ReloadWidgets ()
 		{
 			foreach (POEditorWidget widget in widgets) {
@@ -493,10 +502,10 @@ namespace MonoDevelop.Gettext
 						AddChange (this.currentEntry, oldText, escapedText, index);
 					}
 					IdeApp.Workbench.StatusBar.ShowReady ();
-					window.Child.ModifyBase (Gtk.StateType.Normal, Style.Base (Gtk.StateType.Normal));
+					window.RemoveCssClass (ErrorCssClass);
 				} catch (System.Exception e) {
 					IdeApp.Workbench.StatusBar.ShowError (e.Message);
-					window.Child.ModifyBase (Gtk.StateType.Normal, errorColor);
+					window.AddCssClass (ErrorCssClass);
 				}
 				treeviewEntries.QueueDraw ();
 				UpdateProgressBar ();
@@ -505,34 +514,32 @@ namespace MonoDevelop.Gettext
 			
 			Label label = new Label ();
 			label.Text = this.Catalog.PluralFormsDescriptions [index];
-			window.ShowAll ();
 			this.notebookTranslated.AppendPage (window, label);
 			notebookTranslatedEditors.Add (textView);
 		}
 		
-		void ShowPopup (EventButton evt)
+		void ShowPopup (ClickInfo evt)
 		{
-			Gtk.Menu contextMenu = CreateContextMenu ();
+			ContextMenu contextMenu = CreateContextMenu ();
 			if (contextMenu != null)
-				GtkWorkarounds.ShowContextMenu (contextMenu, this, evt);
+				contextMenu.Show (treeviewEntries, evt);
 		}
-		
-		Gtk.Menu CreateContextMenu ()
+
+		ContextMenu CreateContextMenu ()
 		{
 			CatalogEntry entry = SelectedEntry;
 			if (entry == null)
 				return null;
 
-			Gtk.Menu result = new Gtk.Menu ();
-			
-			Gtk.MenuItem item = new Gtk.MenuItem (GettextCatalog.GetString ("Delete"));
+			var result = new ContextMenu ();
+
+			var item = new ContextMenuItem (GettextCatalog.GetString ("Delete"));
 			item.Sensitive = entry.References.Length == 0;
-			item.Activated += delegate {
+			item.Clicked += delegate {
 				RemoveEntry (entry);
 			};
-			item.Show();
-			result.Append (item);
-			
+			result.Items.Add (item);
+
 			return result;
 		}
 		
@@ -665,7 +672,7 @@ namespace MonoDevelop.Gettext
 							line = "?";
 						}
 						string fullName = System.IO.Path.Combine (System.IO.Path.GetDirectoryName (this.poFileName), file);
-						this.foundInStore.AppendValues (file, line, fullName, IdeServices.DesktopService.GetIconForFile (fullName, IconSize.Menu));
+						this.foundInStore.AppendValues (file, line, fullName, IdeServices.DesktopService.GetIconForFile (fullName, StockIconSize.Menu));
 					}
 				}
 				
@@ -693,7 +700,7 @@ namespace MonoDevelop.Gettext
 		static string GetStockForEntry (CatalogEntry entry)
 		{
 			if (entry.References.Length == 0)
-				return Gtk.Stock.DialogError;
+				return MonoDevelop.Ide.Gui.Stock.Error;
 			return entry.IsFuzzy ? iconFuzzy : entry.IsTranslated ? iconValid : iconMissing;
 		}
 		
@@ -701,18 +708,23 @@ namespace MonoDevelop.Gettext
 		static string iconValid   = "md-done";//"md-translation-valid";
 		static string iconMissing = "md-warning";//"md-translation-missing";
 		
-		Color GetRowColorForEntry (CatalogEntry entry)
+		// A transparent background leaves the cell with the background of the tree view.
+		static readonly Gdk.RGBA TransparentColor = new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 0 };
+		static readonly Gdk.RGBA BlackColor = new Gdk.RGBA { Red = 0, Green = 0, Blue = 0, Alpha = 1 };
+
+		Gdk.RGBA GetRowColorForEntry (CatalogEntry entry)
 		{
 			if (entry.References.Length == 0)
 				return Styles.POEditor.EntryMissingBackgroundColor;
-			return entry.IsFuzzy ? Styles.POEditor.EntryFuzzyBackgroundColor : entry.IsTranslated ? Style.Base (StateType.Normal) : Styles.POEditor.EntryUntranslatedBackgroundColor;
+			return entry.IsFuzzy ? Styles.POEditor.EntryFuzzyBackgroundColor : entry.IsTranslated ? TransparentColor : Styles.POEditor.EntryUntranslatedBackgroundColor;
 		}
-		
-		Color GetForeColorForEntry (CatalogEntry entry)
+
+		Gdk.RGBA GetForeColorForEntry (CatalogEntry entry)
 		{
 			if (entry.References.Length == 0)
 				return Styles.POEditor.EntryMissingBackgroundColor;
-			return entry.IsFuzzy ? Style.Black : entry.IsTranslated ? Style.Text (StateType.Normal) : Style.Black;
+			// Fuzzy and untranslated rows have a colored background that needs black text; translated rows use the text color of the theme.
+			return entry.IsTranslated && !entry.IsFuzzy ? treeviewEntries.StyleContext.Color : BlackColor;
 		}
 		
 		static int GetTypeSortIndicator (CatalogEntry entry)
@@ -810,13 +822,11 @@ namespace MonoDevelop.Gettext
 					regex = new System.Text.RegularExpressions.Regex (filter, options);
 				} catch (Exception e) {
 					IdeApp.Workbench.StatusBar.ShowError (e.Message);
-					this.searchEntryFilter.Entry.ModifyBase (StateType.Normal, errorColor);
-					this.searchEntryFilter.QueueDraw ();
+					this.searchEntryFilter.Entry.AddCssClass (ErrorCssClass);
 					return;
 				}
 			}
-			this.searchEntryFilter.Entry.ModifyBase (StateType.Normal, Style.Base (StateType.Normal));
-			this.searchEntryFilter.QueueDraw ();
+			this.searchEntryFilter.Entry.RemoveCssClass (ErrorCssClass);
 			
 			int found = 0;
 			ListStore newStore = new ListStore (typeof(CatalogEntry));
@@ -832,17 +842,17 @@ namespace MonoDevelop.Gettext
 				
 			}
 			
-			newStore.SetSortFunc (0, delegate (TreeModel model, TreeIter iter1, TreeIter iter2) {
+			newStore.SetSortFunc (0, delegate (ITreeModel model, TreeIter iter1, TreeIter iter2) {
 				CatalogEntry entry1 = (CatalogEntry)model.GetValue (iter1, 0);
 				CatalogEntry entry2 = (CatalogEntry)model.GetValue (iter2, 0);
 				return GetTypeSortIndicator (entry1).CompareTo (GetTypeSortIndicator (entry2));
 			});
-			newStore.SetSortFunc (1, delegate (TreeModel model, TreeIter iter1, TreeIter iter2) {
+			newStore.SetSortFunc (1, delegate (ITreeModel model, TreeIter iter1, TreeIter iter2) {
 				CatalogEntry entry1 = (CatalogEntry)model.GetValue (iter1, 0);
 				CatalogEntry entry2 = (CatalogEntry)model.GetValue (iter2, 0);
 				return entry1.String.CompareTo (entry2.String);
 			});
-			newStore.SetSortFunc (2, delegate (TreeModel model, TreeIter iter1, TreeIter iter2) {
+			newStore.SetSortFunc (2, delegate (ITreeModel model, TreeIter iter1, TreeIter iter2) {
 				CatalogEntry entry1 = (CatalogEntry)model.GetValue (iter1, 0);
 				CatalogEntry entry2 = (CatalogEntry)model.GetValue (iter2, 0);
 				return entry1.GetTranslation (0).CompareTo (entry2.GetTranslation (0));
@@ -887,30 +897,28 @@ namespace MonoDevelop.Gettext
 					}
 				} while (store.IterNext (ref iter));
 			}
-			store.AppendValues (GetStockForEntry (entry), 
-			                    entry.IsFuzzy,
-			                    EscapeForTreeView (entry.String), 
-			                    EscapeForTreeView (entry.GetTranslation (0)), 
-			                    entry,
-			                    GetRowColorForEntry (entry),
-			                    GetTypeSortIndicator (entry),
-			                    GetForeColorForEntry (entry)
-			);
+			store.AppendValues (entry);
 			SelectEntry (entry);
 		}
 		#endregion
 		
 #region Toolbar handling
-		ToggleToolButton AddButton (string label)
+		List<ToggleButton> GetPageButtons ()
 		{
-			ToggleToolButton newButton = new ToggleToolButton ();
+			var buttons = new List<ToggleButton> ();
+			for (var child = toolbarPages.FirstChild; child != null; child = child.NextSibling)
+				buttons.Add ((ToggleButton) child);
+			return buttons;
+		}
+
+		ToggleButton AddButton (string label)
+		{
+			var newButton = new ToggleButton ();
 			isUpdating = true;
 			try {
 				newButton.Label = label;
-				newButton.IsImportant = true;
-				newButton.Clicked += new EventHandler (OnButtonToggled);
-				newButton.ShowAll ();
-				this.toolbarPages.Insert (newButton, -1);
+				newButton.Toggled += new EventHandler (OnButtonToggled);
+				DesignerLayout.Pack (this.toolbarPages, newButton);
 			} finally {
 				isUpdating = false;
 			}
@@ -919,7 +927,9 @@ namespace MonoDevelop.Gettext
 		
 		protected virtual void OnButtonToggled (object sender, System.EventArgs e)
 		{
-			int i = Array.IndexOf (this.toolbarPages.Children, sender);
+			if (isUpdating)
+				return;
+			int i = GetPageButtons ().IndexOf ((ToggleButton) sender);
 			if (i != -1)
 				ShowPage (i);
 		}
@@ -933,8 +943,9 @@ namespace MonoDevelop.Gettext
 			isUpdating = true;
 			try {
 				notebookPages.CurrentPage = page;
-				for (int i = 0; i < toolbarPages.Children.Length; i++) {
-					((ToggleToolButton) toolbarPages.Children[i]).Active = (i == page);
+				var buttons = GetPageButtons ();
+				for (int i = 0; i < buttons.Count; i++) {
+					buttons [i].Active = (i == page);
 				}
 			} finally {
 				isUpdating = false;
@@ -942,15 +953,17 @@ namespace MonoDevelop.Gettext
 		}
 #endregion
 		
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			MonoDevelop.Ide.Gui.Styles.Changed -= HandleStylesChanged;
-			StopTaskWorkerThread ();
-			
-			widgets.Remove (this);
-			ClearTasks ();
-			
-			base.OnDestroyed ();
+			if (disposing) {
+				MonoDevelop.Ide.Gui.Styles.Changed -= HandleStylesChanged;
+				StopTaskWorkerThread ();
+
+				widgets.Remove (this);
+				ClearTasks ();
+			}
+
+			base.Dispose (disposing);
 		}
 #region Tasks
 		public class TranslationTask : TaskListEntry

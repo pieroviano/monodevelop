@@ -31,7 +31,7 @@ namespace MonoDevelop.Deployment.Gui
 {
 	
 	
-	internal partial class SshFuseFileCopyConfigurationEditorWidget : Gtk.Bin
+	internal partial class SshFuseFileCopyConfigurationEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		SshFuseFileCopyConfiguration config;
 		

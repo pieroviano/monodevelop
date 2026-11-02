@@ -14,7 +14,7 @@ using System.ComponentModel;
 namespace MonoDevelop.PackageManagement
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class PackageSourcesWidget : Gtk.Bin
+	internal partial class PackageSourcesWidget : MonoDevelop.Components.BinWidget
 	{
 		RegisteredPackageSourcesViewModel viewModel;
 		ListStore packageSourcesStore;
@@ -41,12 +41,12 @@ namespace MonoDevelop.PackageManagement
 			this.viewModel.PackageSourceChanged += PackageSourceChanged;
 		}
 
-		public override void Dispose ()
+		protected override void Dispose (bool disposing)
 		{
 			this.viewModel.PackageSourceViewModels.CollectionChanged -= PackageSourceViewModelsCollectionChanged;
 			this.viewModel.PackageSourceChanged -= PackageSourceChanged;
 			this.viewModel.Dispose ();
-			base.Dispose ();
+			base.Dispose (disposing);
 		}
 		
 		void InitializeTreeView ()
@@ -61,7 +61,9 @@ namespace MonoDevelop.PackageManagement
 			packageSourcesTreeView.Selection.Changed += PackageSourcesTreeViewSelectionChanged;
 			packageSourcesTreeView.RowActivated += PackageSourcesTreeViewRowActivated;
 			packageSourcesTreeView.Reorderable = true;
-			packageSourcesTreeView.DragEnd += PackageSourcesTreeViewDragEnded;
+			// GTK 4 has no widget level drag-end signal: a drag and drop reorder shows up as a row being inserted and deleted.
+			packageSourcesStore.RowInserted += PackageSourcesStoreRowChanged;
+			packageSourcesStore.RowDeleted += PackageSourcesStoreRowChanged;
 		}
 
 		TreeViewColumn CreateTreeViewColumn ()
@@ -84,7 +86,7 @@ namespace MonoDevelop.PackageManagement
 			column.AddAttribute (checkBoxRenderer, "active", IsEnabledCheckBoxColumn);
 
 			var iconRenderer = new CellRendererImage ();
-			iconRenderer.StockSize = IconSize.Dnd;
+			iconRenderer.StockSize = StockIconSize.Dnd;
 			iconRenderer.Xalign = 0;
 			iconRenderer.Xpad = 0;
 			column.PackStart (iconRenderer, false);
@@ -112,11 +114,16 @@ namespace MonoDevelop.PackageManagement
 		
 		void AddPackageSourceToTreeView (PackageSourceViewModel packageSourceViewModel)
 		{
-			packageSourcesStore.AppendValues (
+			programmaticStoreChanges++;
+			try {
+				packageSourcesStore.AppendValues (
 				null,
 				packageSourceViewModel.IsEnabled,
 				new IconId ("md-nuget-package-source"),
 				packageSourceViewModel);
+			} finally {
+				programmaticStoreChanges--;
+			}
 		}
 		
 		void PackageSourceCheckBoxToggled (object o, ToggledArgs args)
@@ -179,7 +186,9 @@ namespace MonoDevelop.PackageManagement
 		{
 			foreach (PackageSourceViewModel packageSourceViewModel in e.OldItems.OfType<PackageSourceViewModel>()) {
 				TreeIter iter = GetTreeIter (packageSourceViewModel);
+				programmaticStoreChanges++;
 				packageSourcesStore.Remove (ref iter);
+				programmaticStoreChanges--;
 			}
 		}
 		
@@ -201,7 +210,9 @@ namespace MonoDevelop.PackageManagement
 		{
 			TreeIter sourceIter = GetTreeIter (e.NewItems[0] as PackageSourceViewModel);
 			TreeIter destinationIter = GetTreeIter (e.NewStartingIndex);
+			programmaticStoreChanges++;
 			packageSourcesStore.Swap (sourceIter, destinationIter);
+			programmaticStoreChanges--;
 		}
 		
 		TreeIter GetTreeIter (int index)
@@ -238,7 +249,7 @@ namespace MonoDevelop.PackageManagement
 
 		Xwt.Command ShowDialogWithParent (AddPackageSourceDialog dialog)
 		{
-			Xwt.WindowFrame parent = Xwt.Toolkit.CurrentEngine.WrapWindow (Toplevel);
+			Xwt.WindowFrame parent = Xwt.Toolkit.CurrentEngine.WrapWindow (Root as Gtk.Window);
 			Xwt.Command result = dialog.Run (parent);
 
 			// Ensure dialog has focus after browsing for a folder.
@@ -266,9 +277,12 @@ namespace MonoDevelop.PackageManagement
 			}
 		}
 
-		void PackageSourcesTreeViewDragEnded (object o, DragEndArgs args)
+		int programmaticStoreChanges;
+
+		void PackageSourcesStoreRowChanged (object sender, EventArgs args)
 		{
-			HasPackageSourcesOrderChanged = true;
+			if (programmaticStoreChanges == 0)
+				HasPackageSourcesOrderChanged = true;
 		}
 
 		public bool HasPackageSourcesOrderChanged { get; private set; }

@@ -52,8 +52,7 @@ namespace MonoDevelop.Deployment
 			
 			SetState (preSelect);
 			okButton.GrabFocus ();
-			
-			this.Resize (1, 1); // make window as small as widgets allow
+
 		}
 		
 		void SetState (ReplaceResponse response)
@@ -101,10 +100,10 @@ namespace MonoDevelop.Deployment
 			Respond ((int) ReplaceResponse.Abort);
 		}
 		
-		[GLib.ConnectBefore]
-		protected virtual void DeleteActivated (object o, DeleteEventArgs args)
+		protected virtual void DeleteActivated (object o, CloseRequestArgs args)
 		{
 			Respond ((int) ReplaceResponse.Abort);
+			args.RetVal = true;
 		}
 		
 		public enum ReplaceResponse {

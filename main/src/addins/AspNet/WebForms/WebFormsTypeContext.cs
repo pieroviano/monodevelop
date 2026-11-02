@@ -160,7 +160,7 @@ namespace MonoDevelop.AspNet.WebForms
 				
 				var cd = rd as WebFormsPageInfo.ControlRegisterDirective;
 				if (cd != null && names.Add (cd.TagPrefix + cd.TagName))
-					yield return new CompletionData (string.Concat (cd.TagPrefix, ":", cd.TagName), Gtk.Stock.GoForward);
+					yield return new CompletionData (string.Concat (cd.TagPrefix, ":", cd.TagName), MonoDevelop.Ide.Gui.GtkStock.GoForward);
 			}
 		}
 		
@@ -663,7 +663,7 @@ namespace MonoDevelop.AspNet.WebForms
 		readonly INamedTypeSymbol cls;
 
 		public AspTagCompletionData (string prefix, INamedTypeSymbol cls)
-			: base (prefix + cls.Name, Gtk.Stock.GoForward)
+			: base (prefix + cls.Name, MonoDevelop.Ide.Gui.GtkStock.GoForward)
 		{
 			this.cls = cls;
 		}

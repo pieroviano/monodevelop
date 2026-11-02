@@ -67,11 +67,11 @@ namespace MonoDevelop.AssemblyBrowser
 	}
 	[System.ComponentModel.Category("MonoDevelop.AssemblyBrowser")]
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class AssemblyBrowserWidget : Gtk.Bin
+	partial class AssemblyBrowserWidget : BinWidget
 	{
-		Gtk.ComboBox comboboxVisibilty;
+		Gtk.ComboBoxText comboboxVisibilty;
 		MonoDevelop.Components.SearchEntry searchentry1;
-		Gtk.ComboBox languageCombobox;
+		Gtk.ComboBoxText languageCombobox;
 
 		public AssemblyBrowserTreeView? TreeView {
 			get;
@@ -112,9 +112,9 @@ namespace MonoDevelop.AssemblyBrowser
 		{
 			this.Build ();
 
-			comboboxVisibilty = ComboBox.NewText ();
-			comboboxVisibilty.InsertText (0, GettextCatalog.GetString ("Only public members"));
-			comboboxVisibilty.InsertText (1, GettextCatalog.GetString ("All members"));
+			comboboxVisibilty = new ComboBoxText ();
+			comboboxVisibilty.Insert (0, null, GettextCatalog.GetString ("Only public members"));
+			comboboxVisibilty.Insert (1, null, GettextCatalog.GetString ("All members"));
 			comboboxVisibilty.Active = Math.Min (1, Math.Max (0, PropertyService.Get ("AssemblyBrowser.MemberSelection", 0)));
 			comboboxVisibilty.Changed += delegate {
 				if (TreeView != null)
@@ -129,9 +129,9 @@ namespace MonoDevelop.AssemblyBrowser
 			searchentry1.WidthRequest = 200;
 			searchentry1.Visible = true;
 			UpdateSearchEntryMessage ();
-			searchentry1.InnerEntry.Changed += SearchEntryhandleChanged;
+			searchentry1.Entry.Changed += SearchEntryhandleChanged;
 
-			CheckMenuItem checkMenuItem = this.searchentry1.AddFilterOption (0, GettextCatalog.GetString ("Types and Members"));
+			MonoDevelop.Components.SearchEntry.FilterOption checkMenuItem = this.searchentry1.AddFilterOption (0, GettextCatalog.GetString ("Types and Members"));
 			checkMenuItem.Active = PropertyService.Get ("AssemblyBrowser.SearchMemberState", SearchMemberState.TypesAndMembers) == SearchMemberState.TypesAndMembers;
 			checkMenuItem.Toggled += delegate {
 				if (checkMenuItem.Active) {
@@ -144,7 +144,7 @@ namespace MonoDevelop.AssemblyBrowser
 				UpdateSearchEntryMessage ();
 			};
 
-			CheckMenuItem checkMenuItem2 = this.searchentry1.AddFilterOption (0, GettextCatalog.GetString ("Types"));
+			MonoDevelop.Components.SearchEntry.FilterOption checkMenuItem2 = this.searchentry1.AddFilterOption (0, GettextCatalog.GetString ("Types"));
 			checkMenuItem2.Active = PropertyService.Get ("AssemblyBrowser.SearchMemberState", SearchMemberState.TypesAndMembers) == SearchMemberState.Types;
 			checkMenuItem2.Toggled += delegate {
 				if (checkMenuItem2.Active) {
@@ -157,7 +157,7 @@ namespace MonoDevelop.AssemblyBrowser
 				UpdateSearchEntryMessage ();
 			};
 			
-			CheckMenuItem checkMenuItem1 = this.searchentry1.AddFilterOption (1, GettextCatalog.GetString ("Members"));
+			MonoDevelop.Components.SearchEntry.FilterOption checkMenuItem1 = this.searchentry1.AddFilterOption (1, GettextCatalog.GetString ("Members"));
 			checkMenuItem.Active = PropertyService.Get ("AssemblyBrowser.SearchMemberState", SearchMemberState.TypesAndMembers) == SearchMemberState.Members;
 			checkMenuItem1.Toggled += delegate {
 				if (checkMenuItem1.Active) {
@@ -171,10 +171,10 @@ namespace MonoDevelop.AssemblyBrowser
 
 			};
 
-			languageCombobox = Gtk.ComboBox.NewText ();
-			languageCombobox.AppendText (GettextCatalog.GetString ("Summary"));
-			languageCombobox.AppendText (GettextCatalog.GetString ("IL"));
-			languageCombobox.AppendText (GettextCatalog.GetString ("C#"));
+			languageCombobox = new Gtk.ComboBoxText ();
+			languageCombobox.Append (null, GettextCatalog.GetString ("Summary"));
+			languageCombobox.Append (null, GettextCatalog.GetString ("IL"));
+			languageCombobox.Append (null, GettextCatalog.GetString ("C#"));
 			languageCombobox.Active = Math.Min (2, Math.Max (0, PropertyService.Get ("AssemblyBrowser.Language", 0)));
 			languageCombobox.Changed += LanguageComboboxhandleChanged;
 #pragma warning disable 618
@@ -204,7 +204,7 @@ namespace MonoDevelop.AssemblyBrowser
 			TreeView.AllowsMultipleSelection = false;
 			TreeView.SelectionChanged += HandleCursorChanged;
 
-			treeViewPlaceholder.Add (TreeView);
+			treeViewPlaceholder.Append (TreeView.GetNativeWidget<Gtk.Widget> ());
 
 //			this.descriptionLabel.ModifyFont (Pango.FontDescription.FromString ("Sans 9"));
 //			this.documentationLabel.ModifyFont (Pango.FontDescription.FromString ("Sans 12"));
@@ -222,15 +222,15 @@ namespace MonoDevelop.AssemblyBrowser
 //			this.inspectEditor.Document.SyntaxMode = new Mono.TextEditor.Highlighting.MarkupSyntaxMode ();
 //			this.inspectEditor.LinkRequest += InspectEditorhandleLinkRequest;
 
-			documentationScrolledWindow.PackStart (inspectEditor, true, true, 0);
+			Gtk.Widget inspectWidget = inspectEditor;
+			inspectWidget.Hexpand = inspectWidget.Vexpand = true;
+			documentationScrolledWindow.Append (inspectWidget);
 
-			this.ExposeEvent += HPaneExpose;
-			hpaned1 = hpaned1.ReplaceWithWidget (new HPanedThin (), true);
 			hpaned1.Position = 271;
 
 			this.notebook1.SetTabLabel (this.documentationScrolledWindow, new Label (GettextCatalog.GetString ("Documentation")));
 			this.notebook1.SetTabLabel (this.searchWidget, new Label (GettextCatalog.GetString ("Search")));
-			notebook1.Page = 0;
+			notebook1.CurrentPage = 0;
 			//this.searchWidget.Visible = false;
 				
 			resultListStore = new Gtk.ListStore (typeof(IMember));
@@ -239,7 +239,6 @@ namespace MonoDevelop.AssemblyBrowser
 //			this.searchEntry.Changed += SearchEntryhandleChanged;
 			this.searchTreeview.RowActivated += SearchTreeviewhandleRowActivated;
 			this.notebook1.ShowTabs = false;
-			this.ShowAll ();
 		}
 
 		void UpdateSearchEntryMessage ()
@@ -276,7 +275,6 @@ namespace MonoDevelop.AssemblyBrowser
 
 			toolbar.Add (languageCombobox);
 
-			toolbar.ShowAll ();
 		}
 		
 		[CommandHandler (EditCommands.Copy)]
@@ -291,14 +289,14 @@ namespace MonoDevelop.AssemblyBrowser
 			EditActions.SelectAll (inspectEditor);
 		}
 		
-		void HandleInspectEditorButtonPressEvent (object o, ButtonPressEventArgs args)
+		void HandleInspectEditorButtonPressEvent (ClickInfo args)
 		{
-			if (args.Event.Button != 3)
+			if (args.Button != 3)
 				return;
 			var menuSet = new CommandEntrySet ();
 			menuSet.AddItem (EditCommands.SelectAll);
 			menuSet.AddItem (EditCommands.Copy);
-			IdeApp.CommandService.ShowContextMenu (this, args.Event, menuSet, this);
+			IdeApp.CommandService.ShowContextMenu (this, args, menuSet, this);
 		}
 
 		void SearchTreeviewhandleRowActivated (object o, RowActivatedArgs args)
@@ -310,7 +308,7 @@ namespace MonoDevelop.AssemblyBrowser
 					return;
 				var nav = SearchMember (member);
 				if (nav != null) {
-					notebook1.Page = 0;
+					notebook1.CurrentPage = 0;
 					searchentry1.Entry.Text = "";
 				}
 			}
@@ -323,7 +321,7 @@ namespace MonoDevelop.AssemblyBrowser
 		
 		void LanguageComboboxhandleChanged (object sender, EventArgs e)
 		{
-			this.notebook1.Page = 0;
+			this.notebook1.CurrentPage = 0;
 			PropertyService.Set ("AssemblyBrowser.Language", this.languageCombobox.Active);
 			GenerateOutput ();
 		}
@@ -518,7 +516,7 @@ namespace MonoDevelop.AssemblyBrowser
 			}
 		}
 
-		void RenderDeclaringTypeOrNamespace (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void RenderDeclaringTypeOrNamespace (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			var ct = (Gtk.CellRendererText)cell;
 			var entity = tree_model.GetValue (iter, 0) as IEntity;
@@ -535,7 +533,7 @@ namespace MonoDevelop.AssemblyBrowser
 			}
 		}
 
-		void RenderText (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void RenderText (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			var ct = (Gtk.CellRendererText)cell;
 			var entity = tree_model.GetValue (iter, 0) as INamedElement;
@@ -543,32 +541,32 @@ namespace MonoDevelop.AssemblyBrowser
 				ct.Text = entity.Name;
 		}
 
-		void RenderImage (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		void RenderImage (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 			var ct = (CellRendererImage)cell;
 			var entity = tree_model.GetValue (iter, 0) as IEntity;
 			if (entity is IEvent evt) {
-				ct.Image = ImageService.GetIcon (EventDefinitionNodeBuilder.GetStockIcon (evt), Gtk.IconSize.Menu);
+				ct.Image = ImageService.GetIcon (EventDefinitionNodeBuilder.GetStockIcon (evt), StockIconSize.Menu);
 				return;
 			}
 
 			if (entity is IField field) {
-				ct.Image = ImageService.GetIcon (FieldDefinitionNodeBuilder.GetStockIcon (field), Gtk.IconSize.Menu);
+				ct.Image = ImageService.GetIcon (FieldDefinitionNodeBuilder.GetStockIcon (field), StockIconSize.Menu);
 				return;
 			}
 
 			if (entity is IMethod method) {
-				ct.Image = ImageService.GetIcon (MethodDefinitionNodeBuilder.GetStockIcon (method), Gtk.IconSize.Menu);
+				ct.Image = ImageService.GetIcon (MethodDefinitionNodeBuilder.GetStockIcon (method), StockIconSize.Menu);
 				return;
 			}
 
 			if (entity is IProperty property) {
-				ct.Image = ImageService.GetIcon (PropertyDefinitionNodeBuilder.GetStockIcon (property), Gtk.IconSize.Menu);
+				ct.Image = ImageService.GetIcon (PropertyDefinitionNodeBuilder.GetStockIcon (property), StockIconSize.Menu);
 				return;
 			}
 				
 			if (entity is ITypeDefinition type) {
-				ct.Image = ImageService.GetIcon (TypeDefinitionNodeBuilder.GetStockIcon (type), Gtk.IconSize.Menu);
+				ct.Image = ImageService.GetIcon (TypeDefinitionNodeBuilder.GetStockIcon (type), StockIconSize.Menu);
 				return;
 			}
 		}
@@ -582,13 +580,13 @@ namespace MonoDevelop.AssemblyBrowser
 			searchTokenSource = new CancellationTokenSource ();
 
 			if (string.IsNullOrEmpty (query)) {
-				notebook1.Page = 0;
+				notebook1.CurrentPage = 0;
 				IdeApp.Workbench.StatusBar.EndProgress ();
 				IdeApp.Workbench.StatusBar.ShowReady ();
 				return;
 			}
 			
-			this.notebook1.Page = 1;
+			this.notebook1.CurrentPage = 1;
 			
 			switch (searchMode) {
 			case SearchMode.Member:
@@ -912,13 +910,13 @@ namespace MonoDevelop.AssemblyBrowser
 		}
 
 		int oldSize2 = -1;
-		void HPaneExpose (object sender, Gtk.ExposeEventArgs args)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			int size = this.Allocation.Width;
-			if (size == oldSize2)
+			base.OnSizeAllocate (width, height, baseline);
+			if (width == oldSize2)
 				return;
-			oldSize2 = size;
-			this.hpaned1.Position = Math.Min (350, this.Allocation.Width * 2 / 3);
+			oldSize2 = width;
+			this.hpaned1.Position = Math.Min (350, width * 2 / 3);
 		}
 		
 		internal void Open (string url, AssemblyLoader? currentAssembly = null, bool expandNode = true)
@@ -1088,7 +1086,14 @@ namespace MonoDevelop.AssemblyBrowser
 
 		public bool IsDestroyed { get; private set; }
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !IsDestroyed)
+				DisposeResources ();
+			base.Dispose (disposing);
+		}
+
+		void DisposeResources ()
 		{
 			IsDestroyed = true;
 			ClearReferenceSegment ();
@@ -1114,7 +1119,7 @@ namespace MonoDevelop.AssemblyBrowser
 			resultListStore = null;
 
 			if (documentationPanel != null) {
-				documentationPanel.Destroy ();
+				documentationPanel.Dispose ();
 				documentationPanel = null;
 			}
 //			if (inspectEditor != null) {
@@ -1123,17 +1128,11 @@ namespace MonoDevelop.AssemblyBrowser
 //				inspectEditor.Destroy ();
 //			}
 			
-			if (this.UIManager != null) {
-				this.UIManager.Dispose ();
-				this.UIManager = null;
-			}
 
 			this.languageCombobox.Changed -= LanguageComboboxhandleChanged;
 //			this.searchInCombobox.Changed -= SearchInComboboxhandleChanged;
 //			this.searchEntry.Changed -= SearchEntryhandleChanged;
 			this.searchTreeview.RowActivated -= SearchTreeviewhandleRowActivated;
-			hpaned1.ExposeEvent -= HPaneExpose;
-			base.OnDestroyed ();
 		}
 
 
@@ -1248,7 +1247,7 @@ namespace MonoDevelop.AssemblyBrowser
 				if (selectedEntity != null)
 					IdeServices.NavigationHistoryService.LogActiveDocument ();
 			}
-			notebook1.Page = 0;
+			notebook1.CurrentPage = 0;
 			GenerateOutput ();
 		}
 

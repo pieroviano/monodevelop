@@ -40,51 +40,36 @@ namespace MonoDevelop.Platform
 {
 	public static class GdkWin32
 	{
-		static readonly uint GotGdkEventsMessage = RegisterWindowMessage ("GDK_WIN32_GOT_EVENTS");
-		internal const string LIBGDK = "libgdk-win32-2.0-0.dll";
-
-		[DllImport (LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gdk_win32_drawable_get_handle (IntPtr drawable);
-
-		[DllImport (LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gdk_win32_hdc_get (IntPtr drawable, IntPtr gc, int usage);
-
-		[DllImport (LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern void gdk_win32_hdc_release (IntPtr drawable, IntPtr gc, int usage);
-
-		[DllImport (LIBGDK, CallingConvention = CallingConvention.Cdecl)]
-		static extern IntPtr gdk_win32_set_modal_dialog_libgtk_only (IntPtr window);
-
-		[DllImport (Win32.USER32, SetLastError=true, CharSet=CharSet.Auto)]
-		static extern uint RegisterWindowMessage (string lpString);
+		// GTK 4 has no gdk_win32_set_modal_dialog_libgtk_only: while a native modal dialog runs its own message loop,
+		// the GLib main context is pumped from a timer owned by the dialog so that GTK windows keep painting.
+		const int PumpTimerId = 0x4D44;
+		const int PumpIntervalMs = 20;
+		const uint WM_TIMER = 0x0113;
 
 		public static IntPtr HgdiobjGet (MonoDevelop.Components.Window window)
 		{
 			Gtk.Window gtkWindow = window;
-			return HgdiobjGet (gtkWindow.GdkWindow);
+			return HgdiobjGet (gtkWindow);
 		}
 
-		public static IntPtr HgdiobjGet (Gdk.Drawable drawable)
+		/// <summary>The Win32 HWND of the GTK 4 toplevel <paramref name="window"/> (IntPtr.Zero if it is not realized).</summary>
+		public static IntPtr HgdiobjGet (Gtk.Window window)
 		{
-			return gdk_win32_drawable_get_handle (drawable.Handle);
+			return Xwt.GtkBackend.GtkWorkarounds.GetGtkWindowNativeHandle (window);
 		}
-		
-		public static IntPtr HdcGet (Gdk.Drawable drawable, Gdk.GC gc, Gdk.GCValuesMask usage)
+
+		/// <summary>Runs all pending GLib main loop events (replaces Gtk.Application.EventsPending/RunIteration).</summary>
+		internal static void PumpGtkEvents ()
 		{
-			return gdk_win32_hdc_get (drawable.Handle, gc.Handle, (int) usage);
-		}
-		
-		public static void HdcRelease (Gdk.Drawable drawable, Gdk.GC gc, Gdk.GCValuesMask usage)
-		{
-			gdk_win32_hdc_release (drawable.Handle, gc.Handle, (int) usage);
+			while (GLib.MainContext.Pending ())
+				GLib.MainContext.Iteration (false);
 		}
 
 		public static bool RunModalWin32Dialog (CommonFileDialog dialog, Gtk.Window parent)
 		{
-			while (Gtk.Application.EventsPending ())
-				Gtk.Application.RunIteration ();
+			PumpGtkEvents ();
 
-			IntPtr ph = HgdiobjGet (parent.GdkWindow);
+			IntPtr ph = HgdiobjGet (parent);
 
 			IntPtr hdlg = IntPtr.Zero;
 			dialog.DialogOpening += delegate {
@@ -108,16 +93,19 @@ namespace MonoDevelop.Platform
 
 		public static bool RunModalWPFDialog (Window dialog, Gtk.Window parent)
 		{
-			while (Gtk.Application.EventsPending ())
-				Gtk.Application.RunIteration ();
+			PumpGtkEvents ();
 
-			IntPtr ph = HgdiobjGet (parent.GdkWindow);
+			IntPtr ph = HgdiobjGet (parent);
 
 			IntPtr hdlg = IntPtr.Zero;
+			System.Windows.Threading.DispatcherTimer pumpTimer = null;
 			dialog.Loaded += delegate {
 				try {
 					hdlg = new WindowInteropHelper (dialog).Handle;
-					SetGtkDialogHook (hdlg);
+					SetGtkDialogHook (hdlg, false);
+					pumpTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds (PumpIntervalMs) };
+					pumpTimer.Tick += delegate { PumpGtkEvents (); };
+					pumpTimer.Start ();
 				} catch (Exception ex) {
 					LoggingService.LogError ("Failed to hook win32 dialog messages", ex);
 				}
@@ -127,6 +115,7 @@ namespace MonoDevelop.Platform
 			try {
 				result = dialog.ShowDialog ().Value;
 			} finally {
+				pumpTimer?.Stop ();
 				if (hdlg != IntPtr.Zero)
 					ClearGtkDialogHook (hdlg);
 			}
@@ -140,21 +129,31 @@ namespace MonoDevelop.Platform
 				return ShowDialog ();
 			}
 
-			protected override void WndProc (ref Message m)
+			System.Windows.Forms.Timer pumpTimer;
+
+			protected override void OnHandleCreated (EventArgs e)
 			{
-				if (m.Msg == GotGdkEventsMessage)
-					while (Gtk.Application.EventsPending ())
-						Gtk.Application.RunIteration ();
-				base.WndProc (ref m);
+				base.OnHandleCreated (e);
+				pumpTimer = new System.Windows.Forms.Timer { Interval = PumpIntervalMs };
+				pumpTimer.Tick += delegate { PumpGtkEvents (); };
+				pumpTimer.Start ();
+			}
+
+			protected override void OnHandleDestroyed (EventArgs e)
+			{
+				if (pumpTimer != null) {
+					pumpTimer.Dispose ();
+					pumpTimer = null;
+				}
+				base.OnHandleDestroyed (e);
 			}
 		}
 
 		internal static bool RunModalWin32Form (SpecialForm form, Gtk.Window parent)
 		{
-			while (Gtk.Application.EventsPending ())
-				Gtk.Application.RunIteration ();
+			PumpGtkEvents ();
 
-			IntPtr ph = HgdiobjGet (parent.GdkWindow);
+			IntPtr ph = HgdiobjGet (parent);
 
 			IntPtr hdlg = IntPtr.Zero;
 			form.Shown += delegate {
@@ -179,9 +178,8 @@ namespace MonoDevelop.Platform
 		// logic based on run_mainloop_hook in gtkprintoperation-win32.c
 		static IntPtr GtkWindowProc (IntPtr hdlg, uint uiMsg, IntPtr wParam, IntPtr lParam)
 		{
-			if (uiMsg == GotGdkEventsMessage) {
-				while (Gtk.Application.EventsPending ())
-					Gtk.Application.RunIteration ();
+			if (uiMsg == WM_TIMER && wParam == (IntPtr)PumpTimerId) {
+				PumpGtkEvents ();
 				return IntPtr.Zero;
 			}
 			return CallWindowProc (dialogWndProc, hdlg, uiMsg, wParam, lParam);
@@ -201,9 +199,9 @@ namespace MonoDevelop.Platform
 		{
 			if (dialogHookSet)
 				throw new InvalidOperationException ("There is already an active hook");
-			gdk_win32_set_modal_dialog_libgtk_only (hdlg);
 			dialogHookSet = true;
 			if (overrideWndProc) {
+				SetTimer (hdlg, (IntPtr)PumpTimerId, PumpIntervalMs, IntPtr.Zero);
 				dialogWndProc = GetWindowLongPtr (hdlg, DWLP_DLGPROC);
 				SetWindowLongPtr (hdlg, DWLP_DLGPROC, Marshal.GetFunctionPointerForDelegate (GtkWindowProcDelegate));
 			}
@@ -211,8 +209,8 @@ namespace MonoDevelop.Platform
 
 		static void ClearGtkDialogHook (IntPtr hdlg)
 		{
-			gdk_win32_set_modal_dialog_libgtk_only (IntPtr.Zero);
 			if (dialogWndProc != IntPtr.Zero) {
+				KillTimer (hdlg, (IntPtr)PumpTimerId);
 				SetWindowLongPtr (hdlg, DWLP_DLGPROC, dialogWndProc);
 				dialogWndProc = IntPtr.Zero;
 			}
@@ -224,6 +222,12 @@ namespace MonoDevelop.Platform
 
 		static readonly WindowProc GtkWindowProcDelegate = GtkWindowProc;
 		static readonly int DWLP_DLGPROC = IntPtr.Size; // DWLP_MSGRESULT + sizeof(LRESULT);
+
+		[DllImport (Win32.USER32)]
+		static extern IntPtr SetTimer (IntPtr hWnd, IntPtr nIDEvent, uint uElapse, IntPtr lpTimerFunc);
+
+		[DllImport (Win32.USER32)]
+		static extern bool KillTimer (IntPtr hWnd, IntPtr uIDEvent);
 
 		[DllImport(Win32.USER32)]
 		static extern IntPtr CallWindowProc (IntPtr lpPrevWndFunc, IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
@@ -291,7 +295,7 @@ namespace MonoDevelop.Platform
 	{
 		public GtkWin32Proxy (Gtk.Window gtkWindow)
 		{
-			Handle = GdkWin32.HgdiobjGet (gtkWindow.RootWindow);
+			Handle = GdkWin32.HgdiobjGet (gtkWindow);
 		}
 		
 		public IntPtr Handle { get; private set; }

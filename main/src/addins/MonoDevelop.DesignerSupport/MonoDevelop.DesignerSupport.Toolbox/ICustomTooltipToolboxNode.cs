@@ -26,6 +26,6 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 	public interface ICustomTooltipToolboxNode
 	{
 		bool HasTooltip { get; }
-		Window CreateTooltipWindow (Control parent);
+		TooltipWindow CreateTooltipWindow (Control parent);
 	}
 }

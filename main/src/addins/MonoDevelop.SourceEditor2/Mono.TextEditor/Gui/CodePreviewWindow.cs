@@ -32,8 +32,37 @@ using MonoDevelop.Ide.Fonts;
 
 namespace Mono.TextEditor
 {
-	class CodePreviewWindow : Gtk.Window
+	/// <summary>
+	/// Code preview. GTK 4 cannot position toplevel windows: the preview is a <see cref="Gtk.Popover"/>
+	/// attached to the widget it is shown for (see <see cref="ShowAt"/>).
+	/// </summary>
+	class CodePreviewWindow : Gtk.Popover
 	{
+		/// <summary>The widget hosting the painted preview.</summary>
+		sealed class Canvas : Gtk.Widget
+		{
+			readonly CodePreviewWindow owner;
+
+			public Canvas (CodePreviewWindow owner)
+			{
+				this.owner = owner;
+			}
+
+			protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+			{
+				minimum = natural = orientation == Gtk.Orientation.Horizontal ? owner.requestedWidth : owner.requestedHeight;
+				minimum_baseline = natural_baseline = -1;
+			}
+
+			protected override void OnSnapshot (Gtk.Snapshot snapshot)
+			{
+				snapshot.DrawCairo (this, owner.Draw);
+			}
+		}
+
+		readonly Canvas canvas;
+		int requestedWidth = 1, requestedHeight = 1;
+
 		string fontName;
 
 		Pango.FontDescription fontDescription;
@@ -48,18 +77,17 @@ namespace Mono.TextEditor
 		readonly HslColor colorText, colorBg, colorFold;
 
 		public CodePreviewWindow (
-			Gdk.Window parentWindow,
+			Gtk.Widget parentWidget,
 			string fontName = null,
 			EditorTheme theme = null)
-			: base (Gtk.WindowType.Popup)
 		{
-			ParentWindow = parentWindow ?? MonoDevelop.Ide.IdeApp.Workbench.RootWindow.GdkWindow;
+			Autohide = false;
+			HasArrow = false;
+			canvas = new Canvas (this);
+			Child = canvas;
+			Position = Gtk.PositionType.Bottom;
 
-			AppPaintable = true;
-			SkipPagerHint = SkipTaskbarHint = true;
-			TypeHint = WindowTypeHint.Menu;
-
-			this.fontName = fontName = fontName ?? DefaultSourceEditorOptions.Instance.FontName;
+			this.fontName= fontName = fontName ?? DefaultSourceEditorOptions.Instance.FontName;
 
 			layout = PangoUtil.CreateLayout (this);
 			var font = Xwt.Drawing.Font.FromName (fontName);
@@ -73,7 +101,8 @@ namespace Mono.TextEditor
 			}
 			layout.Ellipsize = Pango.EllipsizeMode.End;
 
-			var geometry = Screen.GetUsableMonitorGeometry (Screen.GetMonitorAtWindow (ParentWindow));
+			var monitorWidget = parentWidget ?? MonoDevelop.Ide.IdeApp.Workbench.RootWindow;
+			var geometry = monitorWidget.GetMonitor ().GetUsableMonitorGeometry ();
 			maxWidth = geometry.Width * 2 / 5;
 			maxHeight = geometry.Height * 2 / 5;
 
@@ -152,35 +181,49 @@ namespace Mono.TextEditor
 				FooterTextHeight = 0;
 			}
 
-			SetSizeRequest (
-				Math.Max (1, Math.Min (w + 3, maxWidth) + 5),
-				Math.Max (1, Math.Min (h + 3, maxHeight)) + 5);
-		}
-		
-		protected override void OnDestroyed ()
-		{
-			layout = layout.Kill ();
-			footerLayout = footerLayout.Kill ();
-			fontDescription = fontDescription.Kill ();
-			footerFontDescription = footerFontDescription.Kill ();
-
-			base.OnDestroyed ();
+			requestedWidth = Math.Max (1, Math.Min (w + 3, maxWidth) + 5);
+			requestedHeight = Math.Max (1, Math.Min (h + 3, maxHeight)) + 5;
+			canvas.QueueResize ();
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
+		/// <summary>The size of the painted preview.</summary>
+		public new int Width => canvas.Width;
+
+		/// <summary>The size of the painted preview.</summary>
+		public new int Height => canvas.Height;
+
+		/// <summary>Pops the preview up next to <paramref name="area"/> (in the coordinates of <paramref name="parent"/>).</summary>
+		public void ShowAt (Gtk.Widget parent, Gdk.Rectangle area, Gtk.PositionType position = Gtk.PositionType.Right)
 		{
-			using (var cr = CairoHelper.Create (GdkWindow)) {
-				CairoHelper.Region (cr, evnt.Region);
-				cr.Clip ();
-				cr.Translate (Allocation.X, Allocation.Y);
-				Draw (cr);
+			if (Parent != parent) {
+				if (Parent != null)
+					Unparent ();
+				Parent = parent;
 			}
-			return true;
+			PointingTo = area;
+			Position = position;
+			Popup ();
+		}
+
+		bool destroyed;
+
+		public override void Destroy ()
+		{
+			if (!destroyed) {
+				destroyed = true;
+				if (Handle != IntPtr.Zero && Visible)
+					Popdown ();
+				layout = layout.Kill ();
+				footerLayout = footerLayout.Kill ();
+				fontDescription = fontDescription.Kill ();
+				footerFontDescription = footerFontDescription.Kill ();
+			}
+			base.Destroy ();
 		}
 
 		void Draw (Cairo.Context cr)
 		{
-			var allocation = Allocation;
+			var allocation = new Gdk.Rectangle (0, 0, canvas.Width, canvas.Height);
 
 			cr.LineWidth = 1;
 

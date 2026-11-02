@@ -97,3 +97,16 @@ Agents in one batch build with a private `IntermediateOutputPath`/`OutputPath` a
 | Modal `Run()` removed | nested main loop in MonoDevelop's dialog service only |
 | Missing GtkSharp bindings surface as `NullReferenceException` at call time | add binding + GtkSharp test (`BindingTests`) |
 | xwt submodule commits are on detached HEAD of `mono/xwt` | push to a fork before `git submodule update` discards them |
+
+## Addin tier 1, round 1 notes
+
+| Area | Note |
+|---|---|
+| Status | Ported: SourceEditor2, TextEditor, DesignerSupport, AssemblyBrowser, RegexToolkit, HexEditor, Deployment*, Autotools, Gettext, ChangeLogAddIn, DocFood, AspNet*, WebReferences, PackageManagement, Packaging, DotNetCore, ConnectedServices, Xml, UnitTesting*, ILAsm/VBNet, TextTemplating, WindowsPlatform, GnomePlatform, mdmonitor. Left: SourceEditor (`PinnedWatchWidget`, `DebugValueTooltipProvider`) and HexEditor wait for the Debugger port; ChangeLogAddIn waits for VersionControl; MacPlatform and PerformanceDiagnostics (Mac only) untouched |
+| Editor scrolling | `TextArea`/`MonoTextEditor` are `ContainerWidget`s drawn in `OnSnapshot`; scrolling via `SmartScrolledWindow` + `IScrollAdjustable` (no GtkScrollable) |
+| Clipboard/DnD | Editor clipboard = `Gdk.ContentProvider` union (text, html, rtf, `MD_CLIPBOARD_FORMAT`); `IToolboxConsumer` is now `string[] DragTargets` + `Gdk.ContentProvider DragItem(...)` |
+| Tooltips | `ICustomTooltipToolboxNode.CreateTooltipWindow` returns `TooltipWindow` (Popover); `LanguageItemWindow`/`DebugValueTooltipProvider` are popovers wrapped in `Window`; providers must override `ShowTooltipWindow`/`TryCloseTooltipWindow` |
+| Removed | `RemoteDesignerProcess` GtkPlug embedding, `BounceFadePopupWindow`, IGE Mac menu in mdmonitor, DocFood/DesignerSupport Stetic stubs, `IPropertyGrid.ShadowType` |
+| Add-in helpers | Add-ins outside the Ide `InternalsVisibleTo` list carry a local `DesignerLayout.cs` (Deployment, VBNetBinding, mdmonitor); `WindowsPlatform` references `Xwt.Gtk4` for native window handles |
+| Binding gaps | No gspell (GtkSpell), no `ImContext` input-method menu, no global screen coordinates, no Gdk event filters, no Win32 `gdk_win32_*` binding |
+| Build note | A running Visual Studio locks `main/msbuild/MDBuildTasks/bin/MDBuildTasks.dll`; rename the locked file and copy the fresh obj output over it before the solution build |

@@ -34,7 +34,7 @@ namespace MonoDevelop.SourceEditor
 {
 	class LinkMarker : UnderlineTextSegmentMarker, ILinkTextMarker, IActionTextLineMarker
 	{
-		static readonly Gdk.Cursor textLinkCursor = new Gdk.Cursor (Gdk.CursorType.Hand1);
+		static readonly Gdk.Cursor textLinkCursor = new Gdk.Cursor ("pointer", null);
 
 		Action<LinkRequest> activateLink;
 
@@ -66,7 +66,7 @@ namespace MonoDevelop.SourceEditor
 
 		bool IActionTextLineMarker.MouseReleased (MonoTextEditor editor, MarginMouseEventArgs args)
 		{
-			if ((Platform.IsMac && (args.ModifierState & Gdk.ModifierType.Mod2Mask) == Gdk.ModifierType.Mod2Mask) ||
+			if ((Platform.IsMac && (args.ModifierState & Gdk.ModifierType.MetaMask) == Gdk.ModifierType.MetaMask) ||
 			    (!Platform.IsMac && (args.ModifierState & Gdk.ModifierType.ControlMask) == Gdk.ModifierType.ControlMask))
 				activateLink?.Invoke (LinkRequest.RequestNewView);
 			else

@@ -95,7 +95,7 @@ namespace MonoDevelop.PackageManagement
 				Core.Runtime.RunInMainThread (delegate {
 					var view = e.State as ImageView;
 					if (view != null)
-						view.Image = e.Image?.WithSize (IconSize.Large) ?? ImageService.GetIcon ("md-package", Gtk.IconSize.Dnd);
+						view.Image = e.Image?.WithSize (IconSize.Large) ?? ImageService.GetIcon ("md-package", MonoDevelop.Components.StockIconSize.Dnd);
 				});
 			}
 		}
@@ -140,7 +140,7 @@ namespace MonoDevelop.PackageManagement
 			var rowBox = new HBox ();
 			rowBox.Margin = rowMargin;
 
-			var icon = new ImageView (ImageService.GetIcon ("md-package", Gtk.IconSize.Dnd));
+			var icon = new ImageView (ImageService.GetIcon ("md-package", MonoDevelop.Components.StockIconSize.Dnd));
 
 			if (package.IconUrl != null && !string.IsNullOrEmpty (package.IconUrl.AbsoluteUri))
 				imageLoader.LoadFrom (package.IconUrl, icon);

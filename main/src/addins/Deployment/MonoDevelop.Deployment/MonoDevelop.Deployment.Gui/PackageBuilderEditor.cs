@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 //
 // PackageBuilderEditor.cs
 //
@@ -36,19 +37,18 @@ using Mono.Addins;
 
 namespace MonoDevelop.Deployment.Gui
 {
-	internal class PackageBuilderEditor: HBox
+	internal class PackageBuilderEditor: Gtk.Box
 	{
 		public PackageBuilderEditor (PackageBuilder target)
 		{
 			try {
 				IPackageBuilderEditor editor = GetEditor (target);
 				if (editor != null)
-					PackStart (editor.CreateEditor (target), true, true, 0);
+					DesignerLayout.Pack (this, editor.CreateEditor (target), true);
 			} catch (Exception ex) {
 				LoggingService.LogError (ex.ToString ());
-				PackStart (new Gtk.Label ("Could not create editor for deploy target of type " + target));
+				DesignerLayout.Pack (this, new Gtk.Label ("Could not create editor for deploy target of type " + target), true);
 			}
-			ShowAll ();
 		}
 		
 		public static bool HasEditor (PackageBuilder target)

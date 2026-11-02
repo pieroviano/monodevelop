@@ -57,12 +57,12 @@ namespace MonoDevelop.AspNet.Commands
 
 		Button buttonCancel, buttonOk, masterButton;
 		Label placeholderLabel;
-		ComboBox viewEngineCombo, templateCombo;
-		ComboBoxEntry placeholderCombo, dataClassCombo;
+		ComboBoxText viewEngineCombo, templateCombo;
+		ComboBoxText placeholderCombo, dataClassCombo;
 		Entry nameEntry;
 		Entry masterEntry;
 		CheckButton partialCheck, stronglyTypedCheck, masterCheck;
-		Alignment typePanel, masterPanel;
+		Box typePanel, masterPanel;
 
 		public AddViewDialog (DotNetProject project)
 		{
@@ -99,72 +99,71 @@ namespace MonoDevelop.AspNet.Commands
 		{
 			DefaultWidth = 470;
 			DefaultHeight = 380;
-			BorderWidth = 6;
 			Resizable = false;
 
-			VBox.Spacing = 6;
+			var content = ContentArea;
+			content.Spacing = 6;
+			content.MarginTop = content.MarginBottom = content.MarginStart = content.MarginEnd = 6;
 
-			buttonCancel = new Button (Gtk.Stock.Cancel);
+			buttonCancel = new Button { Label = GettextCatalog.GetString ("_Cancel"), UseUnderline = true };
 			AddActionWidget (buttonCancel, ResponseType.Cancel);
-			buttonOk = new Button (Gtk.Stock.Ok);
+			buttonOk = new Button { Label = GettextCatalog.GetString ("_OK"), UseUnderline = true };
 			AddActionWidget (buttonOk, ResponseType.Ok);
 
-			var table = new Table (3, 2, false) { ColumnSpacing = 6, RowSpacing = 6 };
+			var table = new Grid { ColumnSpacing = 6, RowSpacing = 6 };
 
-			nameEntry = new Entry { WidthRequest = 350 };
-			viewEngineCombo = ComboBox.NewText ();
-			templateCombo = ComboBox.NewText ();
+			nameEntry = new Entry { WidthRequest = 350, Hexpand = true };
+			viewEngineCombo = new ComboBoxText { Hexpand = true };
+			templateCombo = new ComboBoxText { Hexpand = true };
 
 			var nameLabel = new Label (GettextCatalog.GetString ("_Name")) {
 				MnemonicWidget = nameEntry,
+				UseUnderline = true,
 				Xalign = 0
 			};
 			var templateLabel = new Label (GettextCatalog.GetString ("_Template:")) {
-				MnemonicWidget = nameEntry,
+				MnemonicWidget = templateCombo,
+				UseUnderline = true,
 				Xalign = 0
 			};
 			var engineLabel = new Label (GettextCatalog.GetString ("_View Engine:")) {
-				MnemonicWidget = nameEntry,
+				MnemonicWidget = viewEngineCombo,
+				UseUnderline = true,
 				Xalign = 0
 			};
 
-			const AttachOptions expandFill = AttachOptions.Expand | AttachOptions.Fill;
-			const AttachOptions fill = AttachOptions.Fill;
+			table.Attach (nameLabel,       0, 0, 1, 1);
+			table.Attach (nameEntry,       1, 0, 1, 1);
+			table.Attach (templateLabel,   0, 1, 1, 1);
+			table.Attach (templateCombo,   1, 1, 1, 1);
+			table.Attach (engineLabel,     0, 2, 1, 1);
+			table.Attach (viewEngineCombo, 1, 2, 1, 1);
 
-			table.Attach (nameLabel,       0, 1, 0, 1, fill,       0, 0, 0);
-			table.Attach (nameEntry,       1, 2, 0, 1, expandFill, 0, 0, 0);
-			table.Attach (templateLabel,   0, 1, 1, 2, fill,       0, 0, 0);
-			table.Attach (templateCombo,   1, 2, 1, 2, expandFill, 0, 0, 0);
-			table.Attach (engineLabel,     0, 1, 2, 3, fill,       0, 0, 0);
-			table.Attach (viewEngineCombo, 1, 2, 2, 3, expandFill, 0, 0, 0);
+			content.Append (table);
 
-			VBox.PackStart (table, false, false, 0);
-
-			var frame = new Frame (GettextCatalog.GetString ("Options")) { BorderWidth = 2 };
-			var optionsVBox = new VBox { Spacing = 6 };
-			var optionsAlignment = new Alignment (0.5f, 0.5f, 1f, 1f) {
-				Child = optionsVBox,
-				TopPadding = 4,
-				BottomPadding = 4,
-				RightPadding = 4,
-				LeftPadding = 4
+			var frame = new Frame (GettextCatalog.GetString ("Options")) { MarginTop = 2, MarginBottom = 2, MarginStart = 2, MarginEnd = 2 };
+			var optionsVBox = new Box (Orientation.Vertical, 6) {
+				MarginTop = 4,
+				MarginBottom = 4,
+				MarginStart = 4,
+				MarginEnd = 4
 			};
-			frame.Add (optionsAlignment);
+			frame.Child = optionsVBox;
 
-			partialCheck = new CheckButton (GettextCatalog.GetString ("_Partial view")) { UseUnderline = true };
-			stronglyTypedCheck = new CheckButton (GettextCatalog.GetString ("_Strongly typed")) { UseUnderline = true };
-			masterCheck = new CheckButton (GettextCatalog.GetString ("Has _master page or layout")) { UseUnderline = true };
+			partialCheck = new CheckButton { Label = GettextCatalog.GetString ("_Partial view"), UseUnderline = true };
+			stronglyTypedCheck = new CheckButton { Label = GettextCatalog.GetString ("_Strongly typed"), UseUnderline = true };
+			masterCheck = new CheckButton { Label = GettextCatalog.GetString ("Has _master page or layout"), UseUnderline = true };
 
-			dataClassCombo = ComboBoxEntry.NewText ();
-			masterEntry = new Entry { WidthRequest = 250 };
-			placeholderCombo = ComboBoxEntry.NewText ();
-			masterButton = new Button ("...");
+			dataClassCombo = ComboBoxText.NewWithEntry ();
+			masterEntry = new Entry { WidthRequest = 250, Hexpand = true };
+			placeholderCombo = ComboBoxText.NewWithEntry ();
+			masterButton = new Button { Label = "..." };
 
-			optionsVBox.PackStart (partialCheck);
-			optionsVBox.PackStart (stronglyTypedCheck);
+			optionsVBox.Append (partialCheck);
+			optionsVBox.Append (stronglyTypedCheck);
 			typePanel = WithLabelAndLeftPadding (dataClassCombo, GettextCatalog.GetString ("_Data class:"), true, 24);
-			optionsVBox.PackStart (typePanel);
-			optionsVBox.PackStart (masterCheck);
+			optionsVBox.Append (typePanel);
+			optionsVBox.Append (masterCheck);
 
 
 			var masterLabel = new Label (GettextCatalog.GetString ("_File:")) {
@@ -179,20 +178,19 @@ namespace MonoDevelop.AspNet.Commands
 				UseUnderline = true
 			};
 
-			var masterTable = new Table (2, 3, false) { RowSpacing = 6, ColumnSpacing = 6 };
+			var masterTable = new Grid { RowSpacing = 6, ColumnSpacing = 6 };
 
-			masterTable.Attach (masterLabel,      0, 1, 0, 1, fill,       0, 0, 0);
-			masterTable.Attach (masterEntry,      1, 3, 0, 1, expandFill, 0, 0, 0);
-			masterTable.Attach (placeholderLabel, 0, 1, 1, 2, expandFill, 0, 0, 0);
-			masterTable.Attach (placeholderCombo, 1, 2, 1, 2, fill,       0, 0, 0);
-			masterTable.Attach (masterButton,     2, 3, 1, 2, fill,       0, 0, 0);
+			masterTable.Attach (masterLabel,      0, 0, 1, 1);
+			masterTable.Attach (masterEntry,      1, 0, 2, 1);
+			masterTable.Attach (placeholderLabel, 0, 1, 1, 1);
+			masterTable.Attach (placeholderCombo, 1, 1, 1, 1);
+			masterTable.Attach (masterButton,     2, 1, 1, 1);
 
-			masterPanel = new Alignment (0.5f, 0.5f, 1f, 1f) { LeftPadding = 24, Child = masterTable };
-			optionsVBox.PackStart (masterPanel);
+			masterPanel = new Box (Orientation.Vertical, 0) { MarginStart = 24 };
+			masterPanel.Append (masterTable);
+			optionsVBox.Append (masterPanel);
 
-			VBox.PackStart (frame, false, false, 0);
-
-			Child.ShowAll ();
+			content.Append (frame);
 
 			viewEngineCombo.Changed += ViewEngineChanged;
 			templateCombo.Changed += Validate;
@@ -207,7 +205,7 @@ namespace MonoDevelop.AspNet.Commands
 
 		}
 
-		static Alignment WithLabelAndLeftPadding (Widget w, string labelText, bool underline, uint leftPadding)
+		static Box WithLabelAndLeftPadding (Widget w, string labelText, bool underline, int leftPadding)
 		{
 			var label = new Label (labelText) {
 				MnemonicWidget = w,
@@ -215,11 +213,12 @@ namespace MonoDevelop.AspNet.Commands
 				UseUnderline = underline
 			};
 
-			var box = new HBox (false, 6);
-			box.PackStart (label);
-			box.PackStart (w, true, true, 0);
+			w.Hexpand = true;
+			var box = new Box (Orientation.Horizontal, 6) { MarginStart = leftPadding };
+			box.Append (label);
+			box.Append (w);
 
-			return new Alignment (0.5f, 0.5f, 1f, 1f) { LeftPadding = leftPadding, Child = box };
+			return box;
 		}
 
 		IEnumerable<string> GetProperViewEngines ()
@@ -298,12 +297,6 @@ namespace MonoDevelop.AspNet.Commands
 			}
 
 			Validate ();
-		}
-		
-		public override void Dispose ()
-		{
-			Destroy ();
-			base.Dispose ();
 		}
 		
 		public bool IsValid ()

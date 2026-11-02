@@ -26,15 +26,16 @@
 // THE SOFTWARE.
 
 using System;
-using Gdk;
+
 using Gtk;
 using MonoDevelop.Components;
 using MonoDevelop.Core;
+using MonoDevelop.Ide.Projects;
 
 namespace MonoDevelop.AspNet.Projects
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	partial class GtkAspNetProjectTemplateWizardPageWidget : Gtk.Bin
+	partial class GtkAspNetProjectTemplateWizardPageWidget : MonoDevelop.Components.BinWidget
 	{
 		AspNetProjectTemplateWizardPage wizardPage;
 		ImageView backgroundImageView;
@@ -66,18 +67,22 @@ namespace MonoDevelop.AspNet.Projects
 			backgroundImageView = new ImageView (backgroundImage);
 			backgroundImageView.Xalign = 1.0f;
 			backgroundImageView.Yalign = 1.0f;
-			backgroundImageView.SizeRequested += BackgroundImageViewSizeRequested;
-			backgroundLargeImageVBox.PackStart (backgroundImageView, true, true, 0);
+			// Ensure there is a gap between the image and the left hand side of the wizard
+			// if the labels have expanded to fit their text.
+			backgroundImageView.MarginStart = 30;
+			backgroundImageView.Hexpand = true;
+			backgroundImageView.Vexpand = true;
+			backgroundLargeImageVBox.Append (backgroundImageView);
 
-			var separatorColor = Ide.Gui.Styles.NewProjectDialog.ProjectConfigurationSeparatorColor.ToGdkColor ();
-			var backgroundColor = Ide.Gui.Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor.ToGdkColor ();
-			testingSeparator.ModifyBg (StateType.Normal, separatorColor);
+			var separatorColor = Ide.Gui.Styles.NewProjectDialog.ProjectConfigurationSeparatorColor;
+			var backgroundColor = Ide.Gui.Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor;
+			WidgetCss.SetBackground (testingSeparator, separatorColor);
 
-			leftBorderEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTopEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTableEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationBottomEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			backgroundLargeImageEventBox.ModifyBg (StateType.Normal, backgroundColor);
+			WidgetCss.SetBackground (leftBorderEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationTopEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationTableEventBox, backgroundColor);
+			WidgetCss.SetBackground (configurationBottomEventBox, backgroundColor);
+			WidgetCss.SetBackground (backgroundLargeImageEventBox, backgroundColor);
 		}
 
 		public GtkAspNetProjectTemplateWizardPageWidget (AspNetProjectTemplateWizardPage wizardPage)
@@ -86,11 +91,11 @@ namespace MonoDevelop.AspNet.Projects
 			WizardPage = wizardPage;
 		}
 
-		public override void Dispose ()
+		protected override void Dispose (bool disposing)
 		{
-			backgroundImageView.SizeRequested -= BackgroundImageViewSizeRequested;
-			Dispose (backgroundImage);
-			base.Dispose ();
+			if (disposing)
+				Dispose (backgroundImage);
+			base.Dispose (disposing);
 		}
 
 		void Dispose (IDisposable disposable)
@@ -144,7 +149,6 @@ namespace MonoDevelop.AspNet.Projects
 		void RemoveFromTable (Widget widget)
 		{
 			configurationTable.Remove (widget);
-			widget.Destroy ();
 		}
 
 		bool IsYosemiteOrHigher ()
@@ -152,17 +156,6 @@ namespace MonoDevelop.AspNet.Projects
 			return Platform.OSVersion >= MacSystemInformation.Yosemite;
 		}
 
-		void BackgroundImageViewSizeRequested (object o, SizeRequestedArgs args)
-		{
-			if (args.Requisition.Width <= backgroundImage.Width) {
-				// Ensure there is a gap between the image and the left hand side of the wizard
-				// if the labels have expanded to fit their text.
-				args.Requisition = new Requisition {
-					Height = args.Requisition.Height,
-					Width = args.Requisition.Width + 30
-				};
-			}
-		}
 	}
 }
 

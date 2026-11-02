@@ -32,7 +32,7 @@ namespace MonoDevelop.Autotools
 {
 	
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class MakefileSwitchEditorWidget : Gtk.Bin
+	public partial class MakefileSwitchEditorWidget : MonoDevelop.Components.BinWidget
 	{
 		ListStore store;
 		TarballDeployTarget target;
@@ -48,8 +48,6 @@ namespace MonoDevelop.Autotools
 			foreach (Switch s in target.GetSwitches ()) {
 				store.AppendValues (s.SwitchName, s.Define, s.HelpStr, s);
 			}
-			
-			this.ShowAll ();
 		}
 		
 		void InitTreeview ()

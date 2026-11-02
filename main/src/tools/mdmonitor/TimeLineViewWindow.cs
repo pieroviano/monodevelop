@@ -34,7 +34,7 @@ namespace Mono.Instrumentation.Monitor
 		Counter mainCounter;
 		CounterValue mainValue;
 		
-		public TimeLineViewWindow (Counter c, CounterValue value) : base(Gtk.WindowType.Toplevel)
+		public TimeLineViewWindow (Counter c, CounterValue value)
 		{
 			this.Build ();
 			this.mainCounter = c;
@@ -42,6 +42,7 @@ namespace Mono.Instrumentation.Monitor
 			timeView.Scale = 300;
 			
 			Update ();
+			Present ();
 		}
 		
 		void Update ()
@@ -72,7 +73,7 @@ namespace Mono.Instrumentation.Monitor
 		
 		protected virtual void OnVscaleScaleChangeValue (object o, Gtk.ChangeValueArgs args)
 		{
-			timeView.TimeScale = vscaleScale.Value;
+			timeView.TimeScale = args.Value;
 		}
 	}
 }

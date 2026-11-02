@@ -25,6 +25,8 @@
 // THE SOFTWARE.
 using System;
 using Mono.TextEditor.Highlighting;
+using Mono.TextEditor.Theatrics;
+using MonoDevelop.Components;
 using MonoDevelop.Ide.Editor.Highlighting;
 namespace Mono.TextEditor
 {
@@ -50,13 +52,12 @@ namespace Mono.TextEditor
 			}
 		}
 		
-		public CodeSegmentEditorWindow (MonoTextEditor editor) : base (Gtk.WindowType.Toplevel)
+		public CodeSegmentEditorWindow (MonoTextEditor editor)
 		{
-			Gtk.ScrolledWindow scrolledWindow = new Gtk.ScrolledWindow ();
+			var scrolledWindow = new SmartScrolledWindow ();
 			scrolledWindow.Child = codeSegmentEditor;
-			scrolledWindow.ShadowType = Gtk.ShadowType.In;
+			scrolledWindow.BorderVisible = true;
 			Child = scrolledWindow;
-			codeSegmentEditor.Realize ();
 			((SimpleEditMode)codeSegmentEditor.CurrentMode).AddBinding (Gdk.Key.Escape, Close, true);
 			TextEditorOptions options = new TextEditorOptions (true);
 			options.FontName = editor.Options.FontName;
@@ -70,42 +71,24 @@ namespace Mono.TextEditor
 			codeSegmentEditor.Document.IsReadOnly = true;
 			codeSegmentEditor.Options = options;
 			
-			codeSegmentEditor.KeyPressEvent += delegate(object o, Gtk.KeyPressEventArgs args) {
-				if (args.Event.Key == Gdk.Key.Escape)
+			this.AddKeyPressHandler ((keyval, keycode, state) => {
+				if ((Gdk.Key)keyval == Gdk.Key.Escape) {
 					Destroy ();
-				
-			};
-			Gtk.Widget parent = editor.Parent;
-			while (parent != null && !(parent is Gtk.Window))
-				parent = parent.Parent;
-			if (parent is Gtk.Window)
-				this.TransientFor = (Gtk.Window)parent;
-			this.SkipTaskbarHint = true;
+					return true;
+				}
+				return false;
+			}, null, Gtk.PropagationPhase.Capture);
+			if (editor.Root is Gtk.Window parent)
+				this.TransientFor = parent;
 			this.Decorated = false;
-			Gdk.Pointer.Grab (this.GdkWindow, true, Gdk.EventMask.ButtonPressMask | Gdk.EventMask.ButtonReleaseMask | Gdk.EventMask.PointerMotionMask | Gdk.EventMask.EnterNotifyMask | Gdk.EventMask.LeaveNotifyMask, null, null, Gtk.Global.CurrentEventTime);
-			Gtk.Grab.Add (this);
-			GrabBrokenEvent += delegate {
-				Destroy ();
-			};
+			// closes itself as soon as it loses the focus (replaces the GTK 2 pointer grab)
+			this.AddFocusHandler (null, () => Destroy ());
 			codeSegmentEditor.GrabFocus ();
 		}
-		
+
 		public void Close (TextEditorData data)
 		{
 			Destroy ();
-		}
-		
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
-		{
-			Destroy ();
-			return base.OnFocusOutEvent (evnt);
-		}
-
-		protected override void OnDestroyed ()
-		{
-			Gtk.Grab.Remove (this);
-			Gdk.Pointer.Ungrab (Gtk.Global.CurrentEventTime);
-			base.OnDestroyed ();
 		}
 	}
 }

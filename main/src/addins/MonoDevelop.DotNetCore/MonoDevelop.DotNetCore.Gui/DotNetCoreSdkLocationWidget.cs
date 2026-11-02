@@ -98,11 +98,11 @@ namespace MonoDevelop.DotNetCore.Gui
 		{
 			if (panel.DotNetCorePath?.Exists == true && panel.RuntimeVersions.Any ()) {
 				commandLineFoundLabel.Text = GettextCatalog.GetString ("Found");
-				commandLineFoundIcon.Image = GetIcon (Gtk.Stock.Apply);
+				commandLineFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Apply);
 				UpdateCommandLineIconAccessibility (true);
 			} else {
 				commandLineFoundLabel.Text = GettextCatalog.GetString ("Not found");
-				commandLineFoundIcon.Image = GetIcon (Gtk.Stock.Cancel);
+				commandLineFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Cancel);
 				UpdateCommandLineIconAccessibility (false);
 			}
 
@@ -122,7 +122,7 @@ namespace MonoDevelop.DotNetCore.Gui
 		void ShowSdkInformation (DotNetCoreVersion[] versions)
 		{
 			sdkFoundLabel.Text = GettextCatalog.GetPluralString ("SDK found", "SDKs found", versions.Length);
-			sdkFoundIcon.Image = GetIcon (Gtk.Stock.Apply);
+			sdkFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Apply);
 			UpdateSdkIconAccessibility (true);
 
 			sdkVersionsListBox.Items.Clear ();
@@ -134,13 +134,13 @@ namespace MonoDevelop.DotNetCore.Gui
 
 		static Image GetIcon (string name)
 		{
-			return ImageService.GetIcon (name, Gtk.IconSize.Menu);
+			return ImageService.GetIcon (name, MonoDevelop.Components.StockIconSize.Menu);
 		}
 
 		void ShowNoSdkFound ()
 		{
 			sdkFoundLabel.Text = GettextCatalog.GetString ("Not found");
-			sdkFoundIcon.Image = GetIcon (Gtk.Stock.Cancel);
+			sdkFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Cancel);
 			sdkVersionsListBox.Items.Clear ();
 			UpdateSdkIconAccessibility (false);
 		}
@@ -148,7 +148,7 @@ namespace MonoDevelop.DotNetCore.Gui
 		void ShowRuntimes (DotNetCoreVersion[] versions)
 		{
 			runtimeFoundLabel.Text = GettextCatalog.GetPluralString ("Runtime found", "Runtimes found", versions.Length);
-			runtimeFoundIcon.Image = GetIcon (Gtk.Stock.Apply);
+			runtimeFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Apply);
 			UpdateRuntimeIconAccessibility (true);
 
 			runtimeVersionsListBox.Items.Clear ();
@@ -161,7 +161,7 @@ namespace MonoDevelop.DotNetCore.Gui
 		void ShowNoRuntimesFound ()
 		{
 			runtimeFoundLabel.Text = GettextCatalog.GetString ("Not found");
-			runtimeFoundIcon.Image = GetIcon (Gtk.Stock.Cancel);
+			runtimeFoundIcon.Image = GetIcon (MonoDevelop.Ide.Gui.GtkStock.Cancel);
 			runtimeVersionsListBox.Items.Clear ();
 			UpdateRuntimeIconAccessibility (false);
 		}

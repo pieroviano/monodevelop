@@ -52,7 +52,7 @@ namespace MonoDevelop.Xml.Completion
 		#region ICompletionData implementation 
 				
 		public override IconId Icon {
-			get { return Gtk.Stock.GoBack; }
+			get { return MonoDevelop.Ide.Gui.GtkStock.GoBack; }
 		}
 		
 		public override string DisplayText {

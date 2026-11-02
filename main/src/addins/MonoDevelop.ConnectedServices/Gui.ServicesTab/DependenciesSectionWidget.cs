@@ -131,8 +131,8 @@ namespace MonoDevelop.ConnectedServices.Gui.ServicesTab
 				statusIconView.Visible = false;
 				return;
 			}
-			if (ImageService.IsAnimation (stockId, Gtk.IconSize.Menu)) {
-				animatedStatusIcon = ImageService.GetAnimatedIcon (stockId, Gtk.IconSize.Menu);
+			if (ImageService.IsAnimation (stockId, MonoDevelop.Components.StockIconSize.Menu)) {
+				animatedStatusIcon = ImageService.GetAnimatedIcon (stockId, MonoDevelop.Components.StockIconSize.Menu);
 				statusIconView.Image = animatedStatusIcon.FirstFrame.WithAlpha (alpha);
 				statusIconAnimation = animatedStatusIcon.StartAnimation (p => {
 					statusIconView.Image = p.WithAlpha (alpha);

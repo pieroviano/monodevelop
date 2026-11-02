@@ -115,8 +115,8 @@ namespace MonoDevelop.ConnectedServices.Gui.ServicesTab
 			addButton.Visible = false;
 			addButton.Clicked += HandleAddButtonClicked;
 
-			if (ImageService.IsAnimation ("md-spinner-16", Gtk.IconSize.Menu)) {
-				animatedStatusIcon = ImageService.GetAnimatedIcon ("md-spinner-16", Gtk.IconSize.Menu);
+			if (ImageService.IsAnimation ("md-spinner-16", MonoDevelop.Components.StockIconSize.Menu)) {
+				animatedStatusIcon = ImageService.GetAnimatedIcon ("md-spinner-16", MonoDevelop.Components.StockIconSize.Menu);
 			}
 
 			var header = new HBox ();

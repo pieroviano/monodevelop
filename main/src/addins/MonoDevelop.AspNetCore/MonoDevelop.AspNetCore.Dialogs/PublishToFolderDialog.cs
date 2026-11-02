@@ -123,7 +123,7 @@ namespace MonoDevelop.AspNetCore.Dialogs
 			messageLabel = new Label ();
 			messageIcon = new ImageView ();
 			messageLabel.Text = GettextCatalog.GetString ("The path provided is not a valid folder path.");
-			messageIcon.Image = ImageService.GetIcon (Gtk.Stock.Cancel, Gtk.IconSize.Menu);
+			messageIcon.Image = ImageService.GetIcon (MonoDevelop.Ide.Gui.GtkStock.Cancel, MonoDevelop.Components.StockIconSize.Menu);
 			messageBox.PackStart (messageIcon);
 			messageBox.PackStart (messageLabel);
 			mainVBox.PackStart (browseVBox);

@@ -11,7 +11,7 @@ namespace MonoDevelop.Deployment
 	
 	[System.ComponentModel.Category("MonoDevelop.Deployment")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class DeployFileListWidget : Gtk.Bin
+	internal partial class DeployFileListWidget : MonoDevelop.Components.BinWidget
 	{
 		ListStore store;
 		
@@ -137,11 +137,11 @@ namespace MonoDevelop.Deployment
 			return "";
 		}		
 		
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			if (context != null)
+			if (disposing && context != null)
 				context.Dispose ();
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 
 		void OnToggled (object sender, Gtk.ToggledArgs args)

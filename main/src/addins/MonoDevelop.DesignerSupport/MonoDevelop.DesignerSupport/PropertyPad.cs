@@ -56,7 +56,6 @@ namespace MonoDevelop.DesignerSupport
 		public string Name { get; set; }
 		public bool ShowHelp { get; set; } //not implemented
 		
-		public ShadowType ShadowType { get; set; } //not implemented
 		public Widget Widget => host;
 
 		public bool IsGridEditing => view.IsEditing;
@@ -151,11 +150,6 @@ namespace MonoDevelop.DesignerSupport
 			set => grid.ShowToolbar = value;
 		}
 
-		public ShadowType ShadowType {
-			get => grid.ShadowType;
-			set => grid.ShadowType = value;
-		}
-
 		public bool Sensitive {
 			get => grid.Sensitive;
 			set => grid.Sensitive = value;
@@ -202,7 +196,6 @@ namespace MonoDevelop.DesignerSupport
 		object CurrentObject { get; set; }
 
 		Gtk.Widget Widget { get; }
-		ShadowType ShadowType { get; set; }
 
 		void Hide ();
 		void Show ();
@@ -225,11 +218,6 @@ namespace MonoDevelop.DesignerSupport
 		public bool ShowToolbar {
 			get => nativeWidget.ShowToolbar;
 			set => nativeWidget.ShowToolbar = value;
-		}
-
-		public ShadowType ShadowType {
-			get => nativeWidget.ShadowType;
-			set => nativeWidget.ShadowType = value;
 		}
 
 		public bool ShowHelp {
@@ -319,10 +307,9 @@ namespace MonoDevelop.DesignerSupport
 			frame = new InvisibleFrame ();
 
 			propertyGridWrapper = new PropertyGridWrapper ();
-			frame.Add (propertyGridWrapper.Widget);
+			frame.Child = propertyGridWrapper.Widget;
 			propertyGridWrapper.PropertyGridChanged += Grid_Changed;
 
-			frame.ShowAll ();
 		}
 
 		void Grid_Changed (object sender, EventArgs e) =>
@@ -436,14 +423,14 @@ namespace MonoDevelop.DesignerSupport
 		{
 			if (customWidget) {
 				customWidget = false;
-				frame.Remove (frame.Child);
+				frame.Child = null;
 
 #if MAC
 				if (isNative) {
-					frame.Add (propertyGridWrapper.Widget);
+					frame.Child = propertyGridWrapper.Widget;
 				} else {
 #endif
-					frame.Add (propertyGridWrapper.Widget);
+					frame.Child = propertyGridWrapper.Widget;
 #if MAC
 				}
 #endif
@@ -456,9 +443,8 @@ namespace MonoDevelop.DesignerSupport
 			toolbarProvider.Attach (null);
 			ClearToolbar ();
 			customWidget = true;
-			frame.Remove (frame.Child);
-			frame.Add (widget);
-			widget.Show ();
+			frame.Child = null;
+			frame.Child = widget;
 			if (container != null) {
 				widget.Visible = container.ContentVisible;
 			}
@@ -554,19 +540,16 @@ namespace MonoDevelop.DesignerSupport
 #endregion
 	}
 
-	class InvisibleFrame : Gtk.Alignment
+	class InvisibleFrame : BinWidget
 	{
 		public InvisibleFrame ()
-			: base (0, 0, 1, 1)
 		{
 		}
 
 		public Gtk.Widget ReplaceChild (Gtk.Widget widget)
 		{
 			Gtk.Widget old = Child;
-			if (old != null)
-				Remove (old);
-			Add (widget);
+			Child = widget;
 			return old;
 		}
 	}

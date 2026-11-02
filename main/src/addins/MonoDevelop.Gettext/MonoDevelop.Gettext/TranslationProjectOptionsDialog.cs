@@ -49,8 +49,8 @@ namespace MonoDevelop.Gettext
 			
 			entryPackageName.Changed += new EventHandler (UpdateInitString);
 			entryRelPath.Changed += new EventHandler (UpdateInitString);
-			radiobuttonRelPath.Activated += new EventHandler (UpdateInitString);
-			radiobuttonSystemPath.Activated += new EventHandler (UpdateInitString);
+			radiobuttonRelPath.Toggled += new EventHandler (UpdateInitString);
+			radiobuttonSystemPath.Toggled += new EventHandler (UpdateInitString);
 			
 			UpdateInitString (this, EventArgs.Empty);
 			this.buttonOk.Clicked += delegate {

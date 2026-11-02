@@ -4,7 +4,7 @@ namespace Microsoft.VisualStudio.Text.Editor
     {
         MonoDevelop.SourceEditor.IMDSpaceReservationManager GetSpaceReservationManager(string name);
 
-        Gtk.Container VisualElement
+        Gtk.Widget VisualElement
         {
             get;
         }

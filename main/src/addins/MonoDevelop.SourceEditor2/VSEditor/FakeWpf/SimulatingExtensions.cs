@@ -10,8 +10,9 @@ namespace System.Windows.Input
 	{
 		public static bool IsMouseOver (this Gtk.Widget widget)
 		{
-			widget.GetPointer (out int x, out int y);
-			return x >= 0 && y >= 0 && x <= widget.Allocation.Width && y <= widget.Allocation.Height;
+			if (!MonoDevelop.Components.Docking.DockUtil.TryGetPointer (widget, out double x, out double y))
+				return false;
+			return x >= 0 && y >= 0 && x <= widget.Width && y <= widget.Height;
 		}
 
 		public static bool IsMouseOver (this Xwt.Widget widget)

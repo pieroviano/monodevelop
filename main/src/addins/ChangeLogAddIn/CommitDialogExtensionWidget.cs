@@ -1,4 +1,5 @@
-﻿// CommitDialogExtensionWidget.cs
+using MonoDevelop.Components.Designer;
+// CommitDialogExtensionWidget.cs
 //
 // Author:
 //   Lluis Sanchez Gual
@@ -40,8 +41,8 @@ namespace MonoDevelop.ChangeLogAddIn
 {
 	public class CommitDialogExtensionWidget: CommitDialogExtension
 	{
-		readonly HBox box = new HBox ();
-		readonly VBox vbox = new VBox ();
+		readonly Gtk.Box box = DesignerLayout.HBox (0);
+		readonly Gtk.Box vbox = DesignerLayout.VBox (0);
 		readonly Button logButton;
 		readonly Button optionsButton;
 		ChangeSet cset;
@@ -56,8 +57,8 @@ namespace MonoDevelop.ChangeLogAddIn
 		
 		public CommitDialogExtensionWidget()
 		{	
-			Add (box);
-			box.PackStart (vbox, true, true, 0);
+			DesignerLayout.SetContent (this, box);
+			DesignerLayout.Pack (box, vbox, true);
 			
 			logButton = new Button (GettextCatalog.GetString ("View ChangeLog..."));
 			logButton.Clicked += OnClickButton;
@@ -65,13 +66,12 @@ namespace MonoDevelop.ChangeLogAddIn
 			optionsButton = new Button (GettextCatalog.GetString ("Options..."));
 			optionsButton.Clicked += OnClickOptions;
 			
-			var aux = new VBox ();
-			box.PackStart (aux, false, false, 3);
-			var haux = new HBox ();
-			haux.Spacing = 6;
-			aux.PackStart (haux, false, false, 0);
-			haux.PackStart (logButton, false, false, 0);
-			haux.PackStart (optionsButton, false, false, 0);
+			var aux = DesignerLayout.VBox (0);
+			DesignerLayout.Pack (box, aux, false);
+			var haux = DesignerLayout.HBox (6);
+			DesignerLayout.Pack (aux, haux, false);
+			DesignerLayout.Pack (haux, logButton, false);
+			DesignerLayout.Pack (haux, optionsButton, false);
 		}
 		
 		public override bool Initialize (ChangeSet changeSet)
@@ -81,21 +81,18 @@ namespace MonoDevelop.ChangeLogAddIn
 			pathLabel = new Label ();
 			msgLabel.Xalign = 0;
 			pathLabel.Xalign = 0;
-			vbox.PackStart (msgLabel, false, false, 0);
-			vbox.PackStart (pathLabel, false, false, 3);
+			DesignerLayout.Pack (vbox, msgLabel, false);
+			DesignerLayout.Pack (vbox, pathLabel, false);
 			
 			GenerateLogEntries ();
-			if (enabled) {
-				ShowAll ();
+			if (enabled)
 				UpdateStatus ();
-			}
 			return enabled;
 		}
 		
 		void UpdateStatus ()
 		{
-			if (!enabled)
-				Remove (box);
+			box.Visible = enabled;
 			
 			AllowCommit = !requireComment;
 			
@@ -283,19 +280,19 @@ namespace MonoDevelop.ChangeLogAddIn
 		void OnClickButton (object s, EventArgs args)
 		{
 			if (notConfigured) {
-				IdeApp.Workbench.ShowGlobalPreferencesDialog (Toplevel as Window, "GeneralAuthorInfo");
+				IdeApp.Workbench.ShowGlobalPreferencesDialog (Root as Window, "GeneralAuthorInfo");
 				UpdateStatus ();
 				GenerateLogEntries ();
 				return;
 			}
 			
 			using (var dlg = new AddLogEntryDialog (entries))
-				MessageService.ShowCustomDialog (dlg, (Window) Toplevel);
+				MessageService.ShowCustomDialog (dlg, (Window) Root);
 		}
 		
 		void OnClickOptions (object s, EventArgs args)
 		{
-			IdeApp.Workbench.ShowGlobalPreferencesDialog (Toplevel as Window, "GeneralAuthorInfo");
+			IdeApp.Workbench.ShowGlobalPreferencesDialog (Root as Window, "GeneralAuthorInfo");
 			UpdateStatus ();
 			GenerateLogEntries ();
 		}

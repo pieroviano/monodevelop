@@ -29,10 +29,11 @@ using Mono.TextEditor;
 using MonoDevelop.Debugger;
 using Mono.Debugging.Client;
 using Gtk;
+using MonoDevelop.Components;
 
 namespace MonoDevelop.SourceEditor
 {
-	class PinnedWatchWidget : EventBox
+	class PinnedWatchWidget : MonoDevelop.Components.BinWidget
 	{
 		static bool UseNewTreeView = true;
 
@@ -111,41 +112,30 @@ namespace MonoDevelop.SourceEditor
 				controller = null;
 			}
 			
-			treeView.ButtonPressEvent += HandleValueTreeButtonPressEvent;
-			treeView.ButtonReleaseEvent += HandleValueTreeButtonReleaseEvent;
-			treeView.MotionNotifyEvent += HandleValueTreeMotionNotifyEvent;
-			treeView.SizeAllocated += OnTreeSizeChanged;
+			// the capture phase gets the events before the tree view selects/edits rows
+			treeView.AddClickHandler (HandleValueTreeButtonPressEvent, HandleValueTreeButtonReleaseEvent, phase: PropagationPhase.Capture);
+			dragGesture = new GestureDrag { PropagationPhase = PropagationPhase.Capture };
+			dragGesture.DragUpdate += HandleValueTreeDragUpdate;
+			treeView.AddController (dragGesture);
 
+			// grows with the tree up to maxHeight, then scrolls
+			const int maxHeight = 240;
 			sw = new ScrolledWindow ();
 			sw.HscrollbarPolicy = PolicyType.Never;
-			sw.VscrollbarPolicy = PolicyType.Never;
-			sw.Add (treeView);
+			sw.VscrollbarPolicy = PolicyType.Automatic;
+			sw.PropagateNaturalHeight = true;
+			sw.MaxContentHeight = maxHeight;
+			sw.Child = treeView;
 
 			var fr = new Frame ();
-			fr.ShadowType = ShadowType.Out;
-			fr.Add (sw);
-			Add (fr);
+			fr.Child = sw;
+			Child = fr;
 
-			ShowAll ();
-			
 			DebuggingService.PausedEvent += HandleDebuggingServicePausedEvent;
 			DebuggingService.ResumedEvent += HandleDebuggingServiceResumedEvent;
 		}
 
-		void OnTreeSizeChanged (object s, SizeAllocatedArgs a)
-		{
-			const int maxHeight = 240;
-			var treeHeight = treeView.SizeRequest ().Height;
-			if (treeHeight > maxHeight && sw.VscrollbarPolicy == PolicyType.Never) {
-				sw.VscrollbarPolicy = PolicyType.Always;
-				sw.HeightRequest = maxHeight;
-			} else if (maxHeight > treeHeight && sw.VscrollbarPolicy == PolicyType.Always) {
-				sw.VscrollbarPolicy = PolicyType.Never;
-				sw.HeightRequest = -1;
-			}
-
-			QueueDraw ();
-		}
+		readonly GestureDrag dragGesture;
 
 		void HandleDebuggingServiceResumedEvent (object sender, EventArgs e)
 		{
@@ -171,16 +161,32 @@ namespace MonoDevelop.SourceEditor
 			}
 		}
 		
-		protected override void OnDestroyed ()
+		bool destroyedFlag;
+
+		public override void Destroy ()
 		{
-			base.OnDestroyed ();
+			if (!destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Destroy ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Dispose (disposing);
+		}
+
+		protected virtual void OnDestroyed ()
+		{
 			DebuggingService.PausedEvent -= HandleDebuggingServicePausedEvent;
 			DebuggingService.ResumedEvent -= HandleDebuggingServiceResumedEvent;
 
-			treeView.ButtonPressEvent -= HandleValueTreeButtonPressEvent;
-			treeView.ButtonReleaseEvent -= HandleValueTreeButtonReleaseEvent;
-			treeView.MotionNotifyEvent -= HandleValueTreeMotionNotifyEvent;
-			treeView.SizeAllocated -= OnTreeSizeChanged;
+			treeView.RemoveController (dragGesture);
 		}
 
 
@@ -188,43 +194,37 @@ namespace MonoDevelop.SourceEditor
 		bool mousePressed = false;
 		double originX, originY;
 
-		[GLib.ConnectBefore]
-		void HandleValueTreeButtonPressEvent (object o, ButtonPressEventArgs args)
+		void HandleValueTreeButtonPressEvent (ClickInfo args)
 		{
-			originX = args.Event.XRoot;
-			originY = args.Event.YRoot;
-			
+			originX = originY = 0;
+
 			TreePath path;
 			TreeViewColumn col;
 			int cx, cy;
-			treeView.GetPathAtPos ((int)args.Event.X, (int)args.Event.Y, out path, out col, out cx, out cy);
-			//Gdk.Rectangle rect = valueTree.GetCellArea (path, col);
-			if (!mousePressed && treeView.Columns[0] == col) {
+			treeView.GetPathAtPos ((int)args.X, (int)args.Y, out path, out col, out cx, out cy);
+			if (!mousePressed && col != null && treeView.Columns[0] == col) {
 				mousePressed = true;
 				Editor.TextArea.MoveToTop (this);
 			}
 		}
-		
-		[GLib.ConnectBefore]
-		void HandleValueTreeButtonReleaseEvent (object o, ButtonReleaseEventArgs args)
+
+		void HandleValueTreeButtonReleaseEvent (ClickInfo args)
 		{
 			if (mousePressed) {
 				mousePressed = false;
 			}
 		}
-		
 
-		[GLib.ConnectBefore]
-		void HandleValueTreeMotionNotifyEvent (object o, MotionNotifyEventArgs args)
+		void HandleValueTreeDragUpdate (object o, DragUpdateArgs args)
 		{
 			if (mousePressed) {
-				Watch.OffsetX += (int)(args.Event.XRoot - originX);
-				Watch.OffsetY += (int)(args.Event.YRoot - originY);
-				
-				originX = args.Event.XRoot;
-				originY = args.Event.YRoot;
+				// the drag gesture reports the offset from the drag start: apply the delta since the last update
+				Watch.OffsetX += (int)(args.OffsetX - originX);
+				Watch.OffsetY += (int)(args.OffsetY - originY);
+
+				originX = args.OffsetX;
+				originY = args.OffsetY;
 			}
-			
 		}
 		#endregion
 	}

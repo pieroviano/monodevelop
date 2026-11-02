@@ -63,7 +63,7 @@ namespace MonoDevelop.Xml.Completion
 		}
 
 		public override IconId Icon {
-			get { return closing? Gtk.Stock.GoBack : Gtk.Stock.GoForward; }
+			get { return closing? MonoDevelop.Ide.Gui.GtkStock.GoBack : MonoDevelop.Ide.Gui.GtkStock.GoForward; }
 		}
 
 		public override string DisplayText {

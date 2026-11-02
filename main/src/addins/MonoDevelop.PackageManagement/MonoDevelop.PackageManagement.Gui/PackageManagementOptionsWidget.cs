@@ -31,7 +31,7 @@ using System;
 namespace MonoDevelop.PackageManagement
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class PackageManagementOptionsWidget : Gtk.Bin
+	internal partial class PackageManagementOptionsWidget : MonoDevelop.Components.BinWidget
 	{
 		PackageManagementOptionsViewModel viewModel;
 

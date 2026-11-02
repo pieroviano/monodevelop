@@ -121,7 +121,6 @@ namespace Mono.TextEditor
 				return;
 			
 			editor.Destroyed += HandleEditorDestroy;
-			HelpWindow.ShowAll ();
 			editor.TextArea.AddTopLevelWidget (HelpWindow,  0, 0); 
 
 			if (positionWindow) {
@@ -145,7 +144,6 @@ namespace Mono.TextEditor
 			editor.SizeAllocated -= MoveHelpWindow;
 			editor.VScroll -= HandleVScroll;
 			editor.Destroyed -= HandleEditorDestroy;
-			HelpWindow.Hide ();
 			HelpWindow.Destroy ();
 			HelpWindow = null;
 			editor.QueueDraw ();
@@ -162,7 +160,7 @@ namespace Mono.TextEditor
 			if (editor == null || HelpWindow == null)
 				return;
 			editor.Destroyed += HandleEditorDestroy;
-			var req = HelpWindow.SizeRequest ();
+			var req = HelpWindow.GetNaturalSize ();
 			int x = editor.Allocation.Width - req.Width;
 			int y = editor.Allocation.Height - req.Height;
 			editor.TextArea.MoveTopLevelWidget (HelpWindow, x, y);
@@ -173,11 +171,11 @@ namespace Mono.TextEditor
 			if (editor == null || HelpWindow == null)
 				return;
 			editor.Destroyed += HandleEditorDestroy;
-			var req = HelpWindow.SizeRequest ();
+			var req = HelpWindow.GetNaturalSize ();
 			editor.TextArea.MoveTopLevelWidget (HelpWindow, x, y - req.Height / 2);
 		}
 		
-		void MoveHelpWindow (object o, Gtk.SizeAllocatedArgs args)
+		void MoveHelpWindow (object o, EventArgs args)
 		{
 			PositionHelpWindow ();
 		}
@@ -267,7 +265,7 @@ namespace Mono.TextEditor
 			editor.SizeAllocated -= HandleEditorSizeAllocated;
 		}
 		
-		void HandleEditorSizeAllocated (object o, Gtk.SizeAllocatedArgs args)
+		void HandleEditorSizeAllocated (object o, EventArgs args)
 		{
 			SetHelpWindowPosition ();
 		}
@@ -276,7 +274,7 @@ namespace Mono.TextEditor
 		{
 			int y = (int)(editor.LineToY (insertionPoints [CurIndex].Location.Line));
 
-			PositionHelpWindow (editor.Allocation.Width - HelpWindow.Allocation.Width - HelpWindowMargin, y);
+			PositionHelpWindow (editor.Allocation.Width - HelpWindow.Width - HelpWindowMargin, y);
 		}
 		
 		protected virtual void OnExited (InsertionCursorEventArgs e)

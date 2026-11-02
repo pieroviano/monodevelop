@@ -29,38 +29,35 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.Packaging.Gui
 {
-	partial class GtkProjectNuGetBuildOptionsPanelWidget : Gtk.Bin
+	partial class GtkProjectNuGetBuildOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		CheckButton packOnBuildButton;
 		Label missingMetadataLabel;
 
 		void Build ()
 		{
-			MonoDevelop.Components.Gui.Initialize (this);
-			MonoDevelop.Components.BinContainer.Attach (this);
 
-			var vbox = new VBox ();
-			vbox.Spacing = 6;
+			var vbox = new Box (Orientation.Vertical, 6);
 
 			packOnBuildButton = new CheckButton ();
 			packOnBuildButton.Label = GettextCatalog.GetString ("Create a NuGet Package when building the project.");
 
-			vbox.PackStart (packOnBuildButton, false, false, 10);
+			packOnBuildButton.MarginTop = packOnBuildButton.MarginBottom = 10;
+			vbox.Append (packOnBuildButton);
 
 			missingMetadataLabel = new Label ();
-			missingMetadataLabel.LineWrapMode = Pango.WrapMode.Word;
+			missingMetadataLabel.WrapMode = Pango.WrapMode.Word;
 			missingMetadataLabel.Wrap = true;
 			missingMetadataLabel.Xalign = 0;
 			missingMetadataLabel.Yalign = 0;
-			missingMetadataLabel.Xpad = 20;
+			missingMetadataLabel.MarginStart = missingMetadataLabel.MarginEnd = 20;
 			missingMetadataLabel.WidthRequest = 600;
 			missingMetadataLabel.Text = GettextCatalog.GetString ("The project does not have NuGet package metadata so a NuGet package will not be created. NuGet package metadata can be specified in the Metadata section in Project Options");
 
-			vbox.PackStart (missingMetadataLabel);
+			vbox.Append (missingMetadataLabel);
 
-			Add (vbox);
+			Child = vbox;
 
-			ShowAll ();
 		}
 	}
 }

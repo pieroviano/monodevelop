@@ -98,6 +98,7 @@
     <Compile Include="Mono.TextEditor\Gui\MonoTextEditor.ITextView.MouseHover.cs" />
     <Compile Include="MonoDevelop.SourceEditor\EditActions.cs" />
     <Compile Include="MonoDevelop.SourceEditor\ExtensibleTextEditor.cs" />
+    <Compile Include="MonoDevelop.SourceEditor\EditorWidgetStyle.cs" />
     <Compile Include="MonoDevelop.SourceEditor\LanguageItemWindow.cs" />
     <Compile Include="MonoDevelop.SourceEditor\SourceEditorView.cs" />
     <Compile Include="MonoDevelop.SourceEditor\SourceEditorWidget.cs" />
@@ -196,6 +197,7 @@
     <Compile Include="VSEditor\TextSelection.cs" />
     <Compile Include="VSEditor\TextViewRoleSet.cs" />
     <Compile Include="VSEditor\FakeWpf\SimulatingExtensions.cs" />
+    <Compile Include="VSEditor\FakeWpf\GtkPointerExtensions.cs" />
     <Compile Include="VSEditor\Language\Def\Intellisense\IPopupIntellisensePresenter.cs" />
     <Compile Include="VSEditor\Language\Impl\Helpers.cs" />
     <Compile Include="VSEditor\Language\Impl\Intellisense\BaseIntellisenseSession.cs" />

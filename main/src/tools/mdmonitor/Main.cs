@@ -26,6 +26,7 @@
 using System;
 using Gtk;
 using MonoDevelop.Core.Instrumentation;
+using MonoDevelop.Components;
 using MonoDevelop.MacInterop;
 
 namespace Mono.Instrumentation.Monitor
@@ -51,7 +52,7 @@ namespace Mono.Instrumentation.Monitor
 					service.GetCategories ();
 				} catch (Exception ex) {
 					MessageDialog md = new MessageDialog (null, DialogFlags.Modal, MessageType.Error, ButtonsType.Close, "Could not connect to instrumentation service: " + ex.Message);
-					md.Run ();
+					md.RunModal ();
 					md.Destroy ();
 					return;
 				}
@@ -74,18 +75,12 @@ namespace Mono.Instrumentation.Monitor
 					
 					ApplicationEvents.Reopen += delegate (object sender, ApplicationEventArgs e) {
 						if (win != null) {
-							win.Deiconify ();
-							win.Visible = true;
+							win.Present ();
 							e.Handled = true;
 						}
 					};
 				} catch (Exception ex) {
 					Console.Error.WriteLine ("Installing Mac AppleEvent handlers failed. Skipping.\n" + ex);
-				}
-				try {
-					win.InstallMacGlobalMenu ();
-				} catch (Exception ex) {
-					Console.Error.WriteLine ("Installing Mac IGE Main Menu failed. Skipping.\n" + ex);
 				}
 			}
 			

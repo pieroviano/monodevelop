@@ -43,18 +43,19 @@ namespace Mono.TextEditor.Theatrics
 		Going
 	}
 
-	internal class AnimatedWidget : Container
+	/// <summary>
+	/// Hosts a widget and grows/shrinks the space it occupies according to the animation <see cref="Percent"/>.
+	/// </summary>
+	internal class AnimatedWidget : ContainerWidget
 	{
 		public event EventHandler WidgetDestroyed;
 
-		public Widget Widget;
+		public Gtk.Widget Widget;
 		public Easing Easing;
 		public Blocking Blocking;
 		public AnimationState AnimationState;
 		public uint Duration;
 		public double Bias = 1.0;
-		public int Width;
-		public int Height;
 		public int StartPadding;
 		public int EndPadding;
 
@@ -62,137 +63,95 @@ namespace Mono.TextEditor.Theatrics
 
 		private readonly bool horizontal;
 		private double percent;
-		private Rectangle widget_alloc;
-		private Pixmap canvas;
+		private Gdk.Rectangle widget_alloc;
+		private int animatedWidth;
+		private int animatedHeight;
 
-		public AnimatedWidget (Widget widget, uint duration, Easing easing, Blocking blocking, bool horizontal)
+		public AnimatedWidget (Gtk.Widget widget, uint duration, Easing easing, Blocking blocking, bool horizontal)
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-			
 			this.horizontal = horizontal;
 			Widget = widget;
 			Duration = duration;
 			Easing = easing;
 			Blocking = blocking;
 			AnimationState = AnimationState.Coming;
-			
-			Widget.Parent = this;
-			Widget.Destroyed += OnWidgetDestroyed;
-			ShowAll ();
+			Overflow = Overflow.Hidden;
+
+			AddChild (widget);
+			// GTK 4 widgets have no Destroyed event: a widget leaving this container (Destroy () unparents it) counts as destroyed.
+			widget.AddNotification ("parent", OnWidgetParentChanged);
 		}
+
+		/// <summary>The width the animated widget currently requests.</summary>
+		public int AnimatedWidth => animatedWidth;
+
+		/// <summary>The height the animated widget currently requests.</summary>
+		public int AnimatedHeight => animatedHeight;
 
 		public double Percent {
 			get { return percent; }
 			set {
 				percent = value * Bias;
-				QueueResizeNoRedraw ();
+				QueueResize ();
 			}
 		}
 
-		private void OnWidgetDestroyed (object sender, EventArgs args)
+		private void OnWidgetParentChanged (object sender, GLib.NotifyArgs args)
 		{
-			if (!IsRealized) {
+			var widget = Widget;
+			if (widget == null || widget.Parent == this)
 				return;
-			}
-			
-			canvas = new Pixmap (GdkWindow, widget_alloc.Width, widget_alloc.Height);
-			if (Platform.IsMac) {
-				//FIXME: quick hack to make less ugly on Mac, because Mac GTK doesn't yet support offscreen drawing
-				canvas.DrawRectangle (Style.BackgroundGC (State), true, 0, 0, widget_alloc.Width, widget_alloc.Height);
-			} else {
-				canvas.DrawDrawable (Style.BackgroundGC (State), GdkWindow, widget_alloc.X, widget_alloc.Y, 0, 0, widget_alloc.Width, widget_alloc.Height);
-			}
-			
-			if (AnimationState != AnimationState.Going) {
-				WidgetDestroyed (this, args);
-			}
+			widget.RemoveNotification ("parent", OnWidgetParentChanged);
+			Widget = null;
+			if (AnimationState != AnimationState.Going)
+				WidgetDestroyed?.Invoke (this, EventArgs.Empty);
 		}
 
 		#region Overrides
 
-		protected override void OnRemoved (Widget widget)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			if (widget == Widget) {
-				widget.Unparent ();
-				Widget = null;
-			}
-		}
-
-		protected override void OnRealized ()
-		{
-			WidgetFlags |= WidgetFlags.Realized;
-			
-			Gdk.WindowAttr attributes = new Gdk.WindowAttr ();
-			attributes.WindowType = Gdk.WindowType.Child;
-			attributes.Wclass = Gdk.WindowClass.InputOutput;
-			attributes.EventMask = (int)Gdk.EventMask.ExposureMask;
-			GdkWindow = new Gdk.Window (Parent.GdkWindow, attributes, 0);
-			GdkWindow.UserData = Handle;
-			GdkWindow.Background = Style.Background (State);
-			Style.Attach (GdkWindow);
-		}
-
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
+			minimum_baseline = natural_baseline = -1;
 			if (Widget != null) {
-				Requisition req = Widget.SizeRequest ();
-				widget_alloc.Width = req.Width;
-				widget_alloc.Height = req.Height;
+				var size = GetChildNaturalSize (Widget);
+				widget_alloc.Width = size.Width;
+				widget_alloc.Height = size.Height;
 			}
-			
+
 			if (horizontal) {
-				Width = Choreographer.PixelCompose (percent, widget_alloc.Width + StartPadding + EndPadding, Easing);
-				Height = widget_alloc.Height;
+				animatedWidth = Choreographer.PixelCompose (percent, widget_alloc.Width + StartPadding + EndPadding, Easing);
+				animatedHeight = widget_alloc.Height;
 			} else {
-				Width = widget_alloc.Width;
-				Height = Choreographer.PixelCompose (percent, widget_alloc.Height + StartPadding + EndPadding, Easing);
+				animatedWidth = widget_alloc.Width;
+				animatedHeight = Choreographer.PixelCompose (percent, widget_alloc.Height + StartPadding + EndPadding, Easing);
 			}
-			
-			requisition.Width = Width;
-			requisition.Height = Height;
+
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? animatedWidth : animatedHeight;
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
 			if (Widget != null) {
 				if (horizontal) {
-					widget_alloc.Height = allocation.Height;
+					widget_alloc.Height = height;
 					widget_alloc.X = StartPadding;
 					if (Blocking == Blocking.Downstage) {
-						widget_alloc.X += allocation.Width - widget_alloc.Width;
+						widget_alloc.X += width - widget_alloc.Width;
 					}
 				} else {
-					widget_alloc.Width = allocation.Width;
+					widget_alloc.Width = width;
 					widget_alloc.Y = StartPadding;
 					if (Blocking == Blocking.Downstage) {
-						widget_alloc.Y = allocation.Height - widget_alloc.Height;
+						widget_alloc.Y = height - widget_alloc.Height;
 					}
 				}
 				
 				if (widget_alloc.Height > 0 && widget_alloc.Width > 0) {
-					Widget.SizeAllocate (widget_alloc);
+					AllocateChild (Widget, widget_alloc);
 				}
 			}
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
-		{
-			if (canvas != null) {
-				GdkWindow.DrawDrawable (Style.BackgroundGC (State), canvas, 0, 0, widget_alloc.X, widget_alloc.Y, widget_alloc.Width, widget_alloc.Height);
-				return true;
-			}
-
-			return base.OnExposeEvent (evnt);
-		}
-
-		protected override void ForAll (bool include_internals, Callback callback)
-		{
-			if (Widget != null) {
-				callback (Widget);
-			}
-		}
-		
 		#endregion
 		
 	}

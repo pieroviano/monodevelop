@@ -38,7 +38,7 @@ using MonoDevelop.Xml.Completion;
 
 namespace MonoDevelop.Xml.Editor
 {
-	class XmlSchemasPanelWidget : VBox
+	class XmlSchemasPanelWidget : Box
 	{
 		ListStore registeredSchemasStore;
 		ListStore defaultAssociationsStore;
@@ -51,7 +51,7 @@ namespace MonoDevelop.Xml.Editor
 		Button registeredSchemasAddButton, registeredSchemasRemoveButton;
 		Button defaultAssociationsAddButton, defaultAssociationsRemoveButton;
 		
-		public XmlSchemasPanelWidget ()
+		public XmlSchemasPanelWidget () : base (Orientation.Vertical, 6)
 		{
 			Build ();
 			
@@ -62,13 +62,13 @@ namespace MonoDevelop.Xml.Editor
 			registeredSchemasView.SearchColumn = -1; // disable the interactive search
 
 			registeredSchemasView.AppendColumn (GettextCatalog.GetString ("Namespace"), textRenderer,
-				(TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter) => {
+				(TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter) => {
 					((CellRendererText)cell).Text = GetSchema (iter).NamespaceUri;
 				}
 			);
 			
 			registeredSchemasView.AppendColumn (GettextCatalog.GetString ("Type"), textRenderer,
-				(TreeViewColumn col, CellRenderer cell, TreeModel model, TreeIter iter) => {
+				(TreeViewColumn col, CellRenderer cell, ITreeModel model, TreeIter iter) => {
 					((CellRendererText)cell).Text = GetSchema (iter).ReadOnly? 
 						  GettextCatalog.GetString ("Built in") 
 						: GettextCatalog.GetString ("User schema");
@@ -142,44 +142,40 @@ namespace MonoDevelop.Xml.Editor
 
 		void Build ()
 		{
-			Spacing = 6;
-
 			registeredSchemasView = new TreeView ();
 			defaultAssociationsView = new TreeView ();
 
-			registeredSchemasAddButton = new Button (Stock.Add);
-			registeredSchemasRemoveButton = new Button (Stock.Remove);
-			defaultAssociationsAddButton = new Button (Stock.Add);
-			defaultAssociationsRemoveButton = new Button (Stock.Remove);
+			registeredSchemasAddButton = new Button { Label = GettextCatalog.GetString ("_Add"), UseUnderline = true };
+			registeredSchemasRemoveButton = new Button { Label = GettextCatalog.GetString ("_Remove"), UseUnderline = true };
+			defaultAssociationsAddButton = new Button { Label = GettextCatalog.GetString ("_Add"), UseUnderline = true };
+			defaultAssociationsRemoveButton = new Button { Label = GettextCatalog.GetString ("_Remove"), UseUnderline = true };
 
 			registeredSchemasAddButton.Clicked += addRegisteredSchema;
 			registeredSchemasRemoveButton.Clicked += removeRegisteredSchema;
 			defaultAssociationsAddButton.Clicked += addFileAssociation;
 			defaultAssociationsRemoveButton.Clicked += removeFileAssocation;
 
-			PackStart (new Label { Markup = GettextCatalog.GetString ("<b>Registered Schema</b>"), Xalign = 0 }, false, false, 0);
-			var schemasBox = new HBox (false, 6);
-			var schemaScroll = new ScrolledWindow { Child = registeredSchemasView, ShadowType = ShadowType.In };
-			schemasBox.PackStart (schemaScroll, true, true, 0);
-			var schemasButtonBox = new VBox (false, 6);
-			schemasButtonBox.PackStart (registeredSchemasAddButton, false, false, 0);
-			schemasButtonBox.PackStart (registeredSchemasRemoveButton, false, false, 0);
-			schemasBox.PackStart (schemasButtonBox, false, false, 0);
-			PackStart (schemasBox, true, true, 0);
+			Append (new Label { Markup = GettextCatalog.GetString ("<b>Registered Schema</b>"), Xalign = 0, Halign = Align.Start });
+			var schemasBox = new Box (Orientation.Horizontal, 6) { Vexpand = true };
+			var schemaScroll = new ScrolledWindow { Child = registeredSchemasView, HasFrame = true, Hexpand = true, Vexpand = true };
+			schemasBox.Append (schemaScroll);
+			var schemasButtonBox = new Box (Orientation.Vertical, 6);
+			schemasButtonBox.Append (registeredSchemasAddButton);
+			schemasButtonBox.Append (registeredSchemasRemoveButton);
+			schemasBox.Append (schemasButtonBox);
+			Append (schemasBox);
 
-			PackStart (new Label (" "), false, false, 0);
+			Append (new Label (" "));
 
-			PackStart (new Label { Markup = GettextCatalog.GetString ("<b>Default File Associations</b>"), Xalign = 0 }, false, false, 0);
-			var assocBox = new HBox (false, 6);
-			var assocScroll = new ScrolledWindow { Child = defaultAssociationsView, ShadowType = ShadowType.In };
-			assocBox.PackStart (assocScroll, true, true, 0);
-			var assocButtonBox = new VBox (false, 6);
-			assocButtonBox.PackStart (defaultAssociationsAddButton, false, false, 0);
-			assocButtonBox.PackStart (defaultAssociationsRemoveButton, false, false, 0);
-			assocBox.PackStart (assocButtonBox, false, false, 0);
-			PackStart (assocBox, true, true, 0);
-
-			ShowAll ();
+			Append (new Label { Markup = GettextCatalog.GetString ("<b>Default File Associations</b>"), Xalign = 0, Halign = Align.Start });
+			var assocBox = new Box (Orientation.Horizontal, 6) { Vexpand = true };
+			var assocScroll = new ScrolledWindow { Child = defaultAssociationsView, HasFrame = true, Hexpand = true, Vexpand = true };
+			assocBox.Append (assocScroll);
+			var assocButtonBox = new Box (Orientation.Vertical, 6);
+			assocButtonBox.Append (defaultAssociationsAddButton);
+			assocButtonBox.Append (defaultAssociationsRemoveButton);
+			assocBox.Append (assocButtonBox);
+			Append (assocBox);
 		}
 		
 		XmlSchemaCompletionData GetSchema (TreeIter iter)
@@ -192,13 +188,13 @@ namespace MonoDevelop.Xml.Editor
 			return (XmlSchemaCompletionData) registeredSchemasStore.GetValue (iter, 0);
 		}
 		
-		IEnumerable<object> WalkStore (TreeModel model, int column)
+		IEnumerable<object> WalkStore (ITreeModel model, int column)
 		{
 			foreach (TreeIter iter in WalkStore (model))
 				yield return model.GetValue (iter, column);
 		}
 		
-		IEnumerable<TreeIter> WalkStore (TreeModel model)
+		IEnumerable<TreeIter> WalkStore (ITreeModel model)
 		{
 			TreeIter iter;
 			bool valid = model.GetIterFirst (out iter);
@@ -208,7 +204,7 @@ namespace MonoDevelop.Xml.Editor
 			}
 		}
 
-		static int SortSchemas (TreeModel model, TreeIter a, TreeIter b)
+		static int SortSchemas (ITreeModel model, TreeIter a, TreeIter b)
 		{
 			var listStore = (ListStore)model;
 			return string.Compare (GetSchema (listStore, a).NamespaceUri, GetSchema (listStore, b).NamespaceUri, StringComparison.Ordinal);
@@ -423,7 +419,7 @@ namespace MonoDevelop.Xml.Editor
 			string fileName = XmlEditorService.BrowseForSchemaFile ();
 
 			// We need to present the window so that the keyboard focus returns to the correct parent window
-			((Gtk.Window)Toplevel).Present();
+			(Root as Gtk.Window)?.Present ();
 
 			if (string.IsNullOrEmpty (fileName))
 				return;
@@ -476,7 +472,7 @@ namespace MonoDevelop.Xml.Editor
 		void ScrollToSelection (TreeView view)
 		{
 			TreeIter iter;
-			TreeModel model;
+			ITreeModel model;
 			if (!registeredSchemasView.Selection.GetSelected (out model, out iter))
 				return;
 			view.ScrollToCell (model.GetPath (iter), null, false, 0, 0);

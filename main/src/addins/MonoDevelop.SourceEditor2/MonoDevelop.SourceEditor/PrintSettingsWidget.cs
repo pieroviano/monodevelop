@@ -26,7 +26,7 @@
 using System;
 namespace MonoDevelop.SourceEditor
 {
-	partial class PrintSettingsWidget : Gtk.Bin
+	partial class PrintSettingsWidget : MonoDevelop.Components.BinWidget
 	{
 		public PrintSettingsWidget ()
 		{

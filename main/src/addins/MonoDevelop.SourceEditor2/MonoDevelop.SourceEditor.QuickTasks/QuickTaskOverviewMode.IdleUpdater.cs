@@ -57,7 +57,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 			public void Start ()
 			{
-				allocation = mode.Allocation;
+				allocation = new Gdk.Rectangle (0, 0, mode.Width, mode.Height);
 				var swapSurface = mode.swapIndicatorSurface;
 				if (swapSurface != null) {
 					if (swapSurface.Width == allocation.Width && swapSurface.Height == allocation.Height) {
@@ -69,8 +69,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 				var displayScale = Core.Platform.IsMac ? GtkWorkarounds.GetScaleFactor (mode) : 1.0;
 				if (surface == null) {
-					using (var similiar = CairoHelper.Create (IdeApp.Workbench.RootWindow.GdkWindow))
-						surface = new SurfaceWrapper (similiar, (int)(allocation.Width * displayScale), (int)(allocation.Height * displayScale));
+					surface = new SurfaceWrapper (null, (int)(allocation.Width * displayScale), (int)(allocation.Height * displayScale));
 				}
 				state = IndicatorDrawingState.Create ();
 				state.Width = allocation.Width;

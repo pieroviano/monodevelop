@@ -34,7 +34,7 @@ using MonoDevelop.Ide;
 namespace MonoDevelop.SourceEditor.OptionPanels
 {
 	[System.ComponentModel.ToolboxItem(false)]
-	partial class CompletionOptionsPanel : Gtk.Bin, IOptionsPanel
+	partial class CompletionOptionsPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 		public CompletionOptionsPanel ()
 		{

@@ -34,7 +34,7 @@ using MonoDevelop.Ide;
 namespace MonoDevelop.SourceEditor.OptionPanels
 {
 	
-	partial class MarkerPanel : Gtk.Bin, IOptionsPanel
+	partial class MarkerPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 
 		bool showLineNumbers;
@@ -203,7 +203,27 @@ namespace MonoDevelop.SourceEditor.OptionPanels
 			includeWhitespaces = include;
 		}
 
-		protected override void OnDestroyed ()
+		bool destroyedFlag;
+
+		public override void Destroy ()
+		{
+			if (!destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Destroy ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Dispose (disposing);
+		}
+
+		protected virtual void OnDestroyed ()
 		{
 			DefaultSourceEditorOptions.Instance.ShowLineNumberMargin = showLineNumbers;
 			DefaultSourceEditorOptions.Instance.HighlightMatchingBracket = highlightMatchingBracket;
@@ -216,7 +236,6 @@ namespace MonoDevelop.SourceEditor.OptionPanels
 			DefaultSourceEditorOptions.Instance.EnableQuickDiff = enableQuickDiff;
 			DefaultSourceEditorOptions.Instance.IncludeWhitespaces = includeWhitespaces;
 			DefaultSourceEditorOptions.Instance.ShowProcedureLineSeparators = showProcedureLineSeparators;
-			base.OnDestroyed ();
 		}
 
 		public void Initialize (OptionsDialog dialog, object dataObject)

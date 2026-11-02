@@ -22,11 +22,9 @@
 // AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 // LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
 
 using System;
 using Gtk;
-using Gdk;
 using MonoDevelop.Core;
 
 namespace MonoDevelop.AssemblyBrowser
@@ -35,57 +33,66 @@ namespace MonoDevelop.AssemblyBrowser
 	partial class DocumentationPanel : Gtk.DrawingArea
 	{
 		Pango.Layout layout;
-		
+		int requestedHeight = -1;
+
 		string markup;
 		public string Markup {
 			get { return markup; }
 			set { markup = value; CalculateSize ();}
 		}
-		
+
 		public DocumentationPanel ()
 		{
+			// the "view" style class paints the (insensitive aware) base background
+			AddCssClass ("view");
 			layout = new Pango.Layout (PangoContext);
 			layout.Wrap = Pango.WrapMode.Word;
-			//layout.FontDescription = Pango.FontDescription.FromString (PropertyService.Get<string> ("FontName"));
+			DrawFunc = OnDraw;
 		}
-		
-		protected override void OnDestroyed ()
+
+		protected override void Dispose (bool disposing)
 		{
-			if (layout != null) {
+			if (disposing && layout != null) {
 				layout.Dispose ();
 				layout = null;
 			}
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 
-		protected override bool OnExposeEvent (EventExpose evnt)
+		void OnDraw (Gtk.DrawingArea area, Cairo.Context cr, int allocatedWidth, int allocatedHeight)
 		{
-			Gdk.Window win = evnt.Window;
-			win.DrawRectangle (Style.BaseGC (string.IsNullOrEmpty (Markup) ? StateType.Insensitive : StateType.Normal), true, evnt.Area);
+			if (layout == null)
+				return;
 			int x = 0;
 			int y = 0;
 			if (string.IsNullOrEmpty (Markup)) {
 				layout.SetMarkup (GettextCatalog.GetString ("No documentation available."));
-				int width, height;
-				layout.GetPixelSize (out width, out height);
-				x = (Allocation.Width - width) / 2;
-				y = (Allocation.Height - height) / 2;
+				layout.Width = allocatedWidth * (int)Pango.Scale.PangoScale;
+				layout.GetPixelSize (out int width, out int height);
+				x = (allocatedWidth - width) / 2;
+				y = (allocatedHeight - height) / 2;
 			} else {
 				layout.SetMarkup (Markup);
+				layout.Width = allocatedWidth * (int)Pango.Scale.PangoScale;
 			}
-			layout.Width = Allocation.Width * (int)Pango.Scale.PangoScale;
-			win.DrawLayout (Style.TextGC (StateType.Normal), x, y, layout);
-			return true;
+			var color = StyleColor;
+			cr.SetSourceRGBA (color.Red, color.Green, color.Blue, color.Alpha);
+			cr.MoveTo (x, y);
+			Pango.CairoHelper.ShowLayout (cr, layout);
 		}
-		
+
 		public void CalculateSize ()
 		{
+			if (layout == null)
+				return;
 			layout.SetMarkup (Markup ?? "");
-			layout.Width = Allocation.Width * (int)Pango.Scale.PangoScale;
-			int width, height;
-			layout.GetPixelSize (out width, out height);
-			SetSizeRequest (width, height);
+			layout.Width = ContentWidth * (int)Pango.Scale.PangoScale;
+			layout.GetPixelSize (out int width, out int height);
+			if (height != requestedHeight) {
+				requestedHeight = height;
+				SetSizeRequest (width, height);
+			}
+			QueueDraw ();
 		}
- 
 	}
 }

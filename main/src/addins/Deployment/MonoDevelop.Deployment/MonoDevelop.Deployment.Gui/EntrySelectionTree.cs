@@ -13,7 +13,7 @@ namespace MonoDevelop.Deployment.Gui
 {
 	[System.ComponentModel.Category("MonoDevelop.Deployment")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class EntrySelectionTree : Gtk.Bin
+	internal partial class EntrySelectionTree : MonoDevelop.Components.BinWidget
 	{
 		TreeStore store;
 		Dictionary<SolutionFolderItem,SolutionFolderItem> selectedEntries = new Dictionary<SolutionFolderItem,SolutionFolderItem> ();

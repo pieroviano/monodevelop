@@ -68,15 +68,14 @@ namespace Mono.TextEditor
 
 		internal static void ShowAndPositionTooltip (MonoTextEditor editor, Xwt.WindowFrame tipWindow, int mouseX, int mouseY, int width, double xalign)
 		{
-			int ox = 0, oy = 0;
-			if (editor.GdkWindow != null)
-				editor.GdkWindow.GetOrigin (out ox, out oy);
+			// GTK 4 has no screen coordinates: positions are relative to the main window (see GtkUtil.GetScreenCoordinates)
+			var origin = editor.TextArea.GetScreenCoordinates (new Gdk.Point (0, 0));
 
 			width += 10;
 
-			int x = mouseX + ox + editor.Allocation.X;
-			int y = mouseY + oy + editor.Allocation.Y;
-			Gdk.Rectangle geometry = editor.Screen.GetUsableMonitorGeometry (editor.Screen.GetMonitorAtPoint (x, y));
+			int x = mouseX + origin.X;
+			int y = mouseY + origin.Y;
+			Gdk.Rectangle geometry = editor.GetMonitor ().GetUsableMonitorGeometry ();
 
 			x -= (int)((double)width * xalign);
 			y += 10;

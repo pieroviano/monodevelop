@@ -29,7 +29,7 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.PackageManagement.Gui
 {
-	partial class PackageSourcesLoadErrorWidget : Gtk.Bin
+	partial class PackageSourcesLoadErrorWidget : MonoDevelop.Components.BinWidget
 	{
 		Label mainMessageLabel;
 		Label secondaryMessageLabel;
@@ -37,26 +37,27 @@ namespace MonoDevelop.PackageManagement.Gui
 
 		void Build ()
 		{
-			MonoDevelop.Components.Gui.Initialize (this);
-			MonoDevelop.Components.BinContainer.Attach (this);
 
-			var vbox = new VBox ();
-			vbox.Spacing = 6;
+			var vbox = new Box (Orientation.Vertical, 6);
 
 			mainMessageLabel = new Label ();
-			mainMessageLabel.LineWrap = true;
-			mainMessageLabel.LineWrapMode = Pango.WrapMode.Word;
+			mainMessageLabel.Wrap = true;
+			mainMessageLabel.WrapMode = Pango.WrapMode.Word;
 			mainMessageLabel.Xalign = 0;
+			mainMessageLabel.Hexpand = true;
 			mainMessageLabel.Yalign = 0;
 
-			vbox.PackStart (mainMessageLabel, false, false, 6);
+			mainMessageLabel.MarginTop = mainMessageLabel.MarginBottom = 6;
+			vbox.Append (mainMessageLabel);
 
 			secondaryMessageLabel = new Label ();
-			secondaryMessageLabel.LineWrap = true;
-			secondaryMessageLabel.LineWrapMode = Pango.WrapMode.Word;
+			secondaryMessageLabel.Wrap = true;
+			secondaryMessageLabel.WrapMode = Pango.WrapMode.Word;
 			secondaryMessageLabel.Xalign = 0;
+			secondaryMessageLabel.Hexpand = true;
 			secondaryMessageLabel.Yalign = 0;
-			vbox.PackStart (secondaryMessageLabel, false, false, 6);
+			secondaryMessageLabel.MarginTop = secondaryMessageLabel.MarginBottom = 6;
+			vbox.Append (secondaryMessageLabel);
 
 			openNuGetConfigFileLabel = new Label ();
 			openNuGetConfigFileLabel.UseMarkup = true;
@@ -64,11 +65,11 @@ namespace MonoDevelop.PackageManagement.Gui
 			openNuGetConfigFileLabel.Xalign = 0;
 			openNuGetConfigFileLabel.Yalign = 0;
 
-			vbox.PackStart (openNuGetConfigFileLabel, true, true, 6);
+			openNuGetConfigFileLabel.MarginTop = openNuGetConfigFileLabel.MarginBottom = 6;
+			vbox.Append (openNuGetConfigFileLabel);
 
-			Add (vbox);
+			Child = vbox;
 
-			ShowAll ();
 		}
 
 		string GetOpenNuGetConfigFileLabel ()
@@ -77,10 +78,5 @@ namespace MonoDevelop.PackageManagement.Gui
 			return "<a href=\"page://openfile\">" + text + "</a>";
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			secondaryMessageLabel.SetSizeRequest (allocation.Width - 20, -1);
-		}
 	}
 }

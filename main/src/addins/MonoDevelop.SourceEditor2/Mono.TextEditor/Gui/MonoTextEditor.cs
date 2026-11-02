@@ -46,7 +46,7 @@ namespace Mono.TextEditor
 {
 	[System.ComponentModel.Category("Mono.TextEditor")]
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class MonoTextEditor : Container
+	partial class MonoTextEditor : ContainerWidget, IScrollAdjustable
 	{
 		readonly TextArea textArea;
 
@@ -82,16 +82,16 @@ namespace Mono.TextEditor
 
 		internal MonoTextEditor (TextDocument doc, ITextEditorOptions options, EditMode initialMode) 
 		{
-			this.Direction = TextDirection.Ltr;
+			Direction = TextDirection.Ltr;
+			Hexpand = true;
+			Vexpand = true;
+			Overflow = Gtk.Overflow.Hidden;
 			uiThread = Thread.CurrentThread;
-			GtkWorkarounds.FixContainerLeak (this);
-			WidgetFlags |= WidgetFlags.NoWindow;
 			LayoutCache = new LayoutCache (this);
 			this.textArea = new TextArea (doc, options, initialMode);
 			this.textArea.Initialize (this, doc, options, initialMode);
 			this.textArea.EditorOptionsChanged += (sender, e) => OptionsChanged (sender, e);
 			AddTopLevelWidget (textArea, 0, 0);
-			ShowAll ();
 
 			stage.ActorStep += OnActorStep;
 			if (Platform.IsMac) {
@@ -127,11 +127,40 @@ namespace Mono.TextEditor
 			}
 		}
 
-		protected override void OnDestroyed ()
+		protected virtual void OnDestroyed ()
 		{
 			UnregisterAdjustments ();
 			LayoutCache.Dispose ();
-			base.OnDestroyed ();
+		}
+
+		bool destroyed;
+
+		/// <summary>Raised when the editor is destroyed (GTK 4 widgets have no Destroyed event).</summary>
+		public event EventHandler Destroyed;
+
+		/// <summary>True once <see cref="Destroy"/> was called or the widget was disposed.</summary>
+		public bool IsDestroyed {
+			get { return destroyed; }
+		}
+
+		public override void Destroy ()
+		{
+			if (!destroyed) {
+				destroyed = true;
+				OnDestroyed ();
+				Destroyed?.Invoke (this, EventArgs.Empty);
+			}
+			base.Destroy ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !destroyed) {
+				destroyed = true;
+				OnDestroyed ();
+				Destroyed?.Invoke (this, EventArgs.Empty);
+			}
+			base.Dispose (disposing);
 		}
 
 		void UnregisterAdjustments ()
@@ -144,14 +173,18 @@ namespace Mono.TextEditor
 			hAdjustement = null;
 		}
 
-		Adjustment hAdjustement;
-		Adjustment vAdjustement;
-		protected override void OnSetScrollAdjustments (Adjustment hAdjustement, Adjustment vAdjustement)
+		Gtk.Adjustment hAdjustement;
+		Gtk.Adjustment vAdjustement;
+
+		/// <summary>
+		/// Connects the editor to the scroll bars' adjustments. The editor scrolls its content virtually and
+		/// keeps the adjustments' bounds up to date (replaces GTK 2 <c>OnSetScrollAdjustments</c>).
+		/// </summary>
+		public void SetScrollAdjustments (Gtk.Adjustment hAdjustement, Gtk.Adjustment vAdjustement)
 		{
 			UnregisterAdjustments ();
 			this.vAdjustement = vAdjustement;
 			this.hAdjustement = hAdjustement;
-			base.OnSetScrollAdjustments (hAdjustement, vAdjustement);
 			textArea.SetTextEditorScrollAdjustments (hAdjustement, vAdjustement);
 			if (hAdjustement != null) {
 				hAdjustement.ValueChanged += HandleAdjustmentValueChange;
@@ -163,6 +196,11 @@ namespace Mono.TextEditor
 			OnScrollAdjustmentsSet ();
 		}
 
+		void IScrollAdjustable.SetScrollAdjustments (Gtk.Adjustment hAdjustment, Gtk.Adjustment vAdjustment)
+		{
+			SetScrollAdjustments (hAdjustment, vAdjustment);
+		}
+
 		void HandleAdjustmentValueChange (object sender, EventArgs e)
 		{
 			SetChildrenPositions (Allocation);
@@ -172,17 +210,23 @@ namespace Mono.TextEditor
 		{
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
+		/// <summary>Raised after the editor has been allocated a new size.</summary>
+		internal event EventHandler SizeAllocated;
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
+			var allocation = new Gdk.Rectangle (0, 0, width, height);
 			CurrentMode.AllocateTextArea (this, textArea, allocation);
 			SetChildrenPositions (allocation);
+			SizeAllocated?.Invoke (this, EventArgs.Empty);
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
-			base.OnSizeRequested (ref requisition);
-			containerChildren.ForEach (c => c.Child.SizeRequest ());
+			// The editor scrolls its content virtually: it can be any size.
+			minimum = natural = 0;
+			minimum_baseline = natural_baseline = -1;
+			containerChildren.ForEach (c => MeasureChild (c.Child, orientation, -1, out _, out _));
 		}
 
 		internal protected virtual string GetIdeColorStyleName ()
@@ -191,41 +235,40 @@ namespace Mono.TextEditor
 		}
 
 		#region Container
-		public override ContainerChild this [Widget w] {
+		/// <summary>An embedded widget with its position in the scrolled editor coordinate space.</summary>
+		internal class EditorContainerChild
+		{
+			public Gtk.Widget Child { get; }
+			public int X { get; set; }
+			public int Y { get; set; }
+			public bool FixedPosition { get; set; }
+			public Gdk.Size LastSize { get; set; }
+			public EditorContainerChild (Gtk.Widget child)
+			{
+				Child = child;
+			}
+		}
+
+		internal List<EditorContainerChild> containerChildren = new List<EditorContainerChild> ();
+
+		/// <summary>Raised when the natural size of an embedded widget changed (GTK 4 widgets have no SizeAllocated event).</summary>
+		internal event EventHandler<Gtk.Widget> ChildSizeChanged;
+
+		/// <summary>The position information of an embedded widget (or of the widget wrapped by an animated embedded widget).</summary>
+		internal EditorContainerChild this [Gtk.Widget w] {
 			get {
 				return containerChildren.FirstOrDefault (info => info.Child == w || (info.Child is AnimatedWidget && ((AnimatedWidget)info.Child).Widget == w));
 			}
 		}
 
-		internal class EditorContainerChild : Container.ContainerChild
-		{
-			public int X { get; set; }
-			public int Y { get; set; }
-			public bool FixedPosition { get; set; }
-			public EditorContainerChild (Container parent, Widget child) : base (parent, child)
-			{
-			}
-		}
-		
-		public override GLib.GType ChildType ()
-		{
-			return Gtk.Widget.GType;
-		}
-		
-		internal List<EditorContainerChild> containerChildren = new List<EditorContainerChild> ();
-		
 		public void AddTopLevelWidget (Gtk.Widget widget, int x, int y)
 		{
-			widget.Parent = this;
-			EditorContainerChild info = new EditorContainerChild (this, widget);
+			AddChild (widget);
+			EditorContainerChild info = new EditorContainerChild (widget);
 			info.X = x;
 			info.Y = y;
 			containerChildren.Add (info);
 			SetAdjustments ();
-
-			// Emit the add signal so that the A11y system will pick up that a widget has been added to the box
-			// but the box won't handle it because widget.Parent has already been set.
-			GtkWorkarounds.EmitAddSignal(this, widget);
 		}
 		
 		public void MoveTopLevelWidget (Gtk.Widget widget, int x, int y)
@@ -266,52 +309,41 @@ namespace Mono.TextEditor
 			List<EditorContainerChild> newChilds = new List<EditorContainerChild> (containerChildren.Where (child => child != editorContainerChild));
 			newChilds.Add (editorContainerChild);
 			this.containerChildren = newChilds;
-			widget.GdkWindow.Raise ();
+			// the last sibling is painted (and picked) on top
+			widget.InsertAfter (this, LastChild);
 		}
-		
-		protected override void OnAdded (Widget widget)
-		{
-			// Break the add signal cycle
-			if (widget.Parent == this) {
-				return;
-			}
 
-			AddTopLevelWidget (widget, 0, 0);
-		}
-		
-		protected override void OnRemoved (Widget widget)
+		/// <summary>Removes an embedded widget (see <see cref="AddTopLevelWidget"/>).</summary>
+		public void Remove (Gtk.Widget widget)
 		{
 			foreach (EditorContainerChild info in containerChildren.ToArray ()) {
 				if (info.Child == widget) {
-					widget.Unparent ();
+					RemoveChild (widget);
 					containerChildren.Remove (info);
 					break;
 				}
 			}
 		}
-		
-		protected override void ForAll (bool include_internals, Gtk.Callback callback)
+
+		void ResizeChild (Gdk.Rectangle allocation, EditorContainerChild child)
 		{
-			foreach (var child in containerChildren.ToArray ()) {
-				callback (child.Child);
+			if (!child.Child.Visible)
+				return;
+			var req = GetChildNaturalSize (child.Child);
+			var childRectangle = new Gdk.Rectangle (child.X, child.Y, System.Math.Max (1, req.Width), System.Math.Max (1, req.Height));
+			if (!child.FixedPosition) {
+				double zoom = Options.Zoom;
+				childRectangle.X = (int)(child.X * zoom - HAdjustment.Value);
+				childRectangle.Y = (int)(child.Y * zoom - VAdjustment.Value);
+			}
+			AllocateChild (child.Child, childRectangle);
+			if (child.LastSize.Width != req.Width || child.LastSize.Height != req.Height) {
+				child.LastSize = req;
+				ChildSizeChanged?.Invoke (this, child.Child);
 			}
 		}
 
-		void ResizeChild (Rectangle allocation, EditorContainerChild child)
-		{
-			Requisition req = child.Child.SizeRequest ();
-			var childRectangle = new Gdk.Rectangle (Allocation.X + child.X, Allocation.Y + child.Y, System.Math.Max (1, req.Width), System.Math.Max (1, req.Height));
-			if (!child.FixedPosition) {
-				double zoom = Options.Zoom;
-				childRectangle.X = Allocation.X + (int)(child.X * zoom - HAdjustment.Value);
-				childRectangle.Y = Allocation.Y + (int)(child.Y * zoom - VAdjustment.Value);
-			}
-			//			childRectangle.X += allocation.X;
-			//			childRectangle.Y += allocation.Y;
-			child.Child.SizeAllocate (childRectangle);
-		}
-		
-		void SetChildrenPositions (Rectangle allocation)
+		void SetChildrenPositions (Gdk.Rectangle allocation)
 		{
 			foreach (EditorContainerChild child in containerChildren.ToArray ()) {
 				if (child.Child == textArea)
@@ -392,14 +424,14 @@ namespace Mono.TextEditor
 		internal void AddAnimatedWidget (Widget widget, uint duration, Easing easing, Blocking blocking, int x, int y)
 		{
 			AnimatedWidget animated_widget = new AnimatedWidget (widget, duration, easing, blocking, false);
-			animated_widget.Parent = this;
+			AddChild (animated_widget);
 			animated_widget.WidgetDestroyed += OnWidgetDestroyed;
 			stage.Add (animated_widget, duration);
 			animated_widget.StartPadding = 0;
-			animated_widget.EndPadding = widget.Allocation.Height;
+			animated_widget.EndPadding = widget.Height;
 			//			animated_widget.Node = animated_widget;
-			
-			EditorContainerChild info = new EditorContainerChild (this, animated_widget);
+
+			EditorContainerChild info = new EditorContainerChild (animated_widget);
 			info.X = x;
 			info.Y = y;
 			info.FixedPosition = true;
@@ -780,13 +812,13 @@ namespace Mono.TextEditor
 			}
 		}
 		
-		public Adjustment HAdjustment {
+		public Gtk.Adjustment HAdjustment {
 			get {
 				return textArea.HAdjustment;
 			}
 		}
 		
-		public Adjustment VAdjustment {
+		public Gtk.Adjustment VAdjustment {
 			get {
 				return textArea.VAdjustment;
 			}
@@ -899,6 +931,20 @@ namespace Mono.TextEditor
 		/// <remarks>
 		/// The Key may be null if it has been handled by the IMContext. In such cases, the char is the value.
 		/// </remarks>
+		/// <summary>
+		/// Called when a key is pressed in the text area. <paramref name="handleKeyPress"/> runs the default handling;
+		/// overrides can run code around it (replaces the GTK 2 <c>OnKeyPressEvent</c> override).
+		/// </summary>
+		protected internal virtual bool OnKeyPressEvent (Func<bool> handleKeyPress)
+		{
+			return handleKeyPress ();
+		}
+
+		/// <summary>Called when the text area loses the keyboard focus (replaces the GTK 2 <c>OnFocusOutEvent</c> override).</summary>
+		protected internal virtual void OnFocusOutEvent ()
+		{
+		}
+
 		protected internal virtual bool OnIMProcessedKeyPressEvent (Gdk.Key key, uint ch, Gdk.ModifierType state)
 		{
 			SimulateKeyPress (key, ch, state);
@@ -926,7 +972,7 @@ namespace Mono.TextEditor
 		{
 			textArea.HideTooltip (TooltipCloseReason.Force);
 		}
-		public Action<Gdk.EventButton> DoPopupMenu {
+		public Action<ClickInfo> DoPopupMenu {
 			get {
 				return textArea.DoPopupMenu;
 			}
@@ -935,9 +981,10 @@ namespace Mono.TextEditor
 			} 
 		}
 
-		public MenuItem CreateInputMethodMenuItem (string label)
-		{
-			return textArea.CreateInputMethodMenuItem (label);
+
+		internal event EventHandler<TextDroppedEventArgs> TextDropped {
+			add { textArea.TextDropped += value; }
+			remove { textArea.TextDropped -= value; }
 		}
 
 		public event EventHandler SelectionChanged {

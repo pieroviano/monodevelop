@@ -118,7 +118,7 @@ namespace MonoDevelop.Ide.Editor
 			if (tipWindow is XwtWindowControl)
 				requiredWidth = (int)tipWindow.GetNativeWidget<Xwt.WindowFrame> ().Width;
 			else
-				((Gtk.Window)tipWindow).Measure (Gtk.Orientation.Horizontal, -1, out _, out requiredWidth, out _, out _);
+				tipWindow.GetNativeWidget<Gtk.Widget> ().Measure (Gtk.Orientation.Horizontal, -1, out _, out requiredWidth, out _, out _);
 			xalign = 0.5;
 		}
 

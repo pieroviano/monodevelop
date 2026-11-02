@@ -36,39 +36,28 @@ using MonoDevelop.Core;
 namespace MonoDevelop.VBNetBinding
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class ProjectOptionsPanelWidget : Gtk.Bin
+	public partial class ProjectOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		VBProject project;
 
 		public ProjectOptionsPanelWidget (MonoDevelop.Projects.Project project)
 		{
-			Gtk.ListStore store;
-			Gtk.CellRendererText cr;
-
 			this.Build();
 
 			this.project = (VBProject) project;
 
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues (GettextCatalog.GetString ("Executable"));
-			store.AppendValues (GettextCatalog.GetString ("Library"));
-			store.AppendValues (GettextCatalog.GetString ("Executable with GUI"));
-			store.AppendValues (GettextCatalog.GetString ("Module")); 
-			compileTargetCombo.Model = store;
-			compileTargetCombo.PackStart (cr, true);
-			compileTargetCombo.AddAttribute (cr, "text", 0);
+			compileTargetCombo.AppendText (GettextCatalog.GetString ("Executable"));
+			compileTargetCombo.AppendText (GettextCatalog.GetString ("Library"));
+			compileTargetCombo.AppendText (GettextCatalog.GetString ("Executable with GUI"));
+			compileTargetCombo.AppendText (GettextCatalog.GetString ("Module"));
 			compileTargetCombo.Active = (int) this.project.CompileTarget;
 			compileTargetCombo.Changed += delegate(object sender, EventArgs e) {
 				entryMainClass.Sensitive = compileTargetCombo.Active != (int) CompileTarget.Library	&& compileTargetCombo.Active != (int) CompileTarget.Module;
 			};
 
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("WindowsForms");
-			store.AppendValues ("Windows");
-			store.AppendValues ("Console");
-			txtMyType.Model = store;
-			txtMyType.TextColumn = 0;
+			txtMyType.AppendText ("WindowsForms");
+			txtMyType.AppendText ("Windows");
+			txtMyType.AppendText ("Console");
 			switch (this.project.MyType) {
 			case "WindowsForms":
 				txtMyType.Active = 0;
@@ -88,40 +77,20 @@ namespace MonoDevelop.VBNetBinding
 				break;
 			}
 
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Binary");
-			store.AppendValues ("Text");
-			cmbOptionCompare.Model = store;
-			cmbOptionCompare.PackStart (cr, true);
-			cmbOptionCompare.AddAttribute (cr, "text", 0);
+			cmbOptionCompare.AppendText ("Binary");
+			cmbOptionCompare.AppendText ("Text");
 			cmbOptionCompare.Active = this.project.BinaryOptionCompare ? 0 : 1;
 				
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("On");
-			store.AppendValues ("Off");
-			cmbOptionExplicit.Model = store;
-			cmbOptionExplicit.PackStart (cr, true);
-			cmbOptionExplicit.AddAttribute (cr, "text", 0);
+			cmbOptionExplicit.AppendText ("On");
+			cmbOptionExplicit.AppendText ("Off");
 			cmbOptionExplicit.Active = this.project.OptionExplicit ? 0 : 1;
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("On");
-			store.AppendValues ("Off");
-			cmbOptionInfer.Model = store;
-			cmbOptionInfer.PackStart (cr, true);
-			cmbOptionInfer.AddAttribute (cr, "text", 0);
+			cmbOptionInfer.AppendText ("On");
+			cmbOptionInfer.AppendText ("Off");
 			cmbOptionInfer.Active = this.project.OptionInfer ? 0 : 1;
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("On");
-			store.AppendValues ("Off");
-			cmbOptionStrict.Model = store;
-			cmbOptionStrict.PackStart (cr, true);
-			cmbOptionStrict.AddAttribute (cr, "text", 0);
+			cmbOptionStrict.AppendText ("On");
+			cmbOptionStrict.AppendText ("Off");
 			cmbOptionStrict.Active = this.project.OptionStrict ? 0 : 1;
 
 			// Codepage
@@ -135,11 +104,11 @@ namespace MonoDevelop.VBNetBinding
 				cmbCodePage.AppendText (e.Id);
 			}
 			if (foundEncoding != null)
-				cmbCodePage.Entry.Text = foundEncoding;
+				((Gtk.Entry) cmbCodePage.Child).Text = foundEncoding;
 			else if (!string.IsNullOrEmpty (currentCodepage))
-				cmbCodePage.Entry.Text = currentCodepage;
+				((Gtk.Entry) cmbCodePage.Child).Text = currentCodepage;
 			
-			entryMainClass.Entry.Text = this.project.StartupObject;
+			((Gtk.Entry) entryMainClass.Child).Text = this.project.StartupObject;
 			iconEntry.Path = this.project.ApplicationIcon;
 		}
 		
@@ -151,7 +120,7 @@ namespace MonoDevelop.VBNetBinding
 			project.OptionStrict = cmbOptionStrict.ActiveText == "On";
 			project.MyType = txtMyType.ActiveText;
 			project.StartupObject = entryMainClass.ActiveText;
-			project.CodePage = cmbCodePage.Entry.Text;
+			project.CodePage = ((Gtk.Entry) cmbCodePage.Child).Text;
 			project.ApplicationIcon = iconEntry.Path;
 			project.CompileTarget = (CompileTarget) compileTargetCombo.Active;
 		}

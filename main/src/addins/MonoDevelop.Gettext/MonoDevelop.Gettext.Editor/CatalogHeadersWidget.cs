@@ -31,7 +31,7 @@ using Gtk;
 
 namespace MonoDevelop.Gettext.Editor
 {
-	partial class CatalogHeadersWidget : Bin
+	partial class CatalogHeadersWidget : MonoDevelop.Components.BinWidget
 	{
 		Catalog headers;
 		bool inUpdate = false;
@@ -103,7 +103,6 @@ namespace MonoDevelop.Gettext.Editor
 			//comboboxentryCharset.TextColumn.ActiveText = headers.Charset;
 			
 			// other headers
-			this.ShowAll ();
 			inUpdate = false;
 		}
 
@@ -148,14 +147,16 @@ namespace MonoDevelop.Gettext.Editor
 					}
 				}
 			
-				Gdk.Color background = wellFormed ? new Gdk.Color (138, 226,52) : new Gdk.Color (204, 0, 0);
-				entryPluralsForms.ModifyBase (StateType.Normal, background); //from tango palete - 8ae234 green, cc0000 red
+				// flag the entry as valid (green) or invalid (red) using the style classes of the theme
+				entryPluralsForms.RemoveCssClass (wellFormed ? "error" : "success");
+				entryPluralsForms.AddCssClass (wellFormed ? "success" : "error");
 				if (wellFormed) {
 					headers.SetHeaderNotEmpty ("Plural-Forms", entryPluralsForms.Text);
 					OnPluralDefinitionChanged ();
 				}
 			} else {
-				entryPluralsForms.ModifyBase (StateType.Normal);
+				entryPluralsForms.RemoveCssClass ("error");
+				entryPluralsForms.RemoveCssClass ("success");
 				headers.SetHeaderNotEmpty ("Plural-Forms", entryPluralsForms.Text);
 				OnPluralDefinitionChanged ();
 			}

@@ -28,6 +28,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using Gtk;
 using Gdk;
 
@@ -56,7 +57,7 @@ namespace MonoDevelop.UnitTesting
 	class TestPad : TreeViewPad
 	{
 		AsyncOperation runningTestOperation;
-		VPaned paned;
+		Paned paned;
 		TreeView detailsTree;
 		ListStore detailsStore;
 		HeaderLabel detailLabel;
@@ -78,7 +79,7 @@ namespace MonoDevelop.UnitTesting
 		int TestResultPage;
 		int TestOutputPage;
 		
-		VBox detailsPad;
+		Gtk.Box detailsPad;
 		
 		ArrayList testNavigationHistory = new ArrayList ();
 
@@ -89,12 +90,12 @@ namespace MonoDevelop.UnitTesting
 			base.Initialize (builders, options, menuPath);
 			
 			UnitTestService.TestSuiteChanged += OnTestSuiteChanged;
-			paned = new VPaned ();
+			paned = new Paned (Orientation.Vertical);
 			
-			VBox vbox = new VBox ();
+			var vbox = new Gtk.Box (Orientation.Vertical, 0);
 			DockItemToolbar topToolbar = Window.GetToolbar (DockPositionType.Top);
 
-			buttonRunAll = new Button (new ImageView (ImageService.GetIcon ("md-execute-all", IconSize.Menu)));
+			buttonRunAll = CreateButton (new ImageView (ImageService.GetIcon ("md-execute-all", StockIconSize.Menu)));
 			buttonRunAll.Accessible.Name = "TestPad.RunAll";
 			buttonRunAll.Accessible.Description = GettextCatalog.GetString ("Start a test run and run all the tests");
 			buttonRunAll.Clicked += new EventHandler (OnRunAllClicked);
@@ -102,7 +103,7 @@ namespace MonoDevelop.UnitTesting
 			buttonRunAll.TooltipText = GettextCatalog.GetString ("Run all tests");
 			topToolbar.Add (buttonRunAll);
 			
-			buttonDebugAll = new Button (new ImageView (ImageService.GetIcon ("md-debug-all", IconSize.Menu)));
+			buttonDebugAll = CreateButton (new ImageView (ImageService.GetIcon ("md-debug-all", StockIconSize.Menu)));
 			buttonDebugAll.Accessible.Name = "TestPad.DebugAll";
 			buttonDebugAll.Accessible.Description = GettextCatalog.GetString ("Debug all the tests");
 			buttonDebugAll.Clicked += new EventHandler (OnDebugAllClicked);
@@ -110,88 +111,72 @@ namespace MonoDevelop.UnitTesting
 			buttonDebugAll.TooltipText = GettextCatalog.GetString ("Debug all tests");
 			topToolbar.Add (buttonDebugAll);
 
-			buttonStop = new Button (new ImageView (Ide.Gui.Stock.Stop, IconSize.Menu));
+			buttonStop = CreateButton (new ImageView (Ide.Gui.Stock.Stop, MonoDevelop.Components.StockIconSize.Menu));
 			buttonStop.Clicked += new EventHandler (OnStopClicked);
 			buttonStop.Sensitive = false;
 			buttonStop.TooltipText = GettextCatalog.GetString ("Cancel running test");
 			buttonStop.Accessible.Name = "TestPad.StopAll";
-			buttonStop.Accessible.SetTitle (GettextCatalog.GetString (("Cancel")));
 			buttonStop.Accessible.Description = GettextCatalog.GetString ("Stops the current test run");
 			topToolbar.Add (buttonStop);
-			topToolbar.ShowAll ();
 			
-			vbox.PackEnd (base.Control, true, true, 0);
-			vbox.FocusChain = new Gtk.Widget [] { base.Control };
+			var treeWidget = base.Control.GetNativeWidget<Gtk.Widget> ();
+			treeWidget.Vexpand = true;
+			vbox.Append (treeWidget);
 			
-			paned.Pack1 (vbox, true, true);
+			paned.StartChild = vbox;
+			paned.ResizeStartChild = true;
+			paned.ShrinkStartChild = true;
 			
-			detailsPad = new VBox ();
+			detailsPad = new Gtk.Box (Orientation.Vertical, 0);
 			
-			EventBox eb = new EventBox ();
-			HBox header = new HBox ();
-			eb.Add (header);
+			var header = new Gtk.Box (Orientation.Horizontal, 0);
 
 			detailLabel = new HeaderLabel ();
 			detailLabel.Padding = 6;
-			
-			Button hb = new Button (new ImageView ("gtk-close", IconSize.SmallToolbar));
-			hb.Relief = ReliefStyle.None;
-			hb.Clicked += new EventHandler (OnCloseDetails);
-			header.PackEnd (hb, false, false, 0);
-			
-			hb = new Button (new ImageView ("gtk-go-back", IconSize.SmallToolbar));
-			hb.Relief = ReliefStyle.None;
+			detailLabel.Hexpand = true;
+			header.Append (detailLabel);
+
+			Button hb = Button.NewFromIconName ("go-previous-symbolic");
+			hb.HasFrame = false;
 			hb.Clicked += new EventHandler (OnGoBackTest);
-			header.PackEnd (hb, false, false, 0);
-			
-			header.Add (detailLabel);
-			Gdk.Color hcol = eb.Style.Background (StateType.Normal);
-			hcol.Red = (ushort) (((double)hcol.Red) * 0.9);
-			hcol.Green = (ushort) (((double)hcol.Green) * 0.9);
-			hcol.Blue = (ushort) (((double)hcol.Blue) * 0.9);
-		//	eb.ModifyBg (StateType.Normal, hcol);
-			
-			detailsPad.PackStart (eb, false, false, 0);
-			
-			VPaned panedDetails = new VPaned ();
-			panedDetails.BorderWidth = 3;
-			VBox boxPaned1 = new VBox ();
-			
+			header.Append (hb);
+
+			hb = Button.NewFromIconName ("window-close-symbolic");
+			hb.HasFrame = false;
+			hb.Clicked += new EventHandler (OnCloseDetails);
+			header.Append (hb);
+
+			detailsPad.Append (header);
+
+			var panedDetails = new Paned (Orientation.Vertical) { Vexpand = true };
+			panedDetails.MarginTop = 3;
+			panedDetails.MarginBottom = 3;
+			panedDetails.MarginStart = 3;
+			panedDetails.MarginEnd = 3;
+			var boxPaned1 = new Gtk.Box (Orientation.Vertical, 0);
+
 			chart = new TestChart ();
 			chart.SelectionChanged += new EventHandler (OnChartDateChanged);
 
 			var chartWidget = chart.GetNativeWidget<Widget> ();
-			chartWidget.ButtonPressEvent += OnChartButtonPress;
+			chartWidget.AddClickHandler (OnChartButtonPress);
 			chartWidget.HeightRequest = 50;
 
-			Toolbar toolbar = new Toolbar ();
-			toolbar.IconSize = IconSize.SmallToolbar;
-			toolbar.ToolbarStyle = ToolbarStyle.Icons;
-			toolbar.ShowArrow = false;
-			ToolButton but = new ToolButton ("gtk-zoom-in");
-			but.Clicked += new EventHandler (OnZoomIn);
-			toolbar.Insert (but, -1);
-			
-			but = new ToolButton ("gtk-zoom-out");
-			but.Clicked += new EventHandler (OnZoomOut);
-			toolbar.Insert (but, -1);
-			
-			but = new ToolButton ("gtk-go-back");
-			but.Clicked += new EventHandler (OnChartBack);
-			toolbar.Insert (but, -1);
-			
-			but = new ToolButton ("gtk-go-forward");
-			but.Clicked += new EventHandler (OnChartForward);
-			toolbar.Insert (but, -1);
-			
-			but = new ToolButton ("gtk-goto-last");
-			but.Clicked += new EventHandler (OnChartLast);
-			toolbar.Insert (but, -1);
-			
-			boxPaned1.PackStart (toolbar, false, false, 0);
-			boxPaned1.PackStart (chart, true, true, 0);
-			
-			panedDetails.Pack1 (boxPaned1, false, false);
+			var toolbar = new Gtk.Box (Orientation.Horizontal, 0);
+			toolbar.AddCssClass ("toolbar");
+			AppendToolButton (toolbar, "zoom-in-symbolic", OnZoomIn);
+			AppendToolButton (toolbar, "zoom-out-symbolic", OnZoomOut);
+			AppendToolButton (toolbar, "go-previous-symbolic", OnChartBack);
+			AppendToolButton (toolbar, "go-next-symbolic", OnChartForward);
+			AppendToolButton (toolbar, "go-last-symbolic", OnChartLast);
+
+			boxPaned1.Append (toolbar);
+			chartWidget.Vexpand = true;
+			boxPaned1.Append (chartWidget);
+
+			panedDetails.StartChild = boxPaned1;
+			panedDetails.ResizeStartChild = false;
+			panedDetails.ShrinkStartChild = false;
 			
 			// Detailed test information --------
 			
@@ -200,12 +185,11 @@ namespace MonoDevelop.UnitTesting
 			
 			// Info - Group summary
 			
-			Frame tf = new Frame ();
+			var tf = new Frame ();
 			ScrolledWindow sw = new ScrolledWindow ();
 			detailsTree = new TreeView { Name = "testPadDetailsTree" };
 			
 			detailsTree.HeadersVisible = true;
-			detailsTree.RulesHint = true;
 			detailsStore = new ListStore (typeof(object), typeof(string), typeof (string), typeof (string), typeof (string));
 			SemanticModelAttribute modelAttr = new SemanticModelAttribute ("store__UnitTest", "store__Name","store__Passed",
 				"store__ErrorsAndFailures", "store__Ignored");
@@ -218,7 +202,6 @@ namespace MonoDevelop.UnitTesting
 			col3.Expand = false;
 //			col3.Alignment = 0.5f;
 			col3.Widget = new ImageView (TestStatusIcon.Success);
-			col3.Widget.Show ();
 			tr = new CellRendererText ();
 //			tr.Xalign = 0.5f;
 			col3.PackStart (tr, false);
@@ -229,7 +212,6 @@ namespace MonoDevelop.UnitTesting
 			col4.Expand = false;
 //			col4.Alignment = 0.5f;
 			col4.Widget = new ImageView (TestStatusIcon.Failure);
-			col4.Widget.Show ();
 			tr = new CellRendererText ();
 //			tr.Xalign = 0.5f;
 			col4.PackStart (tr, false);
@@ -240,7 +222,6 @@ namespace MonoDevelop.UnitTesting
 			col5.Expand = false;
 //			col5.Alignment = 0.5f;
 			col5.Widget = new ImageView (TestStatusIcon.NotRun);
-			col5.Widget.Show ();
 			tr = new CellRendererText ();
 //			tr.Xalign = 0.5f;
 			col5.PackStart (tr, false);
@@ -257,9 +238,8 @@ namespace MonoDevelop.UnitTesting
 			
 			detailsTree.Model = detailsStore;
 			
-			sw.Add (detailsTree);
-			tf.Add (sw);
-			tf.ShowAll ();
+			sw.Child = detailsTree;
+			tf.Child = sw;
 			
 			TestSummaryPage = infoBook.AddPage (GettextCatalog.GetString ("Summary"), tf);
 			
@@ -267,10 +247,9 @@ namespace MonoDevelop.UnitTesting
 			
 			tf = new Frame ();
 			sw = new ScrolledWindow ();
-			tf.Add (sw);
+			tf.Child = sw;
 			regressionTree = new TreeView { Name = "testPadRegressionTree" };
 			regressionTree.HeadersVisible = false;
-			regressionTree.RulesHint = true;
 			regressionStore = new ListStore (typeof(object), typeof(string), typeof (Xwt.Drawing.Image));
 			SemanticModelAttribute regressionModelAttr = new SemanticModelAttribute ("store__UnitTest", "store__Name", "store__Icon");
 			SCM.TypeDescriptor.AddAttributes (detailsStore, regressionModelAttr);
@@ -285,8 +264,7 @@ namespace MonoDevelop.UnitTesting
 			col.AddAttribute (trtest2, "markup", 1);
 			regressionTree.AppendColumn (col);
 			regressionTree.Model = regressionStore;
-			sw.Add (regressionTree);
-			tf.ShowAll ();
+			sw.Child = regressionTree;
 			
 			TestRegressionsPage = infoBook.AddPage (GettextCatalog.GetString ("Regressions"), tf);
 			
@@ -294,10 +272,9 @@ namespace MonoDevelop.UnitTesting
 			
 			tf = new Frame ();
 			sw = new ScrolledWindow ();
-			tf.Add (sw);
+			tf.Child = sw;
 			failedTree = new TreeView ();
 			failedTree.HeadersVisible = false;
-			failedTree.RulesHint = true;
 			failedStore = new ListStore (typeof(object), typeof(string), typeof (Xwt.Drawing.Image));
 			SemanticModelAttribute failedModelAttr = new SemanticModelAttribute ("store__UnitTest", "store__Name", "store__Icon");
 			SCM.TypeDescriptor.AddAttributes (failedStore, failedModelAttr);
@@ -312,8 +289,7 @@ namespace MonoDevelop.UnitTesting
 			col.AddAttribute (trtest2, "markup", 1);
 			failedTree.AppendColumn (col);
 			failedTree.Model = failedStore;
-			sw.Add (failedTree);
-			tf.ShowAll ();
+			sw.Child = failedTree;
 			
 			TestFailuresPage = infoBook.AddPage (GettextCatalog.GetString ("Failed tests"), tf);
 			
@@ -321,29 +297,30 @@ namespace MonoDevelop.UnitTesting
 			
 			tf = new Frame ();
 			sw = new ScrolledWindow ();
-			tf.Add (sw);
+			tf.Child = sw;
 			resultView = new TextView ();
 			resultView.Editable = false;
-			sw.Add (resultView);
-			tf.ShowAll ();
+			sw.Child = resultView;
 			TestResultPage = infoBook.AddPage (GettextCatalog.GetString ("Result"), tf);
 			
 			// Info - Output
 			
 			tf = new Frame ();
 			sw = new ScrolledWindow ();
-			tf.Add (sw);
+			tf.Child = sw;
 			outputView = new TextView ();
 			outputView.Editable = false;
-			sw.Add (outputView);
-			tf.ShowAll ();
+			sw.Child = outputView;
 			TestOutputPage = infoBook.AddPage (GettextCatalog.GetString ("Output"), tf);
 			
-			panedDetails.Pack2 (infoBook, true, true);
-			detailsPad.PackStart (panedDetails, true, true, 0);
-			paned.Pack2 (detailsPad, true, true);
+			panedDetails.EndChild = infoBook;
+			panedDetails.ResizeEndChild = true;
+			panedDetails.ShrinkEndChild = true;
+			detailsPad.Append (panedDetails);
+			paned.EndChild = detailsPad;
+			paned.ResizeEndChild = true;
+			paned.ShrinkEndChild = true;
 			
-			paned.ShowAll ();
 			
 			infoBook.HidePage (TestResultPage);
 			infoBook.HidePage (TestOutputPage);
@@ -352,7 +329,7 @@ namespace MonoDevelop.UnitTesting
 			infoBook.HidePage (TestFailuresPage);
 			
 			detailsPad.Sensitive = false;
-			detailsPad.Hide ();
+			detailsPad.Visible = false;
 			
 			detailsTree.RowActivated += new Gtk.RowActivatedHandler (OnTestActivated);
 			regressionTree.RowActivated += new Gtk.RowActivatedHandler (OnRegressionTestActivated);
@@ -632,14 +609,14 @@ namespace MonoDevelop.UnitTesting
 		
 		void OnCloseDetails (object sender, EventArgs args)
 		{
-			detailsPad.Hide ();
+			detailsPad.Visible = false;
 		}
 		
 		[CommandHandler (TestCommands.ShowTestDetails)]
 		protected void OnShowDetails ()
 		{
 			if (!detailsPad.Visible) {
-				detailsPad.Show ();
+				detailsPad.Visible = true;
 				
 				ITreeNavigator nav = TreeView.GetSelectedNode ();
 				if (nav != null) {
@@ -837,12 +814,23 @@ namespace MonoDevelop.UnitTesting
 				chart.GoLast ();
 		}
 		
-		void OnChartButtonPress (object o, Gtk.ButtonPressEventArgs args)
+		void OnChartButtonPress (ClickInfo evt)
 		{
-			if (args.Event.TriggersContextMenu ()) {
-				IdeApp.CommandService.ShowContextMenu (Control, args.Event, "/MonoDevelop/UnitTesting/ContextMenu/TestChart");
-				args.RetVal = true;
-			}
+			if (evt.TriggersContextMenu ())
+				IdeApp.CommandService.ShowContextMenu (Control, evt, "/MonoDevelop/UnitTesting/ContextMenu/TestChart");
+		}
+
+		static Button CreateButton (Widget content)
+		{
+			return new Button { Child = content };
+		}
+
+		static void AppendToolButton (Gtk.Box toolbar, string iconName, EventHandler clicked)
+		{
+			var button = Button.NewFromIconName (iconName);
+			button.HasFrame = false;
+			button.Clicked += clicked;
+			toolbar.Append (button);
 		}
 		
 		[CommandHandler (TestChartCommands.ShowResults)]
@@ -935,88 +923,72 @@ namespace MonoDevelop.UnitTesting
 	
 	class ButtonNotebook: Notebook
 	{
-		ArrayList loadedPages = new ArrayList ();
-		
+		List<int> loadedPages = new List<int> ();
+
+		public ButtonNotebook ()
+		{
+			SwitchPage += (o, args) => {
+				if (!loadedPages.Contains ((int)args.PageNum))
+					OnPageLoadRequired ((int)args.PageNum);
+			};
+		}
+
 		public void Reset ()
 		{
 			loadedPages.Clear ();
-			OnPageLoadRequired ();
+			OnPageLoadRequired (Page);
 		}
-		
+
 		public int AddPage (string text, Widget widget)
 		{
 			return AppendPage (widget, new Label (text));
 		}
-		
+
 		public void ShowPage (int n)
 		{
-			GetNthPage (n).Show ();
+			SetPageVisible (n, true);
 		}
-		
+
 		public void HidePage (int n)
 		{
-			GetNthPage (n).Hide ();
+			SetPageVisible (n, false);
 		}
-		
-		protected override void OnSwitchPage (NotebookPage page, uint n)
+
+		// A page whose child is hidden is skipped by the notebook; its tab label is hidden with it.
+		void SetPageVisible (int n, bool visible)
 		{
-			base.OnSwitchPage (page, n);
-			if (!loadedPages.Contains (Page))
-				OnPageLoadRequired ();
+			var page = GetNthPage (n);
+			page.Visible = visible;
+			GetTabLabel (page).Visible = visible;
 		}
-		
-		void OnPageLoadRequired ()
+
+		void OnPageLoadRequired (int page)
 		{
-			loadedPages.Add (Page);
+			loadedPages.Add (page);
 			if (PageLoadRequired != null)
 				PageLoadRequired (this, EventArgs.Empty);
 		}
-		
+
 		public EventHandler PageLoadRequired;
 	}
-	
-	class HeaderLabel: Widget
+
+	class HeaderLabel: Label
 	{
-		string text;
-		Pango.Layout layout;
 		int padding;
-		
+
 		public HeaderLabel ()
 		{
-			WidgetFlags |= WidgetFlags.NoWindow;
-			layout = new Pango.Layout (this.PangoContext);
+			Xalign = 0;
+			Halign = Align.Fill;
+			Valign = Align.Center;
 		}
-		
-		public string Markup {
-			get { return text; }
-			set {
-				text = value;
-				layout.SetMarkup (text);
-				QueueDraw ();
-			}
-		}
-		
+
 		public int Padding {
 			get { return padding; }
-			set { padding = value; }
-		}
-		
-		protected override bool OnExposeEvent (Gdk.EventExpose args)
-		{
-			using (Gdk.GC gc = new Gdk.GC (GdkWindow)) {
-				gc.ClipRectangle = Allocation;
-				GdkWindow.DrawLayout (gc, padding, padding, layout);
+			set {
+				padding = value;
+				MarginTop = MarginBottom = MarginStart = MarginEnd = value;
 			}
-			return true;
-		}
-		protected override void OnDestroyed ()
-		{
-			if (layout != null) {
-				layout.Dispose ();
-				layout = null;
-			}
-			base.OnDestroyed ();
 		}
 	}
 }
-

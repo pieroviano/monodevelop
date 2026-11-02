@@ -25,7 +25,6 @@
 // THE SOFTWARE.
 
 using System;
-using Gdk;
 using Gtk;
 using MonoDevelop.Components;
 using MonoDevelop.Core;
@@ -36,31 +35,31 @@ using MonoDevelop.Ide.Gui;
 namespace MonoDevelop.DotNetCore.Gui
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	partial class GtkDotNetCoreProjectTemplateWizardPageWidget : Gtk.Bin
+	partial class GtkDotNetCoreProjectTemplateWizardPageWidget : BinWidget
 	{
 		DotNetCoreProjectTemplateWizardPage wizardPage;
-		Color backgroundColor;
-		ImageView backgroundImageView;
+		Xwt.Drawing.Color backgroundColor;
+		MonoDevelop.Components.ImageView backgroundImageView;
 		Xwt.Drawing.Image backgroundImage;
 
-		HBox mainHBox;
-		EventBox leftBorderEventBox;
-		VBox configurationVBox;
-		EventBox configurationTopEventBox;
-		EventBox configurationTableEventBox;
-		Table configurationTable;
+		Box mainHBox;
+		Box leftBorderEventBox;
+		Box configurationVBox;
+		Box configurationTopEventBox;
+		Box configurationTableEventBox;
+		Grid configurationTable;
 
-		ComboBox targetFrameworkComboBox;
+		ComboBoxText targetFrameworkComboBox;
 		Label targetFrameworkInformationLabel;
 		Label targetFrameworkLabel;
 
-		ComboBox authenticationComboBox;
+		ComboBoxText authenticationComboBox;
 		Label authenticationInformationLabel;
 		Label authenticationLabel;
 
-		EventBox configurationBottomEventBox;
-		EventBox backgroundLargeImageEventBox;
-		VBox backgroundLargeImageVBox;
+		Box configurationBottomEventBox;
+		Box backgroundLargeImageEventBox;
+		Box backgroundLargeImageVBox;
 
 		public GtkDotNetCoreProjectTemplateWizardPageWidget (DotNetCoreProjectTemplateWizardPage wizardPage)
 		{
@@ -73,18 +72,20 @@ namespace MonoDevelop.DotNetCore.Gui
 			configurationVBox.WidthRequest = -1;
 
 			backgroundImage = Xwt.Drawing.Image.FromResource ("netcore-wizard-page.png");
-			backgroundImageView = new ImageView (backgroundImage) {
+			backgroundImageView = new MonoDevelop.Components.ImageView (backgroundImage) {
 				Xalign = 1.0f,
-				Yalign = 0.5f
+				Yalign = 0.5f,
+				Hexpand = true,
+				Vexpand = true
 			};
-			backgroundLargeImageVBox.PackStart (backgroundImageView, true, true, 0);
+			backgroundLargeImageVBox.Append (backgroundImageView);
 
-			backgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor.ToGdkColor ();
-			leftBorderEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTopEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationTableEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			configurationBottomEventBox.ModifyBg (StateType.Normal, backgroundColor);
-			backgroundLargeImageEventBox.ModifyBg (StateType.Normal, backgroundColor);
+			backgroundColor = Styles.NewProjectDialog.ProjectConfigurationLeftHandBackgroundColor;
+			WidgetBackground.Set (leftBorderEventBox, backgroundColor);
+			WidgetBackground.Set (configurationTopEventBox, backgroundColor);
+			WidgetBackground.Set (configurationTableEventBox, backgroundColor);
+			WidgetBackground.Set (configurationBottomEventBox, backgroundColor);
+			WidgetBackground.Set (backgroundLargeImageEventBox, backgroundColor);
 
 			if (wizardPage.TargetFrameworks.Count > 1) {
 				PopulateTargetFrameworks ();
@@ -129,37 +130,34 @@ namespace MonoDevelop.DotNetCore.Gui
 
 		protected virtual void Build ()
 		{
-			MonoDevelop.Components.Gui.Initialize (this);
-			MonoDevelop.Components.BinContainer.Attach (this);
-
 			Name = "MonoDevelop.DotNetCore.Gui.GtkDotNetCoreProjectTemplateWizardPageWidget";
 
-			mainHBox = new HBox {
+			mainHBox = new Box (Orientation.Horizontal, 0) {
 				Name = "mainHBox"
 			};
 
-			leftBorderEventBox = new EventBox {
+			leftBorderEventBox = new Box (Orientation.Vertical, 0) {
 				WidthRequest = 30,
 				Name = "leftBorderEventBox"
 			};
-			mainHBox.PackStart (leftBorderEventBox, false, true, 0);
+			mainHBox.Append (leftBorderEventBox);
 
-			configurationVBox = new VBox {
+			configurationVBox = new Box (Orientation.Vertical, 0) {
 				WidthRequest = 440,
 				Name = "configurationVBox"
 			};
 
-			configurationTopEventBox = new EventBox {
-				Name = "configurationTopEventBox"
+			configurationTopEventBox = new Box (Orientation.Vertical, 0) {
+				Name = "configurationTopEventBox",
+				Vexpand = true
 			};
-			configurationVBox.PackStart (configurationTopEventBox, true, true, 0);
+			configurationVBox.Append (configurationTopEventBox);
 
 			var showFrameworkSelection = wizardPage.TargetFrameworks.Count > 1;
 			var showAuthenticationSelection = wizardPage.SupportedAuthentications.Count > 0;
 
 			// Create the table of configurable options
-			uint tableRows =  (uint)(showFrameworkSelection && showAuthenticationSelection ? 4 : 2);
-			configurationTable = new Table (tableRows, 3, false) {
+			configurationTable = new Grid {
 				Name = "configurationTable",
 				RowSpacing = 7,
 				ColumnSpacing = 6
@@ -169,92 +167,105 @@ namespace MonoDevelop.DotNetCore.Gui
 				AddFrameworkSelection ();
 
 			if (showAuthenticationSelection)
-				AddAuthenticationSelection ((uint)(showFrameworkSelection ? 2 : 0));
+				AddAuthenticationSelection (showFrameworkSelection ? 2 : 0);
 
-			configurationTableEventBox = new EventBox {
+			configurationTableEventBox = new Box (Orientation.Vertical, 0) {
 				Name = "configurationTableEventBox"
 			};
-			configurationTableEventBox.Add (configurationTable);
-			configurationVBox.PackStart (configurationTableEventBox, false, false, 0);
+			configurationTableEventBox.Append (configurationTable);
+			configurationVBox.Append (configurationTableEventBox);
 
-			configurationBottomEventBox = new EventBox {
-				Name = "configurationBottomEventBox"
+			configurationBottomEventBox = new Box (Orientation.Vertical, 0) {
+				Name = "configurationBottomEventBox",
+				Vexpand = true
 			};
-			configurationVBox.PackStart (configurationBottomEventBox);
-			mainHBox.PackStart (configurationVBox);
+			configurationVBox.Append (configurationBottomEventBox);
+			mainHBox.Append (configurationVBox);
 
 			// Add the image
-			backgroundLargeImageEventBox = new EventBox {
-				Name = "backgroundLargeImageEventBox"
+			backgroundLargeImageEventBox = new Box (Orientation.Vertical, 0) {
+				Name = "backgroundLargeImageEventBox",
+				Hexpand = true
 			};
-			backgroundLargeImageVBox = new VBox {
-				Name = "backgroundLargeImageVBox"
+			backgroundLargeImageVBox = new Box (Orientation.Vertical, 0) {
+				Name = "backgroundLargeImageVBox",
+				Vexpand = true,
+				Hexpand = true
 			};
-			backgroundLargeImageEventBox.Add (backgroundLargeImageVBox);
-			mainHBox.PackStart (backgroundLargeImageEventBox);
+			backgroundLargeImageEventBox.Append (backgroundLargeImageVBox);
+			mainHBox.Append (backgroundLargeImageEventBox);
 
-			Add (mainHBox);
-
-			if (Child != null) {
-				Child.ShowAll ();
-			}
-
-			Hide ();
+			Child = mainHBox;
 		}
 
 		void AddFrameworkSelection()
 		{
-			targetFrameworkComboBox = ComboBox.NewText ();
+			targetFrameworkComboBox = new ComboBoxText ();
 			targetFrameworkComboBox.WidthRequest = 350;
 			targetFrameworkComboBox.Name = "targetFrameworkComboBox";
-			configurationTable.Attach (targetFrameworkComboBox, 1, 2, 1, 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (targetFrameworkComboBox, 1, 1, 1, 1);
 
 			targetFrameworkInformationLabel = new Label {
 				WidthRequest = 350,
 				Name = "targetFrameworkInformationLabel",
-				Xpad = 5,
+				MarginStart = 5,
+				MarginEnd = 5,
 				Xalign = 0F,
+				Halign = Align.Start,
 				LabelProp = GettextCatalog.GetString ("Select the target framework for your project."),
 				Justify = Justification.Left,
 				Wrap = true
 			};
-			configurationTable.Attach (targetFrameworkInformationLabel, 1, 2, 0, 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (targetFrameworkInformationLabel, 1, 0, 1, 1);
 
 			targetFrameworkLabel = new Label {
 				Name = "targetFrameworkLabel",
-				Xpad = 5,
+				MarginStart = 5,
+				MarginEnd = 5,
 				Xalign = 1F,
+				Halign = Align.End,
 				LabelProp = GettextCatalog.GetString ("Target Framework:"),
 				Justify = Justification.Right
 			};
-			configurationTable.Attach (targetFrameworkLabel, 0, 1, 1, 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (targetFrameworkLabel, 0, 1, 1, 1);
 		}
 
-		void AddAuthenticationSelection(uint primaryRow)
+		void AddAuthenticationSelection(int primaryRow)
 		{
-			authenticationComboBox = ComboBox.NewText ();
+			authenticationComboBox = new ComboBoxText ();
 			authenticationComboBox.WidthRequest = 350;
 			authenticationComboBox.Name = "authenticationComboBox";
-			configurationTable.Attach (authenticationComboBox, 1, 2, primaryRow, primaryRow + 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (authenticationComboBox, 1, primaryRow, 1, 1);
 
 			authenticationInformationLabel = new Label {
 				WidthRequest = 350,
 				Name = "authenticationInformationLabel",
-				Xpad = 5,
+				MarginStart = 5,
+				MarginEnd = 5,
 				Xalign = 0F,
+				Halign = Align.Start,
 				Justify = Justification.Left,
 				Wrap = true
 			};
-			configurationTable.Attach (authenticationInformationLabel, 1, 2, primaryRow + 1, primaryRow + 2, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (authenticationInformationLabel, 1, primaryRow + 1, 1, 1);
 
 			authenticationLabel = new Label {
 				Name = "authenticationLabel",
-				Xpad = 5,
+				MarginStart = 5,
+				MarginEnd = 5,
 				Xalign = 1F,
+				Halign = Align.End,
 				LabelProp = GettextCatalog.GetString ("Authentication:"),
 				Justify = Justification.Right
 			};
-			configurationTable.Attach (authenticationLabel, 0, 1, primaryRow, primaryRow + 1, AttachOptions.Fill, AttachOptions.Fill, 0, 0);
+			configurationTable.Attach (authenticationLabel, 0, primaryRow, 1, 1);
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing)
+				backgroundImage?.Dispose ();
+			base.Dispose (disposing);
 		}
 	}
 }

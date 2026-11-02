@@ -141,9 +141,20 @@ namespace MonoDevelop.SourceEditor
 				EndColumn = position.Column
 			};
 
-			var window = new DebugValueWindow ((Gtk.Window)(editor.GetNativeWidget<Gtk.Widget> ()).Toplevel, location, DebuggingService.CurrentFrame, (ObjectValue)item.Item, null);
+			var window = new DebugValueWindow (editor.GetNativeWidget<Gtk.Widget> ().Root as Gtk.Window, location, DebuggingService.CurrentFrame, (ObjectValue)item.Item, null);
 			IdeApp.CommandService.RegisterTopWindow (window);
-			return window;
+			return new PopoverTooltipWindow (window);
+		}
+
+		/// <summary>Exposes a popover based tooltip as a <see cref="Window"/> for the tooltip provider API.</summary>
+		sealed class PopoverTooltipWindow : Window
+		{
+			public Gtk.Popover Popover { get; }
+
+			public PopoverTooltipWindow (Gtk.Popover popover) : base (popover)
+			{
+				Popover = popover;
+			}
 		}
 
 		public override void ShowTooltipWindow (TextEditor editor, Window tipWindow, TooltipItem item, Xwt.ModifierKeys modifierState, int mouseX, int mouseY)
@@ -158,7 +169,7 @@ namespace MonoDevelop.SourceEditor
 				y += lineHeight;
 
 			var caret = new Gdk.Rectangle (mouseX, y, 1, lineHeight);
-			tooltip = (DebugValueWindow)tipWindow;
+			tooltip = (DebugValueWindow)((PopoverTooltipWindow)tipWindow).Popover;
 			tooltip.ShowPopup (editor, caret, PopupPosition.TopLeft);
 		}
 

@@ -8,7 +8,7 @@ namespace MonoDevelop.Deployment.Linux
 {
 	[System.ComponentModel.Category("widget")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class BasicOptionPanelWidget : Gtk.Bin
+	public partial class BasicOptionPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		SolutionFolderItem entry;
 		
@@ -16,8 +16,7 @@ namespace MonoDevelop.Deployment.Linux
 		{
 			this.Build();
 			
-			WidgetFlags |= Gtk.WidgetFlags.NoShowAll;
-			
+
 			this.entry = entry;
 			if (entry is DotNetProject) {
 				DotNetProject project = (DotNetProject) entry;

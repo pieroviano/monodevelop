@@ -67,7 +67,7 @@ namespace MonoDevelop.Gettext.Editor
 				IntPtr ptr = gtkspell_new_attach (tv.Handle, null, IntPtr.Zero);
 				if (ptr != IntPtr.Zero)
 					gtkspell_detach (ptr);
-				tv.Destroy ();
+				tv.Dispose ();
 				tv = null;
 				isSupported = true;
 			} catch {

@@ -33,34 +33,34 @@ using MonoDevelop.Components;
 
 namespace MonoDevelop.AspNet.Execution
 {
-	class XspOptionsPanelWidget : VBox
+	class XspOptionsPanelWidget : Box
 	{
 		Entry ipAddress = new Entry { WidthChars = 39 }; // sized for IPv6
 		SpinButton portNumber = new SpinButton (0, Int16.MaxValue, 1) { WidthChars = 5} ;
 		CheckButton verboseCheck = new CheckButton ();
-		readonly ComboBox sslMode = ComboBox.NewText ();
-		readonly ComboBox sslProtocol = ComboBox.NewText ();
-		readonly ComboBox keyType = ComboBox.NewText ();
-		readonly ComboBox passwordOptions = ComboBox.NewText ();
+		readonly ComboBoxText sslMode = new ComboBoxText ();
+		readonly ComboBoxText sslProtocol = new ComboBoxText ();
+		readonly ComboBoxText keyType = new ComboBoxText ();
+		readonly ComboBoxText passwordOptions = new ComboBoxText ();
 		readonly FileEntry keyLocation = new FileEntry ();
 		readonly FileEntry certLocation = new FileEntry ();
 		readonly Entry passwordEntry = new Entry { InvisibleChar = '●' };
 		
-		public XspOptionsPanelWidget (AspNetAppProjectFlavor project)
+		public XspOptionsPanelWidget (AspNetAppProjectFlavor project) : base (Orientation.Vertical, 6)
 		{
 			Build ();
 
 			XspParameters xPar = project.XspParameters;
 			
 			//index should be equivalent to XspSslMode enum
-			((ListStore) sslMode.Model).Clear ();
+			sslMode.RemoveAll ();
 			sslMode.AppendText (GettextCatalog.GetString ("None"));
 			sslMode.AppendText (GettextCatalog.GetString ("Enabled"));
 			sslMode.AppendText (GettextCatalog.GetString ("Accept Client Certificates"));
 			sslMode.AppendText (GettextCatalog.GetString ("Require Client Certificates"));
 			
 			//index should be equivalent to XspSslProtocol enum
-			((ListStore) sslProtocol.Model).Clear ();
+			sslProtocol.RemoveAll ();
 			sslProtocol.AppendText (GettextCatalog.GetString ("Default"));
 #pragma warning disable MD0005
 			sslProtocol.AppendText ("TLS");
@@ -68,14 +68,14 @@ namespace MonoDevelop.AspNet.Execution
 			sslProtocol.AppendText ("SSL 3");
 #pragma warning restore MD0005
 
-			((ListStore) keyType.Model).Clear ();
+			keyType.RemoveAll ();
 			keyType.AppendText (GettextCatalog.GetString ("None"));
 #pragma warning disable MD0005
 			keyType.AppendText ("Pkcs12");
 			keyType.AppendText ("PVK");
 #pragma warning restore MD0005
 
-			((ListStore) passwordOptions.Model).Clear ();
+			passwordOptions.RemoveAll ();
 			passwordOptions.AppendText (GettextCatalog.GetString ("None"));
 			passwordOptions.AppendText (GettextCatalog.GetString ("Ask"));
 			passwordOptions.AppendText (GettextCatalog.GetString ("Store (insecure)"));
@@ -93,80 +93,95 @@ namespace MonoDevelop.AspNet.Execution
 			passwordEntry.Text = xPar.PrivateKeyPassword;
 		}
 
+		static Label CreateLabel (string text)
+		{
+			return new Label (text) { Xalign = 0, Halign = Align.Start };
+		}
+
+		static Label CreateHeader (string text)
+		{
+			return new Label { Markup = "<b>" + text + "</b>", Xalign = 0, Halign = Align.Start };
+		}
+
+		static Box CreateHBox ()
+		{
+			return new Box (Orientation.Horizontal, 6);
+		}
+
 		void Build ()
 		{
-			Spacing = 6;
-
-			PackStart (new Label { Markup = "<b>" + GettextCatalog.GetString ("General Options") + "</b>", Xalign = 0 });
+			Append (CreateHeader (GettextCatalog.GetString ("General Options")));
 
 			var gpadLabel = new Label { WidthRequest = 12 };
-			var ipLabel = new Label (GettextCatalog.GetString ("IP address:")) { Xalign = 0 };
-			var ipHint = new Label (GettextCatalog.GetString ("(blank = localhost)")) { Xalign = 0 };
-			var ipHbox = new HBox (false, 6);
-			ipHbox.PackStart (ipAddress, false, false, 0);
-			ipHbox.PackStart (ipHint, false, false, 0);
-			var portLabel = new Label (GettextCatalog.GetString ("Port:")) { Xalign = 0 };
-			var portHint = new Label (GettextCatalog.GetString ("(0 = random)")) { Xalign = 0 };
-			var portHbox = new HBox (false, 6);
-			portHbox.PackStart (portNumber, false, false, 0);
-			portHbox.PackStart (portHint, false, false, 0);
+			var ipLabel = CreateLabel (GettextCatalog.GetString ("IP address:"));
+			var ipHint = CreateLabel (GettextCatalog.GetString ("(blank = localhost)"));
+			var ipHbox = CreateHBox ();
+			ipHbox.Append (ipAddress);
+			ipHbox.Append (ipHint);
+			var portLabel = CreateLabel (GettextCatalog.GetString ("Port:"));
+			var portHint = CreateLabel (GettextCatalog.GetString ("(0 = random)"));
+			var portHbox = CreateHBox ();
+			portHbox.Append (portNumber);
+			portHbox.Append (portHint);
 			verboseCheck.Label = GettextCatalog.GetString ("Verbose console output");
-			verboseCheck.Xalign = 0;
+			verboseCheck.Halign = Align.Start;
 
-			var ipTable = new Table (3, 3, false) { ColumnSpacing = 6, RowSpacing = 6 };
-			ipTable.Attach (gpadLabel, 0, 1, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			ipTable.Attach (ipLabel, 1, 2, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			ipTable.Attach (ipHbox, 2, 3, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			ipTable.Attach (portLabel, 1, 2, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			ipTable.Attach (portHbox, 2, 3, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			ipTable.Attach (verboseCheck, 1, 3, 2, 3, AttachOptions.Fill, 0, 0, 0);
-			PackStart (ipTable);
+			var ipTable = new Grid { ColumnSpacing = 6, RowSpacing = 6 };
+			ipTable.Attach (gpadLabel, 0, 0, 1, 1);
+			ipTable.Attach (ipLabel, 1, 0, 1, 1);
+			ipTable.Attach (ipHbox, 2, 0, 1, 1);
+			ipTable.Attach (portLabel, 1, 1, 1, 1);
+			ipTable.Attach (portHbox, 2, 1, 1, 1);
+			ipTable.Attach (verboseCheck, 1, 2, 2, 1);
+			Append (ipTable);
 
-			PackStart (new Label { Markup = "<b>" + GettextCatalog.GetString ("Security") + "</b>", Xalign = 0 });
+			Append (CreateHeader (GettextCatalog.GetString ("Security")));
 
 			var sslPadLabel = new Label { WidthRequest = 12 };
-			var sslModeLabel = new Label (GettextCatalog.GetString ("SSL mode:")) { Xalign = 0 };
-			var sslModeAlign = new Alignment (0, 0, 0, 0) { Child = sslMode };
-			var sslProtocolLabel = new Label (GettextCatalog.GetString ("SSL protocol:")) { Xalign = 0 };
-			var sslProtocolAlign = new Alignment (0, 0, 0, 0) { Child = sslProtocol };
+			var sslModeLabel = CreateLabel (GettextCatalog.GetString ("SSL mode:"));
+			sslMode.Halign = Align.Start;
+			var sslProtocolLabel = CreateLabel (GettextCatalog.GetString ("SSL protocol:"));
+			sslProtocol.Halign = Align.Start;
 
-			var sslTable = new Table (2, 3, false) { ColumnSpacing = 6, RowSpacing = 6 };
-			sslTable.Attach (sslPadLabel, 0, 1, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			sslTable.Attach (sslModeLabel, 1, 2, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			sslTable.Attach (sslModeAlign, 2, 3, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			sslTable.Attach (sslProtocolLabel, 1, 2, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			sslTable.Attach (sslProtocolAlign, 2, 3, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			PackStart (sslTable);
+			var sslTable = new Grid { ColumnSpacing = 6, RowSpacing = 6 };
+			sslTable.Attach (sslPadLabel, 0, 0, 1, 1);
+			sslTable.Attach (sslModeLabel, 1, 0, 1, 1);
+			sslTable.Attach (sslMode, 2, 0, 1, 1);
+			sslTable.Attach (sslProtocolLabel, 1, 1, 1, 1);
+			sslTable.Attach (sslProtocol, 2, 1, 1, 1);
+			Append (sslTable);
 
-			PackStart (new Label { Markup = "<b>" + GettextCatalog.GetString ("SSL Key") + "</b>", Xalign = 0 });
+			Append (CreateHeader (GettextCatalog.GetString ("SSL Key")));
 
 			var keyPadLabel = new Label { WidthRequest = 12 };
-			var keyTypeLabel = new Label (GettextCatalog.GetString ("Key type:")) { Xalign = 0 };
-			var keyTypeAlign = new Alignment (0, 0, 0, 0) { Child = keyType };
-			var keyFileLabel = new Label (GettextCatalog.GetString ("Key file:")) { Xalign = 0 };
-			var certFileLabel = new Label (GettextCatalog.GetString ("Certificate file:")) { Xalign = 0 };
-			var passwordLabel = new Label (GettextCatalog.GetString ("Password:")) { Xalign = 0 };
-			var passwordHbox = new HBox (false, 6);
-			passwordHbox.PackStart (passwordOptions, false, false, 0);
-			passwordHbox.PackStart (passwordEntry, true, true, 0);
+			var keyTypeLabel = CreateLabel (GettextCatalog.GetString ("Key type:"));
+			keyType.Halign = Align.Start;
+			var keyFileLabel = CreateLabel (GettextCatalog.GetString ("Key file:"));
+			var certFileLabel = CreateLabel (GettextCatalog.GetString ("Certificate file:"));
+			var passwordLabel = CreateLabel (GettextCatalog.GetString ("Password:"));
+			var passwordHbox = CreateHBox ();
+			passwordHbox.Append (passwordOptions);
+			passwordEntry.Hexpand = true;
+			passwordHbox.Append (passwordEntry);
+			keyLocation.Hexpand = true;
+			certLocation.Hexpand = true;
+			passwordHbox.Hexpand = true;
 
-			var keyTable = new Table (4, 4, false) { ColumnSpacing = 6, RowSpacing = 6 };
-			keyTable.Attach (keyPadLabel,     0, 1, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (keyTypeLabel,    1, 2, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (keyTypeAlign,    2, 3, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (keyFileLabel,    1, 2, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (keyLocation,     2, 4, 1, 2, AttachOptions.Expand | AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (certFileLabel,   1, 2, 2, 3, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (certLocation,    2, 4, 2, 3, AttachOptions.Expand | AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (passwordLabel,   1, 2, 3, 4, AttachOptions.Fill, 0, 0, 0);
-			keyTable.Attach (passwordHbox,    2, 4, 3, 4, AttachOptions.Expand | AttachOptions.Fill, 0, 0, 0);
-			PackStart (keyTable);
+			var keyTable = new Grid { ColumnSpacing = 6, RowSpacing = 6 };
+			keyTable.Attach (keyPadLabel,     0, 0, 1, 1);
+			keyTable.Attach (keyTypeLabel,    1, 0, 1, 1);
+			keyTable.Attach (keyType,         2, 0, 1, 1);
+			keyTable.Attach (keyFileLabel,    1, 1, 1, 1);
+			keyTable.Attach (keyLocation,     2, 1, 2, 1);
+			keyTable.Attach (certFileLabel,   1, 2, 1, 1);
+			keyTable.Attach (certLocation,    2, 2, 2, 1);
+			keyTable.Attach (passwordLabel,   1, 3, 1, 1);
+			keyTable.Attach (passwordHbox,    2, 3, 2, 1);
+			Append (keyTable);
 
 			sslMode.Changed += UpdateSensitivity;
 			keyType.Changed += UpdateSensitivity;
 			passwordOptions.Changed += UpdateSensitivity;
-
-			ShowAll ();
 		}
 		
 		public void Store (AspNetAppProjectFlavor project)

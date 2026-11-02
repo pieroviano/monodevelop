@@ -130,7 +130,7 @@ namespace MonoDevelop.Platform.Windows
 				MessageText = message,
 				CaptionText = GettextCatalog.GetString ("Credentials Required"),
 				StructureSize = Marshal.SizeOf (typeof (Native.CredentialUiInfo)),
-				ParentWindow = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow.GdkWindow)
+				ParentWindow = GdkWin32.HgdiobjGet (IdeApp.Workbench.RootWindow)
 			};
 
 			var save = false;

@@ -876,20 +876,28 @@ namespace MonoDevelop.Xml.Editor
 			} else {
 				if (ownerProjects.Count > 1)
 					index--;
-				var menu = new Menu ();
-				var mi = new MenuItem (GettextCatalog.GetString ("Select"));
-				mi.Activated += delegate {
-					SelectPath (index);
-				};
-				menu.Add (mi);
-				mi = new MenuItem (GettextCatalog.GetString ("Select contents"));
-				mi.Activated += delegate {
-					SelectPathContents (index);
-				};
-				menu.Add (mi);
-				menu.ShowAll ();
+				// GTK 4 has no Gtk.Menu: the path bar shows the returned widget inside a popover.
+				var menu = new Box (Orientation.Vertical, 0);
+				menu.Append (CreatePathMenuButton (GettextCatalog.GetString ("Select"), () => SelectPath (index)));
+				menu.Append (CreatePathMenuButton (GettextCatalog.GetString ("Select contents"), () => SelectPathContents (index)));
 				return menu;
 			}
+		}
+
+		static Button CreatePathMenuButton (string label, Action activated)
+		{
+			var button = new Button { Label = label, HasFrame = false, Halign = Align.Fill };
+			if (button.Child is Label buttonLabel)
+				buttonLabel.Halign = Align.Start;
+			button.Clicked += delegate {
+				// Close the popover hosting the menu before running the action.
+				Widget parent = button.Parent;
+				while (parent != null && !(parent is Popover))
+					parent = parent.Parent;
+				(parent as Popover)?.Popdown ();
+				activated ();
+			};
+			return button;
 		}
 
 
@@ -918,7 +926,7 @@ namespace MonoDevelop.Xml.Editor
 
 			public Xwt.Drawing.Image GetIcon (int n)
 			{
-				return ImageService.GetIcon (ext.ownerProjects [n].StockIcon, IconSize.Menu);
+				return ImageService.GetIcon (ext.ownerProjects [n].StockIcon, StockIconSize.Menu);
 			}
 
 			public object GetTag (int n)
@@ -1027,7 +1035,7 @@ namespace MonoDevelop.Xml.Editor
 			var path = new List<PathEntry> ();
 			if (ownerProjects.Count > 1) {
 				// Current project if there is more than one
-				path.Add (new PathEntry (ImageService.GetIcon (DocumentContext.Project.StockIcon, Gtk.IconSize.Menu), GLib.Markup.EscapeText (DocumentContext.Project.Name)) { Tag = DocumentContext.Project });
+				path.Add (new PathEntry (ImageService.GetIcon (DocumentContext.Project.StockIcon, MonoDevelop.Components.StockIconSize.Menu), GLib.Markup.EscapeText (DocumentContext.Project.Name)) { Tag = DocumentContext.Project });
 			}
 			if (l != null) {
 				for (int i = 0; i < l.Count; i++) {
@@ -1078,8 +1086,7 @@ namespace MonoDevelop.Xml.Editor
 			refillOutlineStore ();
 			
 			var sw = new CompactScrolledWindow ();
-			sw.Add (outlineTreeView);
-			sw.ShowAll ();
+			sw.Child = outlineTreeView;
 			return sw;
 		}
 		
@@ -1126,7 +1133,6 @@ namespace MonoDevelop.Xml.Editor
 		void refillOutlineStore ()
 		{
 			Runtime.AssertMainThread ();
-			Gdk.Threads.Enter ();
 			refreshingOutline = false;
 			if (outlineTreeStore == null || !outlineTreeView.IsRealized)
 				return;
@@ -1140,7 +1146,6 @@ namespace MonoDevelop.Xml.Editor
 				LoggingService.LogDebug ("Built outline in {0}ms", (DateTime.Now - start).Milliseconds);
 			}
 			
-			Gdk.Threads.Leave ();
 		}
 
 		void IOutlinedDocument.ReleaseOutlineWidget ()
@@ -1149,8 +1154,7 @@ namespace MonoDevelop.Xml.Editor
 				return;
 			
 			var w = (ScrolledWindow) outlineTreeView.Parent;
-			w.Destroy ();
-			outlineTreeView.Destroy ();
+			w.Child = null;
 			outlineTreeStore.Dispose ();
 			outlineTreeStore = null;
 			outlineTreeView = null;
@@ -1171,7 +1175,7 @@ namespace MonoDevelop.Xml.Editor
 			}
 		}
 		
-		void outlineTreeDataFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		void outlineTreeDataFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			var txtRenderer = (CellRendererText) cell;
 			var n = (XNode) model.GetValue (iter, 0);

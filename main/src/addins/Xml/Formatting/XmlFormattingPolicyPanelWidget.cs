@@ -30,15 +30,16 @@ using MonoDevelop.Components;
 using MonoDevelop.Components.AtkCocoaHelper;
 using MonoDevelop.Core;
 using MonoDevelop.Ide;
+using MonoDevelop.Ide.Gui;
 
 namespace MonoDevelop.Xml.Formatting
 {
-	class XmlFormattingPolicyPanelWidget : VBox
+	class XmlFormattingPolicyPanelWidget : Box
 	{
 		XmlFormattingPolicy policy;
 		ListStore store;
 		
-		public XmlFormattingPolicyPanelWidget ()
+		public XmlFormattingPolicyPanelWidget () : base (Orientation.Vertical, 6)
 		{
 			Build ();
 			
@@ -49,38 +50,36 @@ namespace MonoDevelop.Xml.Formatting
 			listView.Selection.Changed += HandleListViewSelectionChanged;
 			propertyGrid.ShowToolbar = false;
 //			propertyGrid.PropertySort = MonoDevelop.Components.PropertyGrid.PropertySort.NoSort;
-			propertyGrid.ShadowType = ShadowType.In;
 		}
 
-		VBox boxScopes;
+		Box boxScopes;
 		ScrolledWindow scrolledWindow;
 		TreeView listView;
 		Button buttonAdd;
 		Button buttonRemove;
 		Label labelScopes;
-		Table tableScopes;
+		Grid tableScopes;
 		DesignerSupport.PropertyGridWrapper propertyGrid;
 		Button buttonAdvanced;
 
 		void Build ()
 		{
-			Spacing = 6;
-
 			listView = new TreeView {
 				CanFocus = true,
 				HeadersVisible = false
 			};
 
-			scrolledWindow = new ScrolledWindow { ShadowType = ShadowType.In, Child = listView };
-			buttonAdd = new Button (Stock.Add);
-			buttonRemove = new Button (Stock.Remove);
+			scrolledWindow = new ScrolledWindow { HasFrame = true, Child = listView, Vexpand = true };
+			buttonAdd = new Button { Label = GettextCatalog.GetString ("_Add"), UseUnderline = true };
+			buttonRemove = new Button { Label = GettextCatalog.GetString ("_Remove"), UseUnderline = true };
 
 			labelScopes = new Label {
 				Xalign = 0F,
+				Halign = Align.Start,
 				Text = GettextCatalog.GetString ("Enter one or more XPath expressions to which this format applies")
 			};
 
-			tableScopes = new Table (3, 3, false) {
+			tableScopes = new Grid {
 				RowSpacing = 6,
 				ColumnSpacing = 6
 			};
@@ -96,30 +95,29 @@ namespace MonoDevelop.Xml.Formatting
 				UseUnderline = true
 			};
 
-			var buttonBox = new HBox (false, 6);
-			buttonBox.PackStart (buttonAdd, false, false, 0);
-			buttonBox.PackStart (buttonRemove, false, false, 0);
+			var buttonBox = new Box (Orientation.Horizontal, 6);
+			buttonBox.Append (buttonAdd);
+			buttonBox.Append (buttonRemove);
 
-			boxScopes = new VBox (false, 6);
-			boxScopes.PackStart (scrolledWindow, true, true, 0);
-			boxScopes.PackStart (buttonBox, false, false, 0);
+			boxScopes = new Box (Orientation.Vertical, 6);
+			boxScopes.Append (scrolledWindow);
+			boxScopes.Append (buttonBox);
 
-			var rightVBox = new VBox (false, 6);
-			rightVBox.PackStart (labelScopes, false, false, 0);
-			rightVBox.PackStart (tableScopes, false, false, 0);
-			rightVBox.PackStart (propertyGrid.Widget, true, true, 0);
+			var rightVBox = new Box (Orientation.Vertical, 6) { Hexpand = true };
+			rightVBox.Append (labelScopes);
+			rightVBox.Append (tableScopes);
+			propertyGrid.Widget.Vexpand = true;
+			rightVBox.Append (propertyGrid.Widget);
 
-			var mainBox = new HBox (false, 6);
-			mainBox.PackStart (boxScopes, false, false, 0);
-			mainBox.PackStart (rightVBox, true, true, 0);
+			var mainBox = new Box (Orientation.Horizontal, 6) { Vexpand = true };
+			mainBox.Append (boxScopes);
+			mainBox.Append (rightVBox);
 
-			var abbBox = new HBox (false, 6);
-			abbBox.PackStart (buttonAdvanced, false, false, 0);
+			var abbBox = new Box (Orientation.Horizontal, 6);
+			abbBox.Append (buttonAdvanced);
 
-			PackStart (mainBox, true, true, 0);
-			PackStart (abbBox, false, false, 0);
-
-			ShowAll ();
+			Append (mainBox);
+			Append (abbBox);
 
 			buttonAdd.Clicked += OnButtonAddClicked;
 			buttonRemove.Clicked += OnButtonRemoveClicked;
@@ -139,11 +137,11 @@ namespace MonoDevelop.Xml.Formatting
 			if (store.GetIterFirst (out it))
 				listView.Selection.SelectIter (it);
 			if (policy.Formats.Count == 0) {
-				boxScopes.Hide ();
-				buttonAdvanced.Show ();
+				boxScopes.Visible = false;
+				buttonAdvanced.Visible = true;
 			} else {
-				boxScopes.Show ();
-				buttonAdvanced.Hide ();
+				boxScopes.Visible = true;
+				buttonAdvanced.Visible = false;
 			}
 		}
 		
@@ -205,40 +203,38 @@ namespace MonoDevelop.Xml.Formatting
 		void UpdateScopes ()
 		{
 			if (currentFormat == policy.DefaultFormat || currentFormat == null) {
-				tableScopes.Hide ();
-				labelScopes.Hide ();
+				tableScopes.Visible = false;
+				labelScopes.Visible = false;
 				return;
 			}
-			labelScopes.Show ();
-			
-			foreach (Widget w in tableScopes.Children) {
-				tableScopes.Remove (w);
-				w.Destroy ();
-			}
-			for (uint n=0; n<currentFormat.ScopeXPath.Count; n++) {
-				int capn = (int) n;
-				var la = new Label (GettextCatalog.GetString ("XPath scope:"));
-				la.Xalign = 0;
-				tableScopes.Attach (la, 0, 1, n, n + 1, AttachOptions.Shrink, AttachOptions.Shrink, 0, 0);
-				var en = new Entry ();
-				en.Accessible.SetCommonAttributes("XmlFormattingPolicyPanel.Entry",
-				                                  null, GettextCatalog.GetString("Enter a new XPath expression to which this format applies"));
-				en.Accessible.SetTitleUIElement(la.Accessible);
-				la.Accessible.SetTitleFor(en.Accessible);
+			labelScopes.Visible = true;
+			tableScopes.Visible = true;
+
+			Widget child;
+			while ((child = tableScopes.FirstChild) != null)
+				tableScopes.Remove (child);
+
+			for (int n = 0; n < currentFormat.ScopeXPath.Count; n++) {
+				int capn = n;
+				var la = new Label (GettextCatalog.GetString ("XPath scope:")) { Xalign = 0, Halign = Align.Start };
+				tableScopes.Attach (la, 0, n, 1, 1);
+				var en = new Entry { Hexpand = true };
+				en.SetCommonAccessibilityAttributes ("XmlFormattingPolicyPanel.Entry", la,
+				                                     GettextCatalog.GetString ("Enter a new XPath expression to which this format applies"));
 
 				en.Text = currentFormat.ScopeXPath[capn];
-				tableScopes.Attach (en, 1, 2, n, n + 1, AttachOptions.Expand | AttachOptions.Fill, AttachOptions.Shrink, 0, 0);
+				tableScopes.Attach (en, 1, n, 1, 1);
 				en.Changed += delegate {
 					currentFormat.ScopeXPath [capn] = en.Text;
 					UpdateCurrentName ();
 				};
-				uint c = 2;
+				int c = 2;
 				if (currentFormat.ScopeXPath.Count != 1) {
-					var butRem = new Button (new ImageView (Stock.Remove, IconSize.Menu));
-					butRem.Accessible.SetCommonAttributes("XmlFormattingPolicyPanel.Remove",
-					                                      GettextCatalog.GetString("Remove Scope"),
-					                                      GettextCatalog.GetString("Remove this scope expression"));
-					tableScopes.Attach (butRem, 2, 3, n, n + 1, AttachOptions.Shrink, AttachOptions.Shrink, 0, 0);
+					var butRem = new Button { Child = new ImageView (GtkStock.Remove, StockIconSize.Menu) };
+					butRem.SetCommonAccessibilityAttributes ("XmlFormattingPolicyPanel.Remove",
+					                                         GettextCatalog.GetString ("Remove Scope"),
+					                                         GettextCatalog.GetString ("Remove this scope expression"));
+					tableScopes.Attach (butRem, 2, n, 1, 1);
 					butRem.Clicked += delegate {
 						currentFormat.ScopeXPath.RemoveAt (capn);
 						UpdateScopes ();
@@ -247,11 +243,11 @@ namespace MonoDevelop.Xml.Formatting
 					c++;
 				}
 				if (n == currentFormat.ScopeXPath.Count - 1) {
-					var butAdd = new Button (new ImageView (Stock.Add, IconSize.Menu));
-					butAdd.Accessible.SetCommonAttributes("XmlFormattingPolicyPanel.Add",
-					                                      GettextCatalog.GetString("Add Scope"),
-					                                      GettextCatalog.GetString("Add a new scope expression"));
-					tableScopes.Attach (butAdd, c, c + 1, n, n + 1, AttachOptions.Shrink, AttachOptions.Shrink, 0, 0);
+					var butAdd = new Button { Child = new ImageView (GtkStock.Add, StockIconSize.Menu) };
+					butAdd.SetCommonAccessibilityAttributes ("XmlFormattingPolicyPanel.Add",
+					                                         GettextCatalog.GetString ("Add Scope"),
+					                                         GettextCatalog.GetString ("Add a new scope expression"));
+					tableScopes.Attach (butAdd, c, n, 1, 1);
 					butAdd.Clicked += delegate {
 						currentFormat.ScopeXPath.Add ("");
 						UpdateScopes ();
@@ -259,9 +255,8 @@ namespace MonoDevelop.Xml.Formatting
 					};
 				}
 			}
-
-			tableScopes.ShowAll ();
 		}
+		
 		
 		protected virtual void OnButtonAddClicked (object sender, EventArgs e)
 		{
@@ -313,8 +308,8 @@ namespace MonoDevelop.Xml.Formatting
 		
 		protected virtual void OnButtonAdvancedClicked (object sender, EventArgs e)
 		{
-			boxScopes.Show ();
-			buttonAdvanced.Hide ();
+			boxScopes.Visible = true;
+			buttonAdvanced.Visible = false;
 		}
 	}
 }

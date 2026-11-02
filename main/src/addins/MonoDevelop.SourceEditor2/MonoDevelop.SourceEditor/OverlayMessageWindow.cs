@@ -32,7 +32,7 @@ using MonoDevelop.Ide.Editor.Highlighting;
 
 namespace MonoDevelop.SourceEditor
 {
-	class OverlayMessageWindow : Gtk.EventBox
+	class OverlayMessageWindow : MonoDevelop.Components.BinWidget
 	{
 		const int border = 8;
 
@@ -53,73 +53,79 @@ namespace MonoDevelop.SourceEditor
 
 		public OverlayMessageWindow ()
 		{
-			AppPaintable = true;
 		}
 
 		public void ShowOverlay (ExtensibleTextEditor textEditor)
 		{
 			this.textEditor = textEditor;
-			this.ShowAll (); 
 			textEditor.AddTopLevelWidget (this, 0, 0); 
 			textEditor.SizeAllocated += HandleSizeAllocated;
-			var child = (MonoTextEditor.EditorContainerChild)textEditor [this];
+			var child = textEditor [this];
 			child.FixedPosition = true;
 		}
 
-		protected override void OnDestroyed ()
+		bool destroyed;
+
+		public override void Destroy ()
 		{
-			base.OnDestroyed ();
+			if (!destroyed) {
+				destroyed = true;
+				if (textEditor != null) {
+					textEditor.SizeAllocated -= HandleSizeAllocated;
+					textEditor.Remove (this);
+					textEditor = null;
+				}
+			}
+			base.Destroy ();
+		}
+
+		protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
+			base.OnMeasure (orientation, for_size, out minimum, out natural, out minimum_baseline, out natural_baseline);
+
+			if (orientation == Orientation.Horizontal && SizeFunc != null && textEditor != null) {
+				minimum = natural = Math.Min (SizeFunc (), textEditor.Allocation.Width - border * 2);
+			}
+		}
+
+		protected override void OnSizeAllocate (int width, int height, int baseline)
+		{
+			base.OnSizeAllocate (width, height, baseline);
+			AdjustPositionInEditor (width, height);
+		}
+
+		void HandleSizeAllocated (object o, EventArgs args)
+		{
+			AdjustPositionInEditor (Width, Height);
+		}
+
+		void AdjustPositionInEditor (int width, int height)
+		{
+			if (textEditor == null)
+				return;
+			textEditor.MoveTopLevelWidget (this, (textEditor.Allocation.Width - width) / 2, textEditor.Allocation.Height - height - 8);
+		}
+
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
+		{
 			if (textEditor != null) {
-				textEditor.SizeAllocated -= HandleSizeAllocated;
-				textEditor = null;
-			}
-		}
+				snapshot.DrawCairo (this, cr => {
+					cr.LineWidth = 1;
+					cr.Rectangle (0, 0, Width, Height);
 
-		protected override void OnSizeRequested (ref Requisition requisition)
-		{
-			base.OnSizeRequested (ref requisition);
+					cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationTextBackground));
+					cr.Fill ();
+					cr.RoundedRectangle (0, 0, Width, Height, 3);
+					cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationTextBackground));
+					cr.FillPreserve ();
 
-			if (SizeFunc != null) {
-				requisition.Width = Math.Min (SizeFunc (), textEditor.Allocation.Width - border * 2);
-			}
-
-		}
-
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
-		{
-			base.OnSizeAllocated (allocation);
-			AdjustPositionInEditor (allocation);
-		}
-
-		void HandleSizeAllocated (object o, Gtk.SizeAllocatedArgs args)
-		{
-			AdjustPositionInEditor (Allocation);
-		}
-
-		void AdjustPositionInEditor (Gdk.Rectangle alloc)
-		{
-			textEditor.MoveTopLevelWidget (this, (textEditor.Allocation.Width - alloc.Width) / 2, textEditor.Allocation.Height - alloc.Height - 8);
-		}
-
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-		{
-			using (var cr = CairoHelper.Create (evnt.Window)) {
-				cr.LineWidth = 1;
-				cr.Rectangle (0, 0, Allocation.Width, Allocation.Height);
-
-				cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationTextBackground));
-				cr.Fill ();
-				cr.RoundedRectangle (0, 0, Allocation.Width, Allocation.Height, 3);
-				cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationTextBackground));
-				cr.FillPreserve ();
-
-				cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationBorder));
-				cr.Stroke();
+					cr.SetSourceColor (SyntaxHighlightingService.GetColor (textEditor.EditorTheme, EditorThemeColors.NotificationBorder));
+					cr.Stroke();
+				});
 			}
 
-			return base.OnExposeEvent (evnt);
+			base.OnSnapshot (snapshot);
 		}
 
 	}
 }
-

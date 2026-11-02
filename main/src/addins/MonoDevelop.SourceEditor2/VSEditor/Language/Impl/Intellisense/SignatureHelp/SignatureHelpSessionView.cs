@@ -230,7 +230,7 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
             ((INotifyCollectionChanged)_session.Signatures).CollectionChanged += this.OnSignatures_CollectionChanged;
 
             // Ensure we watch the view for layouts and resize it to ensure its contents fit
-            _signatureWpfTextView.SizeAllocated += this.OnTextView_LayoutChanged;
+            _sizeObserver = MonoDevelop.SourceEditor.EditorWidgetExtensions.ObserveSizeChanged(_signatureWpfTextView, this.OnTextView_LayoutChanged);
 
             // Add the session as a property to the signature help text buffer.  This will be used by the current parameter bolding
             // classifier.
@@ -240,7 +240,9 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
             this.UpdateSignatureInfo();
         }
 
-        private void OnTextView_LayoutChanged(object o, SizeAllocatedArgs args)
+        private IDisposable _sizeObserver;
+
+        private void OnTextView_LayoutChanged()
         {
             AutoSizeSignatureTextView();
         }
@@ -261,7 +263,8 @@ namespace Microsoft.VisualStudio.Language.Intellisense.Implementation
             }
             ((INotifyCollectionChanged)_session.Signatures).CollectionChanged -= this.OnSignatures_CollectionChanged;
 
-            _signatureWpfTextView.SizeAllocated -= this.OnTextView_LayoutChanged;
+            _sizeObserver?.Dispose();
+            _sizeObserver = null;
 
             this.PagerVisibility = false;
             this.SignatureDocumentationVisibility = false;

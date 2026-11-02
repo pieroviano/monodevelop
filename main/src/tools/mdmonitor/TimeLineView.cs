@@ -26,7 +26,6 @@
 
 using System;
 using Gtk;
-using Gdk;
 using System.Collections.Generic;
 using MonoDevelop.Core.Instrumentation;
 using MonoDevelop.Components;
@@ -35,7 +34,7 @@ using System.Linq;
 namespace Mono.Instrumentation.Monitor
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	class TimeLineView: EventBox
+	class TimeLineView: DrawingArea
 	{
 		Counter mainCounter;
 		CounterValue mainValue;
@@ -47,6 +46,7 @@ namespace Mono.Instrumentation.Monitor
 		int baseTime;
 		CounterValueInfo focusedValue;
 		CounterValueInfo overValue;
+		CounterValueInfo hoverExpander;
 		
 		Pango.Layout layout;
 		
@@ -62,7 +62,11 @@ namespace Mono.Instrumentation.Monitor
 		
 		class HotSpot
 		{
-			public Rectangle Rect;
+			public int X, Y, Width, Height;
+			public bool Contains (double x, double y)
+			{
+				return x >= X && x < X + Width && y >= Y && y < Y + Height;
+			}
 			public System.Action Action;
 			public System.Action OnMouseOver;
 			public System.Action OnMouseLeave;
@@ -83,9 +87,11 @@ namespace Mono.Instrumentation.Monitor
 		
 		public TimeLineView ()
 		{
-			layout = new Pango.Layout (this.PangoContext);
+			layout = CreatePangoLayout (null);
 			layout.FontDescription = Pango.FontDescription.FromString ("Tahoma 8");
-			Events |= EventMask.PointerMotionMask | EventMask.LeaveNotifyMask;
+			DrawFunc = OnDraw;
+			this.AddMotionHandler ((x, y) => OnMotion (x, y), null, OnLeave);
+			this.AddClickHandler (OnPressed);
 		}
 		
 		
@@ -277,7 +283,10 @@ namespace Mono.Instrumentation.Monitor
 		HotSpot AddHotSpot (double x, double y, double w, double h)
 		{
 			HotSpot hp = new HotSpot ();
-			hp.Rect = new Rectangle ((int)x, (int)y, (int)w, (int)h);
+			hp.X = (int)x;
+			hp.Y = (int)y;
+			hp.Width = (int)w;
+			hp.Height = (int)h;
 			hostSpots.Add (hp);
 			return hp;
 		}
@@ -303,10 +312,10 @@ namespace Mono.Instrumentation.Monitor
 			});
 		}
 		
-		protected override bool OnMotionNotifyEvent (EventMotion evnt)
+		void OnMotion (double x, double y)
 		{
 			foreach (HotSpot hp in hostSpots) {
-				if (hp.Rect.Contains ((int)evnt.X, (int)evnt.Y) && hp.OnMouseOver != null) {
+				if (hp.Contains (x, y) && hp.OnMouseOver != null) {
 					if (!hp.IsOver && hp.OnMouseOver != null) {
 						hp.IsOver = true;
 						hp.OnMouseOver ();
@@ -318,10 +327,9 @@ namespace Mono.Instrumentation.Monitor
 					}
 				}
 			}
-			return base.OnMotionNotifyEvent (evnt);
 		}
 
-		protected override bool OnLeaveNotifyEvent (EventCrossing evnt)
+		void OnLeave ()
 		{
 			foreach (HotSpot hp in hostSpots) {
 				if (hp.IsOver && hp.OnMouseLeave != null) {
@@ -330,26 +338,24 @@ namespace Mono.Instrumentation.Monitor
 					break;
 				}
 			}
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 		
-		protected override bool OnButtonPressEvent (EventButton evnt)
+		void OnPressed (ClickInfo evnt)
 		{
 			foreach (HotSpot hp in hostSpots) {
-				if (hp.Rect.Contains ((int)evnt.X, (int)evnt.Y) && hp.Action != null) {
+				if (hp.Contains (evnt.X, evnt.Y) && hp.Action != null) {
 					hp.Action ();
 					break;
 				}
 			}
-			return base.OnButtonPressEvent (evnt);
 		}
 
 		
-		protected override bool OnExposeEvent (EventExpose evnt)
+		void OnDraw (DrawingArea area, Cairo.Context ctx, int width, int height)
 		{
 			if (data == null)
 				BuildData ();
-			
+
 			hostSpots.Clear ();
 			int ytop = padding;
 			int markerX = 3;
@@ -358,95 +364,90 @@ namespace Mono.Instrumentation.Monitor
 			int ty = ytop;
 			int maxx = lx;
 			int maxy = 0;
-			
+
 			DateTime initialTime = mainValue.TimeStamp;
-			
-			Cairo.Context ctx = CairoHelper.Create (GdkWindow);
+			Gdk.RGBA foreground = StyleContext.Color;
 
-			using (Gdk.GC gc = new Gdk.GC (GdkWindow)) {
-				gc.RgbFgColor = Style.White;
-				GdkWindow.DrawRectangle (gc, true, 0, 0, Allocation.Width, Allocation.Height);
+			ctx.SetSourceRGB (1, 1, 1);
+			ctx.Paint ();
 
-				// Draw full time marker
+			// Draw full time marker
 
+			ctx.NewPath ();
+			ctx.Rectangle (markerX, ytop + baseTime + 0.5, MarkerWidth / 2, ((mainValue.Duration.TotalMilliseconds * scale) / 1000));
+			HslColor hsl = foreground;
+			hsl.L = 0.8;
+			ctx.SetSourceColor (hsl);
+			ctx.Fill ();
+
+			// Draw values
+
+			foreach (CounterValueInfo val in data) {
+				DrawValue (ctx, foreground, initialTime, ytop, lx, tx, ref ty, ref maxx, ref maxy, 0, val);
+			}
+
+			if (ty > maxy)
+				maxy = ty;
+
+			int totalms = (int)mainValue.Duration.TotalMilliseconds;
+			int marks = (totalms / 1000) + 1;
+
+			ctx.LineWidth = 1;
+
+			for (int n = 0; n <= marks; n++) {
 				ctx.NewPath ();
-				ctx.Rectangle (markerX, ytop + baseTime + 0.5, MarkerWidth / 2, ((mainValue.Duration.TotalMilliseconds * scale) / 1000));
-				HslColor hsl = Style.Foreground (Gtk.StateType.Normal);
-				hsl.L = 0.8;
-				ctx.SetSourceColor (hsl);
-				ctx.Fill ();
+				int y = ytop + (int)(n * scale) + baseTime;
+				ctx.MoveTo (markerX, y + 0.5);
+				ctx.LineTo (markerX + MarkerWidth, y + 0.5);
+				ctx.SetSourceColor (foreground.ToCairoColor ());
+				ctx.Stroke ();
 
-				// Draw values
+				y += 2;
+				layout.SetText (n + "s");
+				ctx.MoveTo (markerX + 1, y + 2);
+				Pango.CairoHelper.ShowLayout (ctx, layout);
 
-				foreach (CounterValueInfo val in data) {
-					DrawValue (ctx, gc, initialTime, ytop, lx, tx, ref ty, ref maxx, ref maxy, 0, val);
-				}
+				int tw, th;
+				layout.GetPixelSize (out tw, out th);
+				y += th;
 
-				if (ty > maxy)
-					maxy = ty;
-
-				int totalms = (int)mainValue.Duration.TotalMilliseconds;
-				int marks = (totalms / 1000) + 1;
-
-				ctx.LineWidth = 1;
-				gc.RgbFgColor = Style.Foreground (Gtk.StateType.Normal);
-
-				for (int n = 0; n <= marks; n++) {
-					ctx.NewPath ();
-					int y = ytop + (int)(n * scale) + baseTime;
-					ctx.MoveTo (markerX, y + 0.5);
-					ctx.LineTo (markerX + MarkerWidth, y + 0.5);
-					ctx.SetSourceColor (Style.Foreground (Gtk.StateType.Normal).ToCairoColor ());
-					ctx.Stroke ();
-
-					y += 2;
-					layout.SetText (n + "s");
-					GdkWindow.DrawLayout (gc, markerX + 1, y + 2, layout);
-
-					int tw, th;
-					layout.GetPixelSize (out tw, out th);
-					y += th;
-
-					if (y > maxy)
+				if (y > maxy)
 					maxy = y;
 			}
-			}
-			
-			((IDisposable)ctx).Dispose ();
-			
+
 			maxy += padding;
 			maxx += padding;
-			
+
 			if (lastHeight != maxy || lastWidth != maxx) {
 				lastWidth = maxx;
 				lastHeight = maxy;
-				SetSizeRequest (maxx, maxy);
+				ContentWidth = maxx;
+				ContentHeight = maxy;
 			}
-
-			return true;
 		}
-		
-		void DrawValue (Cairo.Context ctx, Gdk.GC gc, DateTime initialTime, int ytop, int lx, int tx, ref int ty, ref int maxx, ref int maxy, int indent, CounterValueInfo val)
+
+		void DrawValue (Cairo.Context ctx, Gdk.RGBA foreground, DateTime initialTime, int ytop, int lx, int tx, ref int ty, ref int maxx, ref int maxy, int indent, CounterValueInfo val)
 		{
-			Gdk.Color color;
+			Gdk.RGBA color;
 			if (val.Counter != null)
 				color = val.Counter.GetColor ();
 			else
-				color = Style.Black;
-			
+				color = new Gdk.RGBA { Alpha = 1f };
+
 			// Draw text
-			gc.RgbFgColor = color;
-			
+			ctx.SetSourceColor (color.ToCairoColor ());
+
 			double ms = (val.Time - initialTime).TotalMilliseconds;
-			
+
 			string txt = (ms / 1000).ToString ("0.00000") + ": " + (val.Duration.TotalMilliseconds / 1000).ToString ("0.00000") + " " + val.Trace;
 			layout.SetText (txt);
-			GdkWindow.DrawLayout (gc, tx + indent, ty, layout);
+			ctx.MoveTo (tx + indent, ty);
+			Pango.CairoHelper.ShowLayout (ctx, layout);
 			int tw, th;
 			layout.GetPixelSize (out tw, out th);
 			if (tx + tw + indent > maxx)
 				maxx = tx + tw + indent;
-			
+
 			HotSpot hp = AddHotSpot (tx + indent, ty, tw, th);
 			int tempTy = ty;
 			hp.Action = delegate {
@@ -461,10 +462,10 @@ namespace Mono.Instrumentation.Monitor
 				focusedValue = val;
 				QueueDraw ();
 			};
-			
+
 			// Draw time marker
 			int ytime = ytop + (int) ((ms * scale) / 1000) + baseTime;
-			
+
 			if (val == focusedValue || val == overValue) {
 				ctx.NewPath ();
 				double dx = val == focusedValue ? 0 : 2;
@@ -474,7 +475,7 @@ namespace Mono.Instrumentation.Monitor
 				ctx.SetSourceColor (hsl);
 				ctx.Fill ();
 			}
-			
+
 			ctx.NewPath ();
 			ctx.LineWidth = 1;
 			ctx.MoveTo (lx + 0.5, ytime + 0.5);
@@ -483,55 +484,54 @@ namespace Mono.Instrumentation.Monitor
 			ctx.LineTo (tx + indent - 3 + 0.5, ty + (th / 2) + 0.5);
 			ctx.SetSourceColor (color.ToCairoColor ());
 			ctx.Stroke ();
-			
+
 			// Expander
-			
+
 			bool incLine = true;
-			
+
 			if (val.CanExpand) {
 				double ex = tx + indent - 3 - ExpanderSize - 2 + 0.5;
 				double ey = ty + (th / 2) - (ExpanderSize/2) + 0.5;
 				hp = AddHotSpot (ex, ey, ExpanderSize, ExpanderSize);
-				DrawExpander (ctx, ex, ey, val.Expanded, false);
+				DrawExpander (ctx, foreground, ex, ey, val.Expanded, val == hoverExpander);
 				hp.OnMouseOver = delegate {
-					using (Cairo.Context c = CairoHelper.Create (GdkWindow)) {
-						DrawExpander (c, ex, ey, val.Expanded, true);
-					}
+					hoverExpander = val;
+					QueueDraw ();
 				};
 				hp.OnMouseLeave = delegate {
-					using (Cairo.Context c = CairoHelper.Create (GdkWindow)) {
-						DrawExpander (c, ex, ey, val.Expanded, false);
-					}
+					if (hoverExpander == val)
+						hoverExpander = null;
+					QueueDraw ();
 				};
 				hp.Action = delegate {
 					ToggleExpand (val);
 				};
-				
+
 				if (val.Expanded && val.ExpandedTimerTraces.Count > 0) {
 					ty += th + LineSpacing;
 					foreach (CounterValueInfo cv in val.ExpandedTimerTraces)
-						DrawValue (ctx, gc, initialTime, ytop, lx, tx, ref ty, ref maxx, ref maxy, indent + ChildIndent, cv);
+						DrawValue (ctx, foreground, initialTime, ytop, lx, tx, ref ty, ref maxx, ref maxy, indent + ChildIndent, cv);
 					incLine = false;
 				}
 			}
 			if (incLine)
 				ty += th + LineSpacing;
-			
+
 			if (ytime > maxy)
 				maxy = ytime;
 		}
-		
-		void DrawExpander (Cairo.Context ctx, double ex, double ey, bool expanded, bool hilight)
+
+		void DrawExpander (Cairo.Context ctx, Gdk.RGBA foreground, double ex, double ey, bool expanded, bool hilight)
 		{
 			ctx.NewPath ();
 			ctx.LineWidth = 1;
 			ctx.Rectangle (ex, ey, ExpanderSize, ExpanderSize);
 			if (hilight)
-				ctx.SetSourceColor (Style.Background (Gtk.StateType.Normal).ToCairoColor ());
+				ctx.SetSourceColor (HslColor.FromHsl (0, 0, 0.85));
 			else
-				ctx.SetSourceColor (Style.White.ToCairoColor ());
+				ctx.SetSourceRGB (1, 1, 1);
 			ctx.FillPreserve ();
-			ctx.SetSourceColor (Style.Foreground (Gtk.StateType.Normal).ToCairoColor ());
+			ctx.SetSourceColor (foreground.ToCairoColor ());
 			ctx.Stroke ();
 			ctx.NewPath ();
 			ctx.MoveTo (ex + 2, ey + (ExpanderSize/2));
@@ -543,14 +543,17 @@ namespace Mono.Instrumentation.Monitor
 			ctx.Stroke ();
 		}
 
-		protected override void OnDestroyed ()
+		public override void Destroy ()
 		{
+			if (timeAnim != 0) {
+				GLib.Source.Remove (timeAnim);
+				timeAnim = 0;
+			}
 			if (layout != null) {
 				layout.Dispose ();
 				layout = null;
 			}
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 	}
 }
-

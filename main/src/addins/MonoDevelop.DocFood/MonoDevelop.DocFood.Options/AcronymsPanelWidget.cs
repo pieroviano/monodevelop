@@ -30,7 +30,7 @@ using MonoDevelop.Ide.Gui.Dialogs;
 namespace MonoDevelop.DocFood.Options
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class AcronymsPanelWidget : Gtk.Bin
+	partial class AcronymsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 //		DocConfig config;
 		

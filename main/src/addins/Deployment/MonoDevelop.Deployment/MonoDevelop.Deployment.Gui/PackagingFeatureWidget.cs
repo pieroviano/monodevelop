@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 
 using System;
 using System.Collections;
@@ -10,7 +11,7 @@ namespace MonoDevelop.Deployment.Gui
 {
 	[System.ComponentModel.Category("MonoDevelop.Deployment")]
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class PackagingFeatureWidget : Gtk.Bin
+	internal partial class PackagingFeatureWidget : MonoDevelop.Components.BinWidget
 	{
 		SolutionFolderItem entry;
 		SolutionFolder parentFolder;
@@ -60,14 +61,14 @@ namespace MonoDevelop.Deployment.Gui
 			}
 			
 			string label;
-			Gtk.VBox vbox;
+			Gtk.Box vbox;
 			
 			if (list.Count > 0)
 			{
 				label = GettextCatalog.GetString ("Add the new project to the Packaging Project '{0}'", pname);
 				Gtk.CheckButton checkAddNew = new Gtk.CheckButton (label);
 				checkAddNew.Show ();
-				box.PackStart (checkAddNew, false, false, 0);
+				DesignerLayout.Pack (box, checkAddNew, false);
 				
 				Gtk.Widget hbox;
 				AddBox (box, out hbox, out vbox);
@@ -82,9 +83,9 @@ namespace MonoDevelop.Deployment.Gui
 				label = GettextCatalog.GetString ("Add the project to existing packages");
 				Gtk.CheckButton checkAddExist = new Gtk.CheckButton (label);
 				checkAddExist.Show ();
-				vbox.PackStart (checkAddExist, false, false, 0);
+				DesignerLayout.Pack (vbox, checkAddExist, false);
 				
-				Gtk.VBox vboxPacks;
+				Gtk.Box vboxPacks;
 				Gtk.Widget thbox;
 				AddBox (vbox, out thbox, out vboxPacks);
 				checkAddExist.Toggled += delegate {
@@ -99,7 +100,7 @@ namespace MonoDevelop.Deployment.Gui
 						label += " (" + p.PackageBuilder.Description + ")";
 					Gtk.CheckButton checkPackage = new Gtk.CheckButton (label);
 					checkPackage.Show ();
-					vboxPacks.PackStart (checkPackage, false, false, 0);
+					DesignerLayout.Pack (vboxPacks, checkPackage, false);
 					RegisterCheck (checkPackage, project, p);
 				}
 				
@@ -114,14 +115,14 @@ namespace MonoDevelop.Deployment.Gui
 			}
 		}
 		
-		void AddCreatePackageSection (Gtk.VBox vbox, string label, PackagingProject parentProject, bool showCheck)
+		void AddCreatePackageSection (Gtk.Box vbox, string label, PackagingProject parentProject, bool showCheck)
 		{
-			Gtk.VBox vboxNewPacks;
+			Gtk.Box vboxNewPacks;
 			Gtk.Widget hbox;
 			if (showCheck) {
 				Gtk.CheckButton check = new Gtk.CheckButton (label);
 				check.Show ();
-				vbox.PackStart (check, false, false, 0);
+				DesignerLayout.Pack (vbox, check, false);
 				
 				AddBox (vbox, out hbox, out vboxNewPacks);
 				check.Toggled += delegate {
@@ -132,7 +133,7 @@ namespace MonoDevelop.Deployment.Gui
 			} else {
 				Gtk.Label lab = new Gtk.Label (label);
 				lab.Show ();
-				vbox.PackStart (lab, false, false, 0);
+				DesignerLayout.Pack (vbox, lab, false);
 				AddBox (vbox, out hbox, out vboxNewPacks);
 				hbox.Show ();
 			}
@@ -163,8 +164,8 @@ namespace MonoDevelop.Deployment.Gui
 				else {
 					Gtk.CheckButton checkBuilder = new Gtk.CheckButton (pb.Description);
 					checkBuilder.Show ();
-					vboxNewPacks.PackStart (checkBuilder, false, false, 0);
-					Gtk.VBox vboxDefPacks;
+					DesignerLayout.Pack (vboxNewPacks, checkBuilder, false);
+					Gtk.Box vboxDefPacks;
 					Gtk.Widget thbox;
 					AddBox (vboxNewPacks, out thbox, out vboxDefPacks);
 					checkBuilder.Toggled += delegate {
@@ -178,30 +179,30 @@ namespace MonoDevelop.Deployment.Gui
 			}
 		}
 		
-		void AddPackageBuilder (Gtk.VBox parent, PackagingProject project, PackageBuilder pb)
+		void AddPackageBuilder (Gtk.Box parent, PackagingProject project, PackageBuilder pb)
 		{
 			Gtk.CheckButton check = new Gtk.CheckButton (pb.DefaultName);
 			check.Show ();
-			parent.PackStart (check, false, false, 0);
+			DesignerLayout.Pack (parent, check, false);
 			Package pkg = new Package (pb);
 			pkg.Name = pb.DefaultName;
 			RegisterCheck (check, project, pkg);
 		}
 		
-		void AddBox (Gtk.VBox parent, out Gtk.Widget box, out Gtk.VBox vbox)
+		void AddBox (Gtk.Box parent, out Gtk.Widget box, out Gtk.Box vbox)
 		{
-			Gtk.HBox hbox = new Gtk.HBox ();
+			Gtk.Box hbox = DesignerLayout.HBox (0);
 			Gtk.Label sep = new Gtk.Label ("");
 			sep.WidthRequest = 24;
 			sep.Show ();
-			hbox.PackStart (sep, false, false, 0);
+			DesignerLayout.Pack (hbox, sep, false);
 			
-			vbox = new Gtk.VBox ();
+			vbox = DesignerLayout.VBox (0);
 			vbox.Spacing = 6;
 			vbox.Show ();
-			hbox.PackStart (vbox, true, true, 0);
+			DesignerLayout.Pack (hbox, vbox, true);
 			
-			parent.PackStart (hbox, false, false, 0);
+			DesignerLayout.Pack (parent, hbox, false);
 			box = hbox;
 		}
 		
@@ -222,11 +223,8 @@ namespace MonoDevelop.Deployment.Gui
 				return;
 			}
 			
-			Gtk.Container co = w as Gtk.Container;
-			if (co != null) {
-				foreach (Gtk.Widget cw in co.Children)
-					DisableChecks (cw);
-			}
+			for (var cw = w.FirstChild; cw != null; cw = cw.NextSibling)
+				DisableChecks (cw);
 		}
 		
 		public void ApplyFeature ()

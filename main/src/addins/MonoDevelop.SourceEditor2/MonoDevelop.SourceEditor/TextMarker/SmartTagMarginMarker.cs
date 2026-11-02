@@ -80,7 +80,7 @@ namespace MonoDevelop.SourceEditor
 
 		public static Xwt.Drawing.Image GetIcon (SmartTagSeverity severity)
 		{
-			return ImageService.GetIcon (GetIconId (severity), Gtk.IconSize.Menu);
+			return ImageService.GetIcon (GetIconId (severity), MonoDevelop.Components.StockIconSize.Menu);
 		}
 
 		public override void InformMousePress (MonoTextEditor editor, Margin margin, MarginMouseEventArgs args)

@@ -31,73 +31,36 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.VBNetBinding
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class ConfigurationOptionsPanelWidget : Gtk.Bin
+	public partial class ConfigurationOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		DotNetProjectConfiguration config;
 		
 		public ConfigurationOptionsPanelWidget (Project project)
 		{
-			Gtk.CellRendererText cr;
-		 	Gtk.ListStore store;
 			
 			this.Build();
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbOptimize.Model = store;
-			cmbOptimize.PackStart (cr, false);
-			cmbOptimize.AddAttribute (cr, "text", 0);
+			cmbOptimize.AppendText ("Yes");
+			cmbOptimize.AppendText ("No");
 
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbDefineDEBUG.Model = store;
-			cmbDefineDEBUG.PackStart (cr, false);
-			cmbDefineDEBUG.AddAttribute (cr, "text", 0);
+			cmbDefineDEBUG.AppendText ("Yes");
+			cmbDefineDEBUG.AppendText ("No");
 
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbDefineTRACE.Model = store;
-			cmbDefineTRACE.PackStart (cr, false);
-			cmbDefineTRACE.AddAttribute (cr, "text", 0);
+			cmbDefineTRACE.AppendText ("Yes");
+			cmbDefineTRACE.AppendText ("No");
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("None");
-			store.AppendValues ("pdbonly");
-			store.AppendValues ("full");
-			cmbDebugType.Model = store;
-			cmbDebugType.PackStart (cr, false);
-			cmbDebugType.AddAttribute (cr, "text", 0);
+			cmbDebugType.AppendText ("None");
+			cmbDebugType.AppendText ("pdbonly");
+			cmbDebugType.AppendText ("full");
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbEnableWarnings.Model = store;
-			cmbEnableWarnings.PackStart (cr, false);
-			cmbEnableWarnings.AddAttribute (cr, "text", 0);
+			cmbEnableWarnings.AppendText ("Yes");
+			cmbEnableWarnings.AppendText ("No");
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbGenerateXmlDocumentation.Model = store;
-			cmbGenerateXmlDocumentation.PackStart (cr, false);
-			cmbGenerateXmlDocumentation.AddAttribute (cr, "text", 0);
+			cmbGenerateXmlDocumentation.AppendText ("Yes");
+			cmbGenerateXmlDocumentation.AppendText ("No");
 			
-			cr = new Gtk.CellRendererText ();
-			store = new Gtk.ListStore (typeof (string));
-			store.AppendValues ("Yes");
-			store.AppendValues ("No");
-			cmbRemoveIntegerChecks.Model = store;
-			cmbRemoveIntegerChecks.PackStart (cr, false);
-			cmbRemoveIntegerChecks.AddAttribute (cr, "text", 0);
+			cmbRemoveIntegerChecks.AppendText ("Yes");
+			cmbRemoveIntegerChecks.AppendText ("No");
 		}
 		
 		public void StorePanelContents ()

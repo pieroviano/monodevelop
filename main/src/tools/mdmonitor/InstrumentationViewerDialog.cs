@@ -50,7 +50,7 @@ namespace Mono.Instrumentation.Monitor
 		Dictionary<ChartView,InstrumentationChartView> chartWidgets = new Dictionary<ChartView, InstrumentationChartView> ();
 		InstrumentationChartView timersWidget;
 		
-		public InstrumentationViewerDialog (): base ("Instrumentation Monitor")
+		public InstrumentationViewerDialog ()
 		{
 			Build ();
 			
@@ -66,18 +66,8 @@ namespace Mono.Instrumentation.Monitor
 			
 			treeCounters.ExpandAll ();
 			treeCounters.Selection.Changed += HandleTreeCountersSelectionChanged;
-			ShowAll ();
+			Present ();
 		}
-		
-		protected override void OnRealized ()
-		{
-			base.OnRealized ();
-			
-			var c = Style.Background (Gtk.StateType.Normal).ToXwtColor ();
-			c.Light -= 0.1;
-			headerBox.ModifyBg (Gtk.StateType.Normal, c.ToGdkColor ());
-		}
-
 
 		void LoadViews ()
 		{
@@ -130,8 +120,11 @@ namespace Mono.Instrumentation.Monitor
 			string name;
 			do {
 				NewProfile dlg = new NewProfile ();
-				if (dlg.Run () == (int) Gtk.ResponseType.Cancel)
+				dlg.TransientFor = this;
+				if (dlg.RunModal () == (int) Gtk.ResponseType.Cancel) {
+					dlg.Destroy ();
 					return;
+				}
 				name = dlg.ViewName;
 				dlg.Destroy ();
 			} while (name == string.Empty);
@@ -153,7 +146,7 @@ namespace Mono.Instrumentation.Monitor
 		{
 			string msg = string.Format ("Are you sure you want to delete the profile '{0}'?", view.Name);
 			MessageDialog dlg = new MessageDialog (this, DialogFlags.Modal, MessageType.Question, ButtonsType.OkCancel, msg);
-			if (dlg.Run () == (int) ResponseType.Ok) {
+			if (dlg.RunModal () == (int) ResponseType.Ok) {
 				views.Remove (view);
 				SaveViews ();
 				UpdateViews ();
@@ -166,21 +159,20 @@ namespace Mono.Instrumentation.Monitor
 			Destroy ();
 		}
 
-		protected virtual void OnDeleteEvent (object o, Gtk.DeleteEventArgs args)
+		protected virtual void OnCloseRequest (object o, Gtk.CloseRequestArgs args)
 		{
-			Destroy ();
 			Gtk.Application.Quit ();
+			args.RetVal = false;
 		}
-		
-		protected override void OnDestroyed ()
+
+		public override void Destroy ()
 		{
-			if (timersWidget != null && timersWidget.Parent == null)
+			// Views are cached and may not be parented right now: stop their timers explicitly.
+			if (timersWidget != null)
 				timersWidget.Destroy ();
-			foreach (Widget w in chartWidgets.Values) {
-				if (w.Parent == null)
-					w.Destroy ();
-			}
-			base.OnDestroyed ();
+			foreach (var w in chartWidgets.Values)
+				w.Destroy ();
+			base.Destroy ();
 		}
 
 		TimeStatisticsView timerStatsView;
@@ -223,21 +215,14 @@ namespace Mono.Instrumentation.Monitor
 		
 		void SetView (Widget w, string title, bool showSaveButtons)
 		{
-			if (viewBox.Child != null) {
-				Widget ow = viewBox.Child;
-				viewBox.Remove (ow);
-			}
-			if (w != null) {
-				viewBox.Add (w);
-				w.Show ();
-			}
+			viewBox.Child = w;
 			
 			if (title != null) {
 				labelHeader.Markup = "<big><b>" + GLib.Markup.EscapeText (title) + "</b></big>";
-				headerBox.Show ();
+				headerBox.Visible = true;
 				buttonsBox.Visible = showSaveButtons;
 			} else {
-				headerBox.Hide ();
+				headerBox.Visible = false;
 				buttonsBox.Visible = false;
 			}
 		}
@@ -288,14 +273,14 @@ namespace Mono.Instrumentation.Monitor
 		protected virtual void OnOpenActionActivated (object sender, System.EventArgs e)
 		{
 			FileChooserDialog fdiag  = new FileChooserDialog ("Open Data File", this, Gtk.FileChooserAction.Open);
-			fdiag.AddButton (Gtk.Stock.Cancel, ResponseType.Cancel);
-			fdiag.AddButton (Gtk.Stock.Open, ResponseType.Ok);
+			fdiag.AddButton ("_Cancel", (int) ResponseType.Cancel);
+			fdiag.AddButton ("_Open", (int) ResponseType.Ok);
 			fdiag.SelectMultiple = false;
 			
 			try {
-				if (fdiag.Run () == (int) Gtk.ResponseType.Ok && fdiag.Filenames.Length > 0) {
+				if (fdiag.RunModal () == (int) Gtk.ResponseType.Ok && fdiag.File?.Path != null) {
 					treeCounters.Selection.UnselectAll ();
-					App.LoadServiceData (fdiag.Filenames[0]);
+					App.LoadServiceData (fdiag.File.Path);
 					UpdateViews ();
 				}
 			} finally {
@@ -303,24 +288,21 @@ namespace Mono.Instrumentation.Monitor
 			}
 		}
 		
-		public void InstallMacGlobalMenu ()
-		{
-			MacIntegration.IgeMacMenu.GlobalKeyHandlerEnabled = true;
-			MacIntegration.IgeMacMenu.MenuBar = menubar1;
-			var quitItem = (MenuItem) UIManager.GetWidget ("/menubar1/FileAction/ExitAction");
-			MacIntegration.IgeMacMenu.QuitMenuItem = quitItem;
-			menubar1.Hide ();
-		}
-	}		
+	}
 	
 	internal static class CounterColor
 	{
-		static Dictionary<Counter,Gdk.Color> colors = new Dictionary<Counter, Gdk.Color> ();
+		static Dictionary<Counter,Gdk.RGBA> colors = new Dictionary<Counter, Gdk.RGBA> ();
 		static Dictionary<Counter,Gdk.Pixbuf> icons = new Dictionary<Counter, Gdk.Pixbuf> ();
-		
-		public static Gdk.Color GetColor (this Counter c)
+
+		static Gdk.RGBA Rgb (int r, int g, int b)
 		{
-			Gdk.Color cachedColor;
+			return new Gdk.RGBA { Red = r / 255f, Green = g / 255f, Blue = b / 255f, Alpha = 1f };
+		}
+
+		public static Gdk.RGBA GetColor (this Counter c)
+		{
+			Gdk.RGBA cachedColor;
 			if (colors.TryGetValue (c, out cachedColor))
 				return cachedColor;
 
@@ -328,46 +310,52 @@ namespace Mono.Instrumentation.Monitor
 			int nc = c.Name.GetHashCode ();
 			if (nc < 0) nc = -nc;
 			Xwt.Drawing.Color col = Xwt.Drawing.Color.FromHsl (r.NextDouble (), r.NextDouble (), 0.3 + (r.NextDouble () * 0.3));
-			Gdk.Color gc = col.ToGdkColor ();
+			Gdk.RGBA gc = col.ToGdkColor ();
 			colors [c] = gc;
 			return gc;
 		}
-		
+
+		/// <summary>CSS color of the counter, for cell renderer "foreground" attributes.</summary>
+		public static string ToCss (this Gdk.RGBA color)
+		{
+			return color.GetHex ();
+		}
+
 		public static Gdk.Pixbuf GetIcon (this Counter c)
 		{
 			Gdk.Pixbuf cachedIcon;
 			if (icons.TryGetValue (c, out cachedIcon))
 				return cachedIcon;
-			
-			Gdk.Color gcolor = c.GetColor ();
-			uint color = (((uint)gcolor.Red >> 8) << 24) | (((uint)gcolor.Green >> 8) << 16) | (((uint)gcolor.Blue >> 8) << 8) | 0xff;
+
+			Gdk.RGBA gcolor = c.GetColor ();
+			uint color = (((uint)(gcolor.Red * 255)) << 24) | (((uint)(gcolor.Green * 255)) << 16) | (((uint)(gcolor.Blue * 255)) << 8) | 0xff;
 			cachedIcon = new Gdk.Pixbuf (Gdk.Colorspace.Rgb, true, 8, 16, 16);
 			cachedIcon.Fill (color);
 			icons [c] = cachedIcon;
 			return cachedIcon;
 		}
-		
-		public static Gdk.Color GetTimeColor (this CounterValue val, TimerCounter c)
+
+		public static Gdk.RGBA GetTimeColor (this CounterValue val, TimerCounter c)
 		{
 			long m = c.AverageTime.Ticks;
 			long v = val.Duration.Ticks;
 			if (v >= m*3)
-				return new Gdk.Color (255, 0, 0);
+				return Rgb (255, 0, 0);
 			if (v >= m*2)
-				return new Gdk.Color (150, 0, 0);
+				return Rgb (150, 0, 0);
 			if (v >= (long)((double)m) * 1.5d)
-				return new Gdk.Color (100, 0, 0);
+				return Rgb (100, 0, 0);
 			if (v >= (long)((double)m) * 1.1d)
-				return new Gdk.Color (50, 0, 0);
+				return Rgb (50, 0, 0);
 			if (v <= m/3)
-				return new Gdk.Color (0, 255, 0);
+				return Rgb (0, 255, 0);
 			if (v <= m/2)
-				return new Gdk.Color (0, 150, 0);
+				return Rgb (0, 150, 0);
 			if (v <= (long)((double)m) * 0.75d)
-				return new Gdk.Color (0, 100, 0);
+				return Rgb (0, 100, 0);
 			if (v <= (long)((double)m) * 0.90d)
-				return new Gdk.Color (00, 50, 0);
-			return new Gdk.Color (0, 0, 0);
+				return Rgb (0, 50, 0);
+			return Rgb (0, 0, 0);
 		}
 	}
 }

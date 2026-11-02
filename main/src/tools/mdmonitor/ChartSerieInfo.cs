@@ -114,7 +114,7 @@ namespace Mono.Instrumentation.Monitor
 			}
 		}
 		
-		public Gdk.Color GdkColor {
+		public Gdk.RGBA GdkColor {
 			get {
 				return Counter.GetColor ();
 			}

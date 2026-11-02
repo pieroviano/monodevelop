@@ -292,8 +292,8 @@ namespace MonoDevelop.SourceEditor
         {
             get
             {
-                Gdk.Display.Default.GetPointer(out int x, out int y);
-                return _popup.IsVisible ? _popup.Content.ScreenBounds.Contains(x, y) : false;
+                var mouse = Xwt.Desktop.MouseLocation;
+                return _popup.IsVisible ? _popup.Content.ScreenBounds.Contains(mouse.X, mouse.Y) : false;
             }
         }
 
@@ -325,7 +325,9 @@ namespace MonoDevelop.SourceEditor
             // For tooltips with style DismissOnMouseLeave
             if ((_style & (PopupStyles.DismissOnMouseLeaveText | PopupStyles.DismissOnMouseLeaveTextOrContent)) != 0)
             {
-                _textView.VisualElement.MotionNotifyEvent += this.OnMouseMove;
+                motionController = new Gtk.EventControllerMotion();
+                motionController.Motion += this.OnMouseMove;
+                _textView.VisualElement.AddController(motionController);
 
                 //TODO: This used to be Mouse.DirectlyOver, is it ok just use popup.Content?
                 _mouseContainer = _popup.Content;
@@ -349,7 +351,10 @@ namespace MonoDevelop.SourceEditor
             var hostWindow = MonoDevelop.Ide.IdeApp.Workbench.RootWindow;
             if (hostWindow != null) // for tests
             {
-                hostWindow.ConfigureEvent += OnLocationChanged;
+                // GTK 4 has no configure event: a size change of the main window is what can be observed
+                hostWindow.AddNotification("default-width", OnWindowGeometryChanged);
+                hostWindow.AddNotification("default-height", OnWindowGeometryChanged);
+                hostWindow.AddNotification("maximized", OnWindowGeometryChanged);
             }
 
             // Register to be notified when outlining regions are collapsed.
@@ -364,7 +369,11 @@ namespace MonoDevelop.SourceEditor
             // For tooltips with style DismissOnMouseLeave
             if ((_style & (PopupStyles.DismissOnMouseLeaveText | PopupStyles.DismissOnMouseLeaveTextOrContent)) != 0)
             {
-                _textView.VisualElement.MotionNotifyEvent -= this.OnMouseMove;
+                if (motionController != null)
+                {
+                    _textView.VisualElement.RemoveController(motionController);
+                    motionController = null;
+                }
                 if (_mouseContainer != null)
                 {
                     _mouseContainer.MouseExited -= this.OnMouseLeave;
@@ -384,7 +393,9 @@ namespace MonoDevelop.SourceEditor
             var hostWindow = MonoDevelop.Ide.IdeApp.Workbench.RootWindow;
             if (hostWindow != null) // for tests
             {
-                hostWindow.ConfigureEvent -= OnLocationChanged;
+                hostWindow.RemoveNotification("default-width", OnWindowGeometryChanged);
+                hostWindow.RemoveNotification("default-height", OnWindowGeometryChanged);
+                hostWindow.RemoveNotification("maximized", OnWindowGeometryChanged);
             }
 
             if (this.OutliningManager != null)
@@ -407,11 +418,18 @@ namespace MonoDevelop.SourceEditor
         }
 
         #region Event handlers
-        void OnMouseMove(object sender, Gtk.MotionNotifyEventArgs e)
+        Gtk.EventControllerMotion motionController;
+
+        void OnWindowGeometryChanged(object sender, GLib.NotifyArgs e)
+        {
+            OnLocationChanged(sender, EventArgs.Empty);
+        }
+
+        void OnMouseMove(object sender, Gtk.MotionArgs e)
         {
             if (_popup.IsVisible)
             {
-                Point mousePt = new Point(e.Event.X, e.Event.Y); //TODO: Check if we have to move to screen cordinate system
+                Point mousePt = new Point(e.X, e.Y); //TODO: Check if we have to move to screen cordinate system
 
                 if (this.ShouldClearToolTipOnMouseMove(mousePt))
                 {
@@ -665,14 +683,14 @@ namespace MonoDevelop.SourceEditor
         internal abstract class PopupOrWindowContainer
         {
             private Widget _content;
-            protected Gtk.Container _placementTarget;
+            protected Gtk.Widget _placementTarget;
 
-            public static PopupOrWindowContainer Create(Widget content, Gtk.Container placementTarget)
+            public static PopupOrWindowContainer Create(Widget content, Gtk.Widget placementTarget)
             {
                 return new PopUpContainer(content, placementTarget);
             }
 
-            public PopupOrWindowContainer(Widget content, Gtk.Container placementTarget)
+            public PopupOrWindowContainer(Widget content, Gtk.Widget placementTarget)
             {
                 _content = content;
                 _placementTarget = placementTarget;
@@ -737,7 +755,7 @@ namespace MonoDevelop.SourceEditor
             // popup closing.
             FrameBox _popupContentContainer = new FrameBox();
 
-            public PopUpContainer(Widget content, Gtk.Container placementTarget)
+            public PopUpContainer(Widget content, Gtk.Widget placementTarget)
                 : base(content, placementTarget)
             {
                 WindowTransparencyDecorator.Attach(_popup);//TODO: not sure we want this on all popus?

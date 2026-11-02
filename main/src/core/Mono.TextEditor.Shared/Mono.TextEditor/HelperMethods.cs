@@ -55,52 +55,16 @@ namespace Mono.TextEditor
 			return default(T);
 		}
 		
-		/*
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_show_layout (IntPtr cr, IntPtr layout);
+		// ShowLayout, CreateLayout, LayoutPath and ContextSetResolution are provided by MonoDevelop.Components.HelperMethods.
 
-		public static void ShowLayout (this Cairo.Context cr, Pango.Layout layout)
+		public static string GetColorString(Gdk.RGBA color)
 		{
-			pango_cairo_show_layout (cr == null ? IntPtr.Zero : cr.Handle, layout == null ? IntPtr.Zero : layout.Handle);
-		}
-*/
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern IntPtr pango_cairo_create_layout (IntPtr cr);
-
-		public static Pango.Layout CreateLayout (this Cairo.Context cr)
-		{
-			IntPtr raw_ret = pango_cairo_create_layout (cr == null ? IntPtr.Zero : cr.Handle);
-			return GLib.Object.GetObject (raw_ret, true) as Pango.Layout;
-		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_layout_path (IntPtr cr, IntPtr layout);
-
-		public static void LayoutPath (this Cairo.Context cr, Pango.Layout layout)
-		{
-			pango_cairo_layout_path (cr == null ? IntPtr.Zero : cr.Handle, layout == null ? IntPtr.Zero : layout.Handle);
-		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern void pango_cairo_context_set_resolution (IntPtr pango_context, double dpi);
-
-		public static void ContextSetResolution (this Pango.Context context, double dpi)
-		{
-			pango_cairo_context_set_resolution (context == null ? IntPtr.Zero : context.Handle, dpi);
-		}
-
-		[DllImport(PangoUtil.LIBPANGOCAIRO, CallingConvention=CallingConvention.Cdecl)]
-		static extern IntPtr pango_layout_get_context (IntPtr layout);
-
-		public static string GetColorString (Gdk.Color color)
-		{
-			return string.Format ("#{0:X02}{1:X02}{2:X02}", color.Red / 256, color.Green / 256, color.Blue / 256);
+			return string.Format ("#{0:X02}{1:X02}{2:X02}", (int)(color.Red * 255), (int)(color.Green * 255), (int)(color.Blue * 255));
 		}
 
 		public static Pango.Context LayoutGetContext (this Pango.Layout layout)
 		{
-			IntPtr handle = pango_layout_get_context (layout.Handle);
-			return handle.Equals (IntPtr.Zero) ? null : GLib.Object.GetObject (handle) as Pango.Context;
+			return layout.Context;
 		}
 		
 		public static void DrawLine (this Cairo.Context cr, Cairo.Color color, double x1, double y1, double x2, double y2)

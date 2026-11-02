@@ -35,7 +35,7 @@ using MonoDevelop.Ide.Editor;
 
 namespace MonoDevelop.SourceEditor
 {
-	partial class GotoLineNumberWidget : Gtk.Bin
+	partial class GotoLineNumberWidget : BinWidget
 	{
 		readonly MonoTextEditor textEditor;
 		readonly Widget frame;
@@ -44,11 +44,11 @@ namespace MonoDevelop.SourceEditor
 		DocumentLocation caretSave;
 		bool cleanExit = false;
 		
-		void HandleViewTextEditorhandleSizeAllocated (object o, SizeAllocatedArgs args)
+		void HandleViewTextEditorhandleSizeAllocated (object o, EventArgs args)
 		{
-			int newX = textEditor.Allocation.Width - this.Allocation.Width - 8;
-			var containerChild = ((MonoTextEditor.EditorContainerChild)textEditor [frame]);
-			if (newX != containerChild.X) {
+			int newX = textEditor.Allocation.Width - frame.Width - 8;
+			var containerChild = textEditor [frame];
+			if (containerChild != null && newX != containerChild.X) {
 				this.entryLineNumber.WidthRequest = textEditor.Allocation.Width / 4;
 				containerChild.X = newX;
 				textEditor.QueueResize ();
@@ -60,6 +60,21 @@ namespace MonoDevelop.SourceEditor
 			Destroy ();
 		}
 
+		/// <summary>Raised when the widget is destroyed (the editor removes the embedded frame then).</summary>
+		public event EventHandler Destroyed;
+
+		bool destroyed;
+
+		public override void Destroy ()
+		{
+			if (!destroyed) {
+				destroyed = true;
+				textEditor.SizeAllocated -= HandleViewTextEditorhandleSizeAllocated;
+				Destroyed?.Invoke (this, EventArgs.Empty);
+			}
+			base.Destroy ();
+		}
+
 		public GotoLineNumberWidget (MonoTextEditor textEditor, Widget frame)
 		{
 			this.textEditor = textEditor;
@@ -67,7 +82,7 @@ namespace MonoDevelop.SourceEditor
 			this.Build ();
 			
 			StoreWidgetState ();
-			textEditor.Parent.SizeAllocated += HandleViewTextEditorhandleSizeAllocated;
+			textEditor.SizeAllocated += HandleViewTextEditorhandleSizeAllocated;
 
 			this.closeButton.Clicked += delegate {
 				RestoreWidgetState ();
@@ -80,22 +95,19 @@ namespace MonoDevelop.SourceEditor
 				CloseWidget ();
 			};
 			
-			foreach (Gtk.Widget child in this.Children) {
-				child.KeyPressEvent += delegate (object sender, Gtk.KeyPressEventArgs args) {
-					if (args.Event.Key == Gdk.Key.Escape) {
+			foreach (Gtk.Widget child in this.GetDescendants ()) {
+				child.AddKeyPressHandler ((keyval, keycode, state) => {
+					if ((Gdk.Key)keyval == Gdk.Key.Escape) {
 						RestoreWidgetState ();
 						CloseWidget ();
+						return true;
 					}
-				};
+					return false;
+				}, null, PropagationPhase.Capture);
 			}
-			
-			Gtk.Widget oldWidget = null;
-			this.FocusChildSet += delegate (object sender, Gtk.FocusChildSetArgs args) {
-				// only store state when the focus comes from a non child widget
-				if (args.Widget != null && oldWidget == null)
-					StoreWidgetState ();
-				oldWidget = args.Widget;
-			};
+
+			// only store state when the focus comes from a non child widget
+			this.AddFocusHandler (() => StoreWidgetState (), null);
 			
 			this.entryLineNumber.Changed += delegate {
 				PreviewLine ();
@@ -108,13 +120,7 @@ namespace MonoDevelop.SourceEditor
 			};
 		}
 		
-		protected override void OnDestroyed ()
-		{
-			base.OnDestroyed ();
-			textEditor.Parent.SizeAllocated -= HandleViewTextEditorhandleSizeAllocated;
-		}
 
-		
 		void StoreWidgetState ()
 		{
 			this.vSave = textEditor.VAdjustment.Value;
@@ -177,8 +183,7 @@ namespace MonoDevelop.SourceEditor
 		void PreviewLine ()
 		{
 			if (String.IsNullOrEmpty (entryLineNumber.Text) || entryLineNumber.Text == "+" || entryLineNumber.Text == "-") {
-				this.entryLineNumber.ModifyBase (Gtk.StateType.Normal, Style.Base (Gtk.StateType.Normal));
-				this.entryLineNumber.ModifyText (Gtk.StateType.Normal, Style.Foreground (Gtk.StateType.Normal));
+				EditorWidgetStyle.SetForeground (this.entryLineNumber, null);
 				RestoreWidgetState ();
 				return;
 			}
@@ -188,20 +193,19 @@ namespace MonoDevelop.SourceEditor
 					targetLine = Math.Max (1, Math.Min (textEditor.Document.LineCount, targetLine));
 					
 				} else {
-					this.entryLineNumber.ModifyBase (Gtk.StateType.Normal, Style.Base (Gtk.StateType.Normal));
-					this.entryLineNumber.ModifyText (Gtk.StateType.Normal, Style.Foreground (Gtk.StateType.Normal));
+					EditorWidgetStyle.SetForeground (this.entryLineNumber, null);
 				}
 				textEditor.Caret.Line = targetLine;
 				textEditor.CenterToCaret ();
 			} catch (System.Exception) {
-				this.entryLineNumber.ModifyText (Gtk.StateType.Normal, Ide.Gui.Styles.Editor.SearchErrorForegroundColor.ToGdkColor ());
+				EditorWidgetStyle.SetForeground (this.entryLineNumber, Ide.Gui.Styles.Editor.SearchErrorForegroundColor.ToCairoColor ());
 			}
 		}
 		
 		public void Focus ()
 		{
-			if (!this.entryLineNumber.IsFocus)
-				this.entryLineNumber.IsFocus = true;
+			if (!this.entryLineNumber.HasFocus)
+				this.entryLineNumber.GrabFocus ();
 			PreviewLine ();
 		}
 	}

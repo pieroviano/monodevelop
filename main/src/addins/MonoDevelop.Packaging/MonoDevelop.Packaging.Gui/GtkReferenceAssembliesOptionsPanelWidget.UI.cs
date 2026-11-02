@@ -31,7 +31,7 @@ using MonoDevelop.Ide;
 
 namespace MonoDevelop.Packaging.Gui
 {
-	partial class GtkReferenceAssembliesOptionsPanelWidget : Gtk.Bin
+	partial class GtkReferenceAssembliesOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		const int IsEnabledCheckBoxColumn = 0;
 
@@ -40,38 +40,37 @@ namespace MonoDevelop.Packaging.Gui
 
 		void Build ()
 		{
-			MonoDevelop.Components.Gui.Initialize (this);
-			MonoDevelop.Components.BinContainer.Attach (this);
 
-			var vbox = new VBox ();
-			vbox.Spacing = 6;
+			var vbox = new Box (Orientation.Vertical, 6);
 
-			var referenceAssembliesLabelHBox = new HBox ();
-			referenceAssembliesLabelHBox.Spacing = 6;
+			var referenceAssembliesLabelHBox = new Box (Orientation.Horizontal, 6);
 
 			var referenceAssembliesLabel = new Label ();
 			referenceAssembliesLabel.Markup = GetBoldMarkup (GettextCatalog.GetString ("Choose the reference assemblies for your NuGet package."));
 			referenceAssembliesLabel.UseMarkup = true;
 			referenceAssembliesLabel.Xalign = 0;
-			referenceAssembliesLabelHBox.PackStart (referenceAssembliesLabel, false, false, 0);
+			referenceAssembliesLabelHBox.Append (referenceAssembliesLabel);
 
 			var learnMoreLabel = new Label ();
 			learnMoreLabel.Xalign = 0F;
 			learnMoreLabel.LabelProp = GettextCatalog.GetString ("<a href=\"https://docs.nuget.org\">Learn more</a>");
 			learnMoreLabel.UseMarkup = true;
 			learnMoreLabel.SetLinkHandler (IdeServices.DesktopService.ShowUrl);
-			referenceAssembliesLabelHBox.PackStart (learnMoreLabel, false, false, 0);
+			referenceAssembliesLabelHBox.Append (learnMoreLabel);
 
-			vbox.PackStart (referenceAssembliesLabelHBox, false, false, 5);
+			referenceAssembliesLabelHBox.MarginTop = referenceAssembliesLabelHBox.MarginBottom = 5;
+			vbox.Append (referenceAssembliesLabelHBox);
 
 
 			var scrolledWindow = new ScrolledWindow ();
-			scrolledWindow.ShadowType = ShadowType.In;
+			scrolledWindow.HasFrame = true;
+			scrolledWindow.Hexpand = true;
+			scrolledWindow.Vexpand = true;
 			pclProfilesTreeView = new TreeView ();
 			pclProfilesTreeView.CanFocus = true;
 			pclProfilesTreeView.Name = "pclProfilesTreeView";
 			pclProfilesTreeView.HeadersVisible = true;
-			scrolledWindow.Add (pclProfilesTreeView);
+			scrolledWindow.Child = pclProfilesTreeView;
 			pclProfilesTreeView.SearchColumn = -1; // disable the interactive search
 			pclProfilesTreeView.AppendColumn (CreateCheckBoxTreeViewColumn ());
 			pclProfilesTreeView.AppendColumn (CreateProfileTreeViewColumn ());
@@ -80,11 +79,10 @@ namespace MonoDevelop.Packaging.Gui
 			pclProfilesStore = new ListStore (typeof (bool), typeof (string), typeof (string), typeof (object));
 			pclProfilesTreeView.Model = pclProfilesStore;
 
-			vbox.PackStart (scrolledWindow);
+			vbox.Append (scrolledWindow);
 
-			Add (vbox);
+			Child = vbox;
 
-			ShowAll ();
 		}
 
 		static string GetBoldMarkup (string text)

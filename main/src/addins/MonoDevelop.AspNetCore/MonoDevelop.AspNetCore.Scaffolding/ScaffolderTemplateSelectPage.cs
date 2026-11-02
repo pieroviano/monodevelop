@@ -71,7 +71,7 @@ namespace MonoDevelop.AspNetCore.Scaffolding
 
 			foreach (var scaffolder in scaffolders) {
 				var row = listStore.AddRow ();
-				var png = ImageService.GetIcon ("md-html-file-icon", Gtk.IconSize.Dnd);
+				var png = ImageService.GetIcon ("md-html-file-icon", MonoDevelop.Components.StockIconSize.Dnd);
 
 				listStore.SetValue (row, icon, png);
 				listStore.SetValue (row, name, scaffolder.Name);

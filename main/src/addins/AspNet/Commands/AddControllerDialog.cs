@@ -41,7 +41,7 @@ namespace MonoDevelop.AspNet.Commands
 		Button buttonCancel;
 		Button buttonOk;
 		Entry nameEntry;
-		ComboBox templateCombo;
+		ComboBoxText templateCombo;
 
 		public string ControllerName {
 			get	{
@@ -92,16 +92,19 @@ namespace MonoDevelop.AspNet.Commands
 		{
 			DefaultWidth = 400;
 			DefaultHeight = 150;
-			BorderWidth = 6;
 			Resizable = false;
 
-			buttonCancel = new Button (Stock.Cancel);
+			var content = ContentArea;
+			content.Spacing = 6;
+			content.MarginTop = content.MarginBottom = content.MarginStart = content.MarginEnd = 6;
+
+			buttonCancel = new Button { Label = GettextCatalog.GetString ("_Cancel"), UseUnderline = true };
 			AddActionWidget (buttonCancel, ResponseType.Cancel);
-			buttonOk = new Button (Stock.Ok);
+			buttonOk = new Button { Label = GettextCatalog.GetString ("_OK"), UseUnderline = true };
 			AddActionWidget (buttonOk, ResponseType.Ok);
 
-			nameEntry = new Entry ();
-			templateCombo = ComboBox.NewText ();
+			nameEntry = new Entry { Hexpand = true };
+			templateCombo = new ComboBoxText { Hexpand = true };
 
 			var nameLabel = new Label {
 				TextWithMnemonic = GettextCatalog.GetString ("_Name:"),
@@ -114,18 +117,16 @@ namespace MonoDevelop.AspNet.Commands
 				MnemonicWidget = templateCombo
 			};
 
-			var table = new Table (2, 2, false) {
+			var table = new Grid {
 				RowSpacing = 6,
 				ColumnSpacing = 6
 			};
 
-			table.Attach (nameLabel, 0, 1, 0, 1, AttachOptions.Fill, 0, 0, 0);
-			table.Attach (nameEntry, 1, 2, 0, 1, AttachOptions.Fill | AttachOptions.Expand, 0, 0, 0);
-			table.Attach (templateLabel, 0, 1, 1, 2, AttachOptions.Fill, 0, 0, 0);
-			table.Attach (templateCombo, 1, 2, 1, 2, AttachOptions.Fill | AttachOptions.Expand, 0, 0, 0);
-			VBox.PackStart (table);
-
-			Child.ShowAll ();
+			table.Attach (nameLabel, 0, 0, 1, 1);
+			table.Attach (nameEntry, 1, 0, 1, 1);
+			table.Attach (templateLabel, 0, 1, 1, 1);
+			table.Attach (templateCombo, 1, 1, 1, 1);
+			content.Append (table);
 		}
 
 		protected virtual void Validate (object sender, EventArgs e)

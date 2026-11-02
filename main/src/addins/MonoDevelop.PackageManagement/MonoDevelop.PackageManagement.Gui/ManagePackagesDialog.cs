@@ -119,26 +119,12 @@ namespace MonoDevelop.PackageManagement
 
 		void UpdateTabAccessibility ()
 		{
-			if (tabGroup.Surface.ToolkitEngine.Type == ToolkitType.Gtk) {
-				if (consolidateLabel.Parent.Surface.NativeWidget is Gtk.Container a11yGroup) {
-					a11yGroup.Accessible.SetRole (AtkCocoa.Roles.AXTabGroup);
-					var children = a11yGroup.Children;
-					var tabs = new List<Atk.Object> (children.Length);
-					foreach (var child in children) {
-						if (!child.Visible)
-							continue;
-						if (child is Gtk.EventBox box && box.Child is Gtk.Label) {
-							box.Accessible.SetTitleUIElement (box.Child.Accessible);
-							box.Child.Accessible.SetShouldIgnore (true);
-						}
-						var tab = child.Accessible;
-						tab.SetRole (AtkCocoa.Roles.AXRadioButton);
-						tab.SetSubRole (AtkCocoa.SubRoles.AXTabButton);
-						tab.SetValue (false);
-						tabs.Add (tab);
-					}
-					a11yGroup.Accessible.SetTabs (tabs.ToArray ());
-				}
+			tabGroup.Accessible.Role = Xwt.Accessibility.Role.Notebook;
+			foreach (var tab in new [] { browseLabel, installedLabel, updatesLabel, consolidateLabel }) {
+				if (!tab.Visible)
+					continue;
+				tab.Accessible.Role = Xwt.Accessibility.Role.RadioButton;
+				tab.Accessible.RoleDescription = GettextCatalog.GetString ("tab");
 			}
 		}
 
@@ -210,14 +196,8 @@ namespace MonoDevelop.PackageManagement
 			packagesListView.RowActivated += PackagesListRowActivated;
 			packagesListView.VerticalScrollControl.ValueChanged += PackagesListViewScrollValueChanged;
 
-			if (Toolkit.CurrentEngine.Type == ToolkitType.Gtk) {
-				// TODO: unlike Xwt.TreeView, Xwt.ListView has no UseAlternatingRowColors property
-				var gtkTreeView = packagesListView.Surface.NativeWidget as Gtk.Widget;
-				if (gtkTreeView is Gtk.ScrolledWindow scroll)
-					gtkTreeView = scroll.Child;
-				if (gtkTreeView is Gtk.TreeView tree)
-					tree.RulesHint = true;
-			}
+			// GTK 4 removed GtkTreeView:rules-hint (alternating row colours); the theme decides the row striping.
+			// TODO: unlike Xwt.TreeView, Xwt.ListView has no UseAlternatingRowColors property
 		}
 
 		void AddCellViewsToListView ()
@@ -332,7 +312,7 @@ namespace MonoDevelop.PackageManagement
 				packagesListView.Visible = false;
 				noPackagesFoundFrame.Visible = true;
 
-				IdeApp.Workbench.RootWindow.Accessible.MakeAccessibilityAnnouncement (noPackagesFoundLabel.Text);
+				IdeServices.DesktopService.MakeAccessibilityAnnouncement (noPackagesFoundLabel.Text);
 			}
 		}
 
@@ -582,7 +562,7 @@ namespace MonoDevelop.PackageManagement
 				// Show spinner?
 			} else if (viewModel.IsReadingPackages) {
 				ClearPackages ();
-				IdeApp.Workbench.RootWindow.Accessible.MakeAccessibilityAnnouncement (loadingSpinnerLabel.Text);
+				IdeServices.DesktopService.MakeAccessibilityAnnouncement (loadingSpinnerLabel.Text);
 			} else {
 				HideLoadingMessage ();
 			}
@@ -641,7 +621,7 @@ namespace MonoDevelop.PackageManagement
 				string message = string.IsNullOrWhiteSpace (packageSearchEntry.Text)
 					? GettextCatalog.GetString ("Packages loaded")
 					: GettextCatalog.GetString ("Search completed");
-				IdeApp.Workbench.RootWindow.Accessible.MakeAccessibilityAnnouncement (message);
+				IdeServices.DesktopService.MakeAccessibilityAnnouncement (message);
 			}
 
 			if (!viewModel.IsReadingPackages && (packageStore.RowCount == 0)) {
@@ -924,7 +904,7 @@ namespace MonoDevelop.PackageManagement
 			viewModel.SearchTerms = this.packageSearchEntry.Text;
 			viewModel.Search ();
 
-			IdeApp.Workbench.RootWindow.Accessible.MakeAccessibilityAnnouncement (loadingSpinnerLabel.Text);
+			IdeServices.DesktopService.MakeAccessibilityAnnouncement (loadingSpinnerLabel.Text);
 
 			return false;
 		}
@@ -1170,14 +1150,9 @@ namespace MonoDevelop.PackageManagement
 
 		static void UpdatePackageResultsLabelA11y (Widget label, bool active)
 		{
-			if (label.Surface.ToolkitEngine.Type == ToolkitType.Gtk) {
-				var widget = label.Surface.NativeWidget as Gtk.Widget;
-				if (widget != null) {
-					widget.Accessible.SetValue (active);
-					// FIXME: Accessible.SetValue has no effect, so set the role description instead
-					widget.Accessible.SetRole (AtkCocoa.Roles.AXRadioButton, active ? "selected tab" : "tab");
-				}
-			}
+			label.Accessible.Role = Xwt.Accessibility.Role.RadioButton;
+			label.Accessible.RoleDescription = active ? GettextCatalog.GetString ("selected tab") : GettextCatalog.GetString ("tab");
+			label.Accessible.Value = active ? "1" : "0";
 		}
 
 		void UpdatePackageResultsLabel (ManagePackagesPage page, Button label)

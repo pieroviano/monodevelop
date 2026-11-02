@@ -224,9 +224,14 @@ namespace Mono.TextEditor
 		}
 		
 		/// <summary>
-		/// The raw GDK event. May be null if the event was synthesized.
+		/// The click that caused this event. Null if the event was synthesized or is a motion event.
 		/// </summary>
-		public Gdk.Event RawEvent { get; private set; }
+		public ClickInfo RawEvent { get; private set; }
+
+		/// <summary>
+		/// Number of consecutive presses (1 = single click, 2 = double click, 3 = triple click).
+		/// </summary>
+		public int ClickCount { get; private set; } = 1;
 		
 		public Gdk.EventType Type {
 			get;
@@ -250,8 +255,7 @@ namespace Mono.TextEditor
 
 		public bool TriggersContextMenu ()
 		{
-			var evt = RawEvent as Gdk.EventButton;
-			return evt != null && evt.TriggersContextMenu ();
+			return RawEvent != null && RawEvent.TriggersContextMenu ();
 		}
 		
 		int lineNumber = -2; // -2 means that line number has not yet been calculated
@@ -286,10 +290,11 @@ namespace Mono.TextEditor
 			get;
 		}
 		
-		public MarginMouseEventArgs (MonoTextEditor editor, Gdk.Event raw, uint button, double x, double y, Gdk.ModifierType modifierState)
-			: this (editor, raw.Type, button, x, y, modifierState)
+		public MarginMouseEventArgs (MonoTextEditor editor, ClickInfo raw, uint button, double x, double y, Gdk.ModifierType modifierState)
+			: this (editor, Gdk.EventType.ButtonPress, button, x, y, modifierState)
 		{
 			this.RawEvent = raw;
+			this.ClickCount = ((System.Math.Max (1, raw.NPress) - 1) % 3) + 1; // a fourth click starts a new single/double/triple sequence
 		}
 		
 		public MarginMouseEventArgs (MonoTextEditor editor, Gdk.EventType type, uint button, double x, double y, Gdk.ModifierType modifierState)

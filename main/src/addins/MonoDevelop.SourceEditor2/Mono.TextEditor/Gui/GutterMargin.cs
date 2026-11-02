@@ -109,7 +109,7 @@ namespace Mono.TextEditor
 			if (lineNumber <= editor.Document.LineCount) {
 				DocumentLocation loc = new DocumentLocation (lineNumber, DocumentLocation.MinColumn);
 				DocumentLine line = args.LineSegment;
-				if (args.Type == EventType.TwoButtonPress) {
+				if (args.ClickCount == 2) {
 					if (line != null)
 						editor.MainSelection = new MonoDevelop.Ide.Editor.Selection (loc, GetLineEndLocation (editor.GetTextEditorData (), lineNumber));
 				} else if (extendSelection) {

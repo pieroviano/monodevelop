@@ -17,36 +17,29 @@ namespace MonoDevelop.Deployment
 				return string.Empty;
 		}
 		
-		protected override IPropertyEditor CreateEditor (Rectangle cell_area, StateType state)
+		protected override IPropertyEditor CreateEditor (Gdk.Rectangle cell_area, Gtk.StateFlags state)
 		{
 			return new DeployDirectoryInfoEditorWidget ();
 		}
 	}
 	
-	class DeployDirectoryInfoEditorWidget : Gtk.HBox, IPropertyEditor {
+	class DeployDirectoryInfoEditorWidget : Gtk.Box, IPropertyEditor {
 
-		Gtk.EventBox ebox;
-		Gtk.ComboBoxEntry combo;
+		Gtk.ComboBoxText combo;
 		DeployDirectoryInfo[] values;
 
-		public DeployDirectoryInfoEditorWidget () : base (false, 0)
+		public DeployDirectoryInfoEditorWidget () : base (Gtk.Orientation.Horizontal, 0)
 		{
 		}
 		
 		public void Initialize (EditSession session)
 		{
 			values = DeployService.GetDeployDirectoryInfo ();
-			ebox = new Gtk.EventBox ();
-			ebox.Show ();
-			PackStart (ebox, true, true, 0);
 
-			combo = Gtk.ComboBoxEntry.NewText ();
+			combo = new Gtk.ComboBoxText ();
+			combo.Hexpand = true;
 			combo.Changed += combo_Changed;
-			combo.Entry.IsEditable = false;
-			combo.Entry.HasFrame = false;
-			combo.Entry.HeightRequest = combo.SizeRequest ().Height;
-			combo.Show ();
-			ebox.Add (combo);
+			Append (combo);
 
 			foreach (DeployDirectoryInfo value in values) {
 				combo.AppendText (value.Description);

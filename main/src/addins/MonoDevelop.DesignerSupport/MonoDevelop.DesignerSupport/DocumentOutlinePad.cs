@@ -42,17 +42,15 @@ namespace MonoDevelop.DesignerSupport
 
 	public class DocumentOutlinePad : PadContent
 	{
-		Alignment box;
+		BinWidget box;
 		IOutlinedDocument currentOutlineDoc;
 		Document currentDoc;
 		DockItemToolbar toolbar;
 
 		public DocumentOutlinePad ()
 		{
-			box = new Gtk.Alignment (0, 0, 1, 1);
-			box.BorderWidth = 0;
+			box = new BinWidget ();
 			SetWidget (null);
-			box.ShowAll ();
 		}
 
 		protected override void Initialize (IPadWindow window)
@@ -137,9 +135,7 @@ namespace MonoDevelop.DesignerSupport
 				widget = new WrappedCentreLabel (MonoDevelop.Core.GettextCatalog.GetString (
 			    	"An outline is not available for the current document."));
 			RemoveBoxChild ();
-			box.Add (widget);
-			widget.Show ();
-			box.Show ();
+			box.Child = widget;
 		}
 		
 		void SetToolbarWidgets (IEnumerable<Widget> toolbarWidgets)
@@ -149,7 +145,6 @@ namespace MonoDevelop.DesignerSupport
 			bool any = false;
 			if (toolbarWidgets != null) {
 				foreach (var w in toolbarWidgets) {
-					w.Show ();
 					toolbar.Add (w);
 					any = true;
 				}
@@ -161,77 +156,21 @@ namespace MonoDevelop.DesignerSupport
 		{
 			Gtk.Widget curChild = box.Child;
 			if (curChild != null)
-				box.Remove (curChild);
+				box.Child = null;
 		}
 
-		private class WrappedCentreLabel : Gtk.Widget
+		private class WrappedCentreLabel : Gtk.Label
 		{
-			string text;
-			Pango.Layout layout;
-
-			public WrappedCentreLabel ()
+			public WrappedCentreLabel (string text) : base (text)
 			{
-				WidgetFlags |= Gtk.WidgetFlags.NoWindow;
-			}
-
-			public WrappedCentreLabel (string text)
-				: this ()
-			{
-				this.Text = text;
-			}
-
-			public string Text {
-				set {
-					text = value;
-					UpdateLayout ();
-				}
-				get { return text; }
-			}
-
-			private void CreateLayout ()
-			{
-				if (layout != null) {
-					layout.Dispose ();
-				}
-
-				layout = new Pango.Layout (PangoContext);
-				layout.Wrap = Pango.WrapMode.Word;
-			}
-
-
-			void UpdateLayout ()
-			{
-				 if (layout == null)
-					CreateLayout ();
-				layout.Alignment = Pango.Alignment.Center;
-				layout.SetText (text);
-			}
-
-			protected override bool OnExposeEvent (Gdk.EventExpose evnt)
-			{
-				if (evnt.Window != GdkWindow || layout == null) {
-					return base.OnExposeEvent (evnt);
-				}
-				layout.Width = (int)(Allocation.Width * 2 / 3 * Pango.Scale.PangoScale);
-				Gtk.Style.PaintLayout (Style, GdkWindow, State, false, evnt.Area,
-				    this, null, Allocation.Width * 1 / 6 + Allocation.X , 12 + Allocation.Y, layout);
-				return true;
-			}
-
-			protected override void OnStyleSet (Gtk.Style previous_style)
-			{
-				CreateLayout ();
-				UpdateLayout ();
-				base.OnStyleSet (previous_style);
-			}
-
-			public override void Dispose ()
-			{
-				if (layout != null) {
-					layout.Dispose ();
-					layout = null;
-				}
-				base.Dispose ();
+				Wrap = true;
+				WrapMode = Pango.WrapMode.Word;
+				Justify = Gtk.Justification.Center;
+				Halign = Gtk.Align.Center;
+				Valign = Gtk.Align.Start;
+				MarginTop = 12;
+				MarginStart = MarginEnd = 12;
+				Hexpand = true;
 			}
 		}
 	}

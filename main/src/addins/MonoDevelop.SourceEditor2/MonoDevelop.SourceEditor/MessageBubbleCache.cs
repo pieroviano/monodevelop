@@ -55,8 +55,8 @@ namespace MonoDevelop.SourceEditor
 			this.editor = editor;
 			
 			editor.EditorOptionsChanged += HandleEditorEditorOptionsChanged;
-			editor.TextArea.LeaveNotifyEvent += HandleLeaveNotifyEvent;
-			editor.TextArea.MotionNotifyEvent += HandleMotionNotifyEvent;
+			editor.TextArea.MouseLeft += HandleLeaveNotifyEvent;
+			editor.TextArea.BeginHover += HandleMotionNotifyEvent;
 			editor.TextArea.BeginHover += HandleBeginHover;
 			editor.VAdjustment.ValueChanged += HandleValueChanged;
 			editor.HAdjustment.ValueChanged += HandleValueChanged;
@@ -70,7 +70,7 @@ namespace MonoDevelop.SourceEditor
 			DestroyPopoverWindow ();
 		}
 
-		void HandleMotionNotifyEvent (object o, Gtk.MotionNotifyEventArgs args)
+		void HandleMotionNotifyEvent (object o, EventArgs args)
 		{
 			if (CurrentSelectedTextMarker == null)
 				DestroyPopoverWindow ();
@@ -98,7 +98,26 @@ namespace MonoDevelop.SourceEditor
 				this.marker = marker;
 				ShowArrow = true;
 				Theme.ArrowLength = 7;
-				TransientFor = IdeApp.Workbench.RootWindow;
+				ContentBox.Child = new TextSizeProvider (this);
+				this.AddMotionHandler (null, (x, y) => cache.CancelLeaveDestroyTimeout ());
+			}
+
+			/// <summary>Requests the size of the bubble text; the text itself is painted by <see cref="OnDrawContent"/>.</summary>
+			sealed class TextSizeProvider : Gtk.Widget
+			{
+				readonly MessageBubblePopoverWindow owner;
+
+				public TextSizeProvider (MessageBubblePopoverWindow owner)
+				{
+					this.owner = owner;
+				}
+
+				protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+				{
+					owner.GetTextSize (out int width, out int height);
+					minimum = natural = orientation == Gtk.Orientation.Horizontal ? width : height;
+					minimum_baseline = natural_baseline = -1;
+				}
 			}
 
 			// Layout constants
@@ -110,9 +129,9 @@ namespace MonoDevelop.SourceEditor
 
 			readonly int maxTextWidth = (int)(260 * Pango.Scale.PangoScale);
 
-			protected override void OnSizeRequested (ref Gtk.Requisition requisition)
+			void GetTextSize (out int requestedWidth, out int requestedHeight)
 			{
-				base.OnSizeRequested (ref requisition);
+				requestedWidth = 0;
 				double y = verticalTextBorder * 2 - verticalTextSpace + (MonoDevelop.Core.Platform.IsWindows ? 10 : 2);
 
 				using (var drawingLayout = new Pango.Layout (this.PangoContext)) {
@@ -128,23 +147,17 @@ namespace MonoDevelop.SourceEditor
 						if (marker.Layouts.Count > 1) 
 							w += (int)warningPixbuf.Width + iconTextSpacing;
 
-						requisition.Width = Math.Max (w + textBorder * 2, requisition.Width);
+						requestedWidth = Math.Max (w + textBorder * 2, requestedWidth);
 						y += h + verticalTextSpace - 3;
 					}
 				}
 
-				requisition.Height = (int)y;
+				requestedHeight = (int)y;
 			}
 
-			protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
+			protected override void OnDrawContent (Cairo.Context g)
 			{
-				cache.CancelLeaveDestroyTimeout ();
-				return base.OnEnterNotifyEvent (evnt);
-			}
-
-			protected override void OnDrawContent (Gdk.EventExpose evnt, Cairo.Context g)
-			{
-				g.Rectangle (0, 0, Allocation.Width, Allocation.Height);
+				g.Rectangle (0, 0, ContentBox.Width, ContentBox.Height);
 				g.SetSourceColor (marker.TooltipColor);
 				g.Fill ();
 
@@ -235,7 +248,7 @@ namespace MonoDevelop.SourceEditor
 			}
 		}
 
-		void HandleLeaveNotifyEvent (object o, Gtk.LeaveNotifyEventArgs args)
+		void HandleLeaveNotifyEvent (object o, EventArgs args)
 		{
 			CancelLeaveDestroyTimeout ();
 			leaveDestroyTimeout = GLib.Timeout.Add (100, delegate {
@@ -267,8 +280,8 @@ namespace MonoDevelop.SourceEditor
 			editor.VAdjustment.ValueChanged -= HandleValueChanged;
 			editor.HAdjustment.ValueChanged -= HandleValueChanged;
 			editor.TextArea.BeginHover -= HandleBeginHover;
-			editor.TextArea.LeaveNotifyEvent -= HandleLeaveNotifyEvent;
-			editor.TextArea.MotionNotifyEvent -= HandleMotionNotifyEvent;
+			editor.TextArea.MouseLeft -= HandleLeaveNotifyEvent;
+			editor.TextArea.BeginHover -= HandleMotionNotifyEvent;
 			editor.EditorOptionsChanged -= HandleEditorEditorOptionsChanged;
 			if (textWidthDictionary != null) {
 				foreach (var l in textWidthDictionary.Values) {

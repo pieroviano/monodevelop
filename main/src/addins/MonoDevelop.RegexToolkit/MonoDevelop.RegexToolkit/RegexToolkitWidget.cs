@@ -29,6 +29,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using MonoDevelop.Core;
 using MonoDevelop.Ide;
+using MonoDevelop.Ide.Gui;
 using System.IO;
 using System.Xml;
 using MonoDevelop.Components;
@@ -36,7 +37,7 @@ using MonoDevelop.Components;
 namespace MonoDevelop.RegexToolkit
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	partial class RegexToolkitWidget : Gtk.Bin
+	partial class RegexToolkitWidget : BinWidget
 	{
 		ListStore optionsStore;
 		TreeStore resultStore;
@@ -115,7 +116,7 @@ namespace MonoDevelop.RegexToolkit
 			this.vbox4.WidthRequest = 380;
 			this.scrolledwindow5.HeightRequest = 150;
 			this.scrolledwindow1.HeightRequest = 150;
-			Show ();
+
 		}
 
 		void UpdateRegex ()
@@ -149,23 +150,23 @@ namespace MonoDevelop.RegexToolkit
 					this.resultStore.Clear ();
 					var matches = regex.Matches (input);
 					foreach (Match match in matches) {
-						TreeIter iter = this.resultStore.AppendValues (Stock.Find, String.Format (GettextCatalog.GetString ("Match '{0}'"), match.Value), match.Index, match.Length);
+						TreeIter iter = this.resultStore.AppendValues (GtkStock.Find, String.Format (GettextCatalog.GetString ("Match '{0}'"), match.Value), match.Index, match.Length);
 						int i = 0;
 						foreach (Group group in match.Groups) {
 							TreeIter groupIter;
 							if (group.Success) {
-								groupIter = this.resultStore.AppendValues (iter, Stock.Apply, String.Format (GettextCatalog.GetString ("Group '{0}':'{1}'"), regex.GroupNameFromNumber (i), group.Value), group.Index, group.Length);
+								groupIter = this.resultStore.AppendValues (iter, GtkStock.Apply, String.Format (GettextCatalog.GetString ("Group '{0}':'{1}'"), regex.GroupNameFromNumber (i), group.Value), group.Index, group.Length);
 								foreach (Capture capture in match.Captures) {
 									this.resultStore.AppendValues (groupIter, null, String.Format (GettextCatalog.GetString ("Capture '{0}'"), capture.Value), capture.Index, capture.Length);
 								}
 							} else {
-								groupIter = this.resultStore.AppendValues (iter, Stock.Cancel, String.Format (GettextCatalog.GetString ("Group '{0}' not found"), regex.GroupNameFromNumber (i)), -1, -1);
+								groupIter = this.resultStore.AppendValues (iter, GtkStock.Cancel, String.Format (GettextCatalog.GetString ("Group '{0}' not found"), regex.GroupNameFromNumber (i)), -1, -1);
 							}
 							i++;
 						}
 					}
 					if (matches.Count == 0) {
-						this.resultStore.AppendValues (Stock.Find, GettextCatalog.GetString ("No matches"));
+						this.resultStore.AppendValues (GtkStock.Find, GettextCatalog.GetString ("No matches"));
 					}
 					if (this.expandMatches.Active) {
 						this.resultsTreeview.ExpandAll ();

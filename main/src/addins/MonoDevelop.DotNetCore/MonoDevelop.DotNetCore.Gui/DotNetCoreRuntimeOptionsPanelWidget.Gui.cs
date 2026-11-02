@@ -29,44 +29,37 @@ using MonoDevelop.Core;
 
 namespace MonoDevelop.DotNetCore.Gui
 {
-	partial class DotNetCoreRuntimeOptionsPanelWidget : Bin 
+	partial class DotNetCoreRuntimeOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
-		VBox mainVBox;
-		HBox mainHBox;
+		Box mainVBox;
+		Box mainHBox;
 		Label targetFrameworkLabel;
-		ComboBox runtimeVersionCombo;
+		ComboBoxText runtimeVersionCombo;
 
 		void Build ()
 		{
-			MonoDevelop.Components.Gui.Initialize (this);
-			MonoDevelop.Components.BinContainer.Attach (this);
 
 			Name = "MonoDevelop.Ide.Projects.DotNetCoreRuntimeOptionsPanelWidget";
-			mainVBox = new VBox ();
+			mainVBox = new Box (Orientation.Vertical, 12);
 			mainVBox.Name = "mainVBox";
-			mainVBox.Spacing = 12;
 
-			mainHBox = new HBox ();
+			mainHBox = new Box (Orientation.Horizontal, 7);
 			mainHBox.Name = "mainHBox";
-			mainHBox.Spacing = 7;
 
 			targetFrameworkLabel = new Label ();
 			targetFrameworkLabel.Name = "targetFrameworkLabel";
 			targetFrameworkLabel.Xalign = 0F;
 			targetFrameworkLabel.LabelProp = GettextCatalog.GetString ("Target _framework:");
 			targetFrameworkLabel.UseUnderline = true;
-			mainHBox.PackStart (targetFrameworkLabel, false, true, 0);
+			mainHBox.Append (targetFrameworkLabel);
 
-			runtimeVersionCombo = ComboBox.NewText ();
+			runtimeVersionCombo = new ComboBoxText ();
 			runtimeVersionCombo.Name = "runtimeVersionCombo";
-			mainHBox.PackStart (runtimeVersionCombo, false, false, 0);
-			mainVBox.PackStart (mainHBox, false, false, 0);
+			targetFrameworkLabel.MnemonicWidget = runtimeVersionCombo;
+			mainHBox.Append (runtimeVersionCombo);
+			mainVBox.Append (mainHBox);
 
-			Add (mainVBox);
-			if ((Child != null)) {
-				Child.ShowAll ();
-			}
-			Show ();
+			Child = mainVBox;
 		}
 	}
 }

@@ -58,7 +58,7 @@ namespace MonoDevelop.SourceEditor
 		internal object MemoryProbe = Counters.EditorsInMemory.CreateMemoryProbe ();
 
 		SourceEditorView view;
-		Adjustment cachedHAdjustment, cachedVAdjustment;
+		Gtk.Adjustment cachedHAdjustment, cachedVAdjustment;
 		
 		TextEditorExtension editorExtension;
 		bool needToAddLastExtension;
@@ -172,6 +172,7 @@ namespace MonoDevelop.SourceEditor
 
 			UpdateEditMode ();
 			this.DoPopupMenu = ShowPopup;
+			this.TextDropped += view.HandleTextDropped;
 		}
 
 		static bool? testNewViMode = null;
@@ -203,11 +204,8 @@ namespace MonoDevelop.SourceEditor
 			cachedVAdjustment = null;
 		}
 
-		internal bool IsDestroyed { get; private set; }
-
 		protected override void OnDestroyed ()
 		{
-			IsDestroyed = true;
 			UnregisterAdjustments ();
 
 			view = null;
@@ -243,20 +241,11 @@ namespace MonoDevelop.SourceEditor
 		}
 		
 		bool isInKeyStroke = false;
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		protected internal override bool OnKeyPressEvent (Func<bool> handleKeyPress)
 		{
 			isInKeyStroke = true;
 			try {
-				// Handle keyboard toolip popup
-	/*			if ((evnt.Key == Gdk.Key.F1 && (evnt.State & Gdk.ModifierType.ControlMask) == Gdk.ModifierType.ControlMask)) {
-					Gdk.Point p = this.TextViewMargin.LocationToDisplayCoordinates (this.Caret.Location);
-					this.mx = p.X;
-					this.my = p.Y;
-					this.ShowTooltip ();
-					return true;
-				}
-	*/			
-				return base.OnKeyPressEvent (evnt);
+				return base.OnKeyPressEvent (handleKeyPress);
 			} finally {
 				isInKeyStroke = false;
 			}
@@ -459,11 +448,11 @@ namespace MonoDevelop.SourceEditor
 			return char.IsLetterOrDigit (c) || c == '_';
 		}
 		
-		protected override bool OnFocusOutEvent (Gdk.EventFocus evnt)
+		protected internal override void OnFocusOutEvent ()
 		{
 			CompletionWindowManager.HideWindow ();
 			ParameterInformationWindowManager.HideWindow (null, view);
-			return base.OnFocusOutEvent (evnt); 
+			base.OnFocusOutEvent ();
 		}
 
 		string menuPath = "/MonoDevelop/SourceEditor2/ContextMenu/Editor";
@@ -478,7 +467,7 @@ namespace MonoDevelop.SourceEditor
 			}
 		}
 
-		void ShowPopup (Gdk.EventButton evt)
+		void ShowPopup (ClickInfo evt)
 		{
 			view.FireCompletionContextChanged ();
 			CompletionWindowManager.HideWindow ();
@@ -489,41 +478,14 @@ namespace MonoDevelop.SourceEditor
 			var ctx = view.GetExtensionContext ();
 			CommandEntrySet cset = IdeApp.CommandService.CreateCommandEntrySet (ctx, menuPath);
 
-			if (Platform.IsMac) {
-				if (evt == null) {
-					var pt = LocationToPoint (this.Caret.Location);
+			// the context menu is anchored to the text area, the click position is relative to it
+			if (evt == null) {
+				var pt = LocationToPoint (this.Caret.Location);
 
-					IdeApp.CommandService.ShowContextMenu (this, pt.X, pt.Y, cset, this);
-				} else {
-					IdeApp.CommandService.ShowContextMenu (this, evt, cset, this);
-				}
+				IdeApp.CommandService.ShowContextMenu (TextArea, pt.X, pt.Y, cset, this);
 			} else {
-				Gtk.Menu menu = IdeApp.CommandService.CreateMenu (cset);
-				var imMenu = CreateInputMethodMenuItem (GettextCatalog.GetString ("_Input Methods"));
-				if (imMenu != null) {
-					menu.Append (new SeparatorMenuItem ());
-					menu.Append (imMenu);
-				}
-
-				menu.Hidden += HandleMenuHidden;
-				if (evt != null) {
-					GtkWorkarounds.ShowContextMenu (menu, this, evt);
-				} else {
-					var pt = LocationToPoint (this.Caret.Location);
-
-					GtkWorkarounds.ShowContextMenu (menu, this, (int)pt.X, (int)pt.Y);
-				}
+				IdeApp.CommandService.ShowContextMenu (TextArea, evt, cset, this);
 			}
-		}
-
-		void HandleMenuHidden (object sender, EventArgs e)
-		{	
-			var menu = sender as Gtk.Menu;
-			menu.Hidden -= HandleMenuHidden; 
-			GLib.Timeout.Add (10, delegate {
-				menu.Destroy ();
-				return false;
-			});
 		}
 		
 #region Templates

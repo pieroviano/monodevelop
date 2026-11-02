@@ -41,17 +41,10 @@ namespace MonoDevelop.TextEditor
 		static CocoaTextViewDisplayBinding ()
 		{
 			Microsoft.VisualStudio.UI.GettextCatalog.Initialize (GettextCatalog.GetString, GettextCatalog.GetString);
+			// TODO GTK4: GDK 4 has no native event filters (Gdk.Window.AddFilterForAll) to suppress the GDK handling of
+			// the native events while the Cocoa event monitor is active; the monitor runs without it.
 			Microsoft.VisualStudio.Text.Editor.Implementation.CocoaLocalEventMonitor.FilterGdkEvents += (enable) => {
-				if (enable)
-					Gdk.Window.AddFilterForAll (Filter);
-				else
-					Gdk.Window.RemoveFilterForAll (Filter);
 			};
-		}
-
-		static FilterReturn Filter (IntPtr xevent, Event evnt)
-		{
-			return FilterReturn.Remove;
 		}
 
 		protected override DocumentController CreateContent (CocoaTextViewImports imports)

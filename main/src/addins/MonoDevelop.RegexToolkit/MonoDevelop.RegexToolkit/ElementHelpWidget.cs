@@ -37,7 +37,7 @@ using MonoDevelop.Ide.Gui.Documents;
 namespace MonoDevelop.RegexToolkit
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	internal partial class ElementHelpWidget : Gtk.Bin
+	internal partial class ElementHelpWidget : BinWidget
 	{
 		TreeStore elementsStore;
 		DocumentViewContent regexView;
@@ -84,14 +84,16 @@ namespace MonoDevelop.RegexToolkit
 					}
 				}
 			};
-			this.LeaveNotifyEvent += delegate {
+			var motion = new Gtk.EventControllerMotion ();
+			motion.Leave += delegate {
 				this.HideTooltipWindow ();
 			};
+			AddController (motion);
 			FillElementsBox ();
-			Show ();
+
 		}
 		
-		static void ElementDescriptionFunc (TreeViewColumn column, CellRenderer cell, TreeModel model, TreeIter iter)
+		static void ElementDescriptionFunc (TreeViewColumn column, CellRenderer cell, ITreeModel model, TreeIter iter)
 		{
 			string str = (string)model.GetValue (iter, 2);
 			if (string.IsNullOrEmpty (str)) {
@@ -116,7 +118,7 @@ namespace MonoDevelop.RegexToolkit
 					continue;
 				switch (reader.LocalName) {
 				case "Group":
-					TreeIter groupIter = this.elementsStore.AppendValues (Gtk.Stock.Info,
+					TreeIter groupIter = this.elementsStore.AppendValues (GtkStock.Info,
 						GettextCatalog.GetString (reader.GetAttribute ("_name")), "", "");
 					while (reader.Read ()) {
 						if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "Group") 
@@ -143,9 +145,9 @@ namespace MonoDevelop.RegexToolkit
 //			}
 		}
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 			
 			HideTooltipWindow ();
 		}

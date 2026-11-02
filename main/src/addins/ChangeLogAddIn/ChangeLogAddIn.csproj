@@ -56,6 +56,7 @@
     <Reference Include="System" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Deployment\MonoDevelop.Deployment\DesignerLayout.cs"><Link>DesignerLayout.cs</Link></Compile>
     <Compile Include="ChangeLogAddIn.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="AddLogEntryDialog.cs" />

@@ -117,7 +117,7 @@ namespace MonoDevelop.Xml.Completion
 		}
 		
 		public override IconId Icon {
-			get { return base.Icon.IsNull ? (IconId)Gtk.Stock.GoForward : base.Icon; }
+			get { return base.Icon.IsNull ? (IconId)MonoDevelop.Ide.Gui.GtkStock.GoForward : base.Icon; }
 		}
 		
 		public override string DisplayText {

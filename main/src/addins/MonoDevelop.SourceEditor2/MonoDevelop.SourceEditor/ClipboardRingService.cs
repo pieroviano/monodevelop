@@ -109,7 +109,7 @@ namespace MonoDevelop.SourceEditor
 		{
 			static readonly ToolboxItemFilterAttribute filterAtt = new ToolboxItemFilterAttribute ("text/plain", ToolboxItemFilterType.Allow);
 			static readonly string category = GettextCatalog.GetString ("Clipboard Ring");
-			static readonly Xwt.Drawing.Image icon = IdeServices.DesktopService.GetIconForFile ("a.txt", IconSize.Menu);
+			static readonly Xwt.Drawing.Image icon = IdeServices.DesktopService.GetIconForFile ("a.txt", MonoDevelop.Components.StockIconSize.Menu);
 
 			public ClipboardToolboxNode (string text)
 			{
@@ -151,7 +151,7 @@ namespace MonoDevelop.SourceEditor
 
 			public bool HasTooltip => true;
 
-			public Components.Window CreateTooltipWindow (Control parent)
+			public TooltipWindow CreateTooltipWindow (Control parent)
 			{
 				//large amounts of text are expensive to lay out, and the preview window
 				//doesn't need all that much anyway
@@ -160,8 +160,26 @@ namespace MonoDevelop.SourceEditor
 					txt = txt.Substring (0, 4096) + "...";
 				}
 
-				var w = parent.GetNativeWidget<Widget> ()?.GdkWindow;
-				return new CodePreviewWindow (w) { Text = Text };
+				return new ClipboardTextTooltipWindow (txt);
+			}
+		}
+
+		/// <summary>Monospaced text preview of a clipboard ring entry.</summary>
+		sealed class ClipboardTextTooltipWindow : TooltipWindow
+		{
+			public ClipboardTextTooltipWindow (string text)
+			{
+				var label = new Gtk.Label (text) {
+					Xalign = 0f,
+					Yalign = 0f,
+					Selectable = false,
+					MarginTop = 3,
+					MarginBottom = 3,
+					MarginStart = 5,
+					MarginEnd = 5,
+				};
+				label.AddCssClass ("monospace");
+				Child = label;
 			}
 		}
 	}

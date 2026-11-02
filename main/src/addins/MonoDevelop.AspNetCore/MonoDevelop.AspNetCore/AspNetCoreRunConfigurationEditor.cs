@@ -90,7 +90,7 @@ namespace MonoDevelop.AspNetCore
 			var appUrlTable = new Table ();
 			appUrlTable.Add (new Label (GettextCatalog.GetString ("App URL:")), 0, 0);
 			var applicationUrlBox = new HBox ();
-			applicationUrlWarningTooltip = new XwtBoxTooltip (new Xwt.ImageView (ImageService.GetIcon (Ide.Gui.Stock.Warning, Gtk.IconSize.Menu))) {
+			applicationUrlWarningTooltip = new XwtBoxTooltip (new Xwt.ImageView (ImageService.GetIcon (Ide.Gui.Stock.Warning, MonoDevelop.Components.StockIconSize.Menu))) {
 				ToolTip = GettextCatalog.GetString ("Invalid URL"),
 				Severity = Ide.Tasks.TaskSeverity.Warning
 			};

@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 
 using System;
 using MonoDevelop.Core;
@@ -10,7 +11,7 @@ namespace MonoDevelop.Deployment.Gui
 	
 	[System.ComponentModel.Category("widget")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class FileCopyConfigurationSelector : Gtk.Bin
+	public partial class FileCopyConfigurationSelector : MonoDevelop.Components.BinWidget
 	{
 		FileCopyHandler[] handlers;
 		FileCopyConfiguration currentConfig;
@@ -82,17 +83,16 @@ namespace MonoDevelop.Deployment.Gui
 		
 		void LoadConfiguration (FileCopyConfiguration config)
 		{
-			if (editorBox.Child != null)
-				editorBox.Remove (editorBox.Child);
+			var oldEditor = editorBox.FirstChild;
+			if (oldEditor != null)
+				editorBox.Remove (oldEditor);
 			
 			IFileCopyConfigurationEditor editor = null;
 			if (config != null)
 				editor = GetEditor (config);
 			
 			if (editor != null)
-				editorBox.Add (editor.CreateEditor (config));
-			
-			ShowAll ();
+				DesignerLayout.Pack (editorBox, editor.CreateEditor (config), true);
 			
 			currentConfig = config;
 			if (ConfigurationChanged != null)

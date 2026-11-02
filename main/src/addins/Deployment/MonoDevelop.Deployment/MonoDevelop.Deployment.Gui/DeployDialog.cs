@@ -1,3 +1,4 @@
+using MonoDevelop.Components.Designer;
 
 using System;
 using System.Collections.Generic;
@@ -93,7 +94,7 @@ namespace MonoDevelop.Deployment.Gui
 			
 			store.Clear ();
 			foreach (PackageBuilder builder in builders) {
-				var pix = ImageService.GetIcon (builder.Icon, Gtk.IconSize.LargeToolbar);
+				var pix = ImageService.GetIcon (builder.Icon, MonoDevelop.Components.StockIconSize.LargeToolbar);
 				store.AppendValues (pix, builder.Description, builder);
 			}
 			
@@ -158,7 +159,7 @@ namespace MonoDevelop.Deployment.Gui
 		
 		PackageBuilder GetBuilderSelection ()
 		{
-			Gtk.TreeModel model;
+			Gtk.ITreeModel model;
 			Gtk.TreeIter iter;
 			
 			if (targetsTree.Selection.GetSelected (out model, out iter)) {
@@ -171,18 +172,16 @@ namespace MonoDevelop.Deployment.Gui
 		{
 			if (currentEditor != null) {
 				editorBox.Remove (currentEditor);
-				currentEditor.Destroy ();
 			}
 			
 			currentEditor = new PackageBuilderEditor (currentBuilder);
-			editorBox.Child = currentEditor;
-			editorBox.ShowAll ();
+			DesignerLayout.Pack (editorBox, currentEditor, true);
 		}
 		
 		bool ValidatePage ()
 		{
 			string msg = null;
-			switch (notebook.Page) {
+			switch (notebook.CurrentPage) {
 			case 0:
 				if (GetBuilderSelection () == null)
 					msg = GettextCatalog.GetString ("Please select a package type.");
@@ -233,8 +232,8 @@ namespace MonoDevelop.Deployment.Gui
 
 		protected virtual void OnButtonBackClicked(object sender, System.EventArgs e)
 		{
-			if (notebook.Page > 0)
-				notebook.Page--;
+			if (notebook.CurrentPage > 0)
+				notebook.CurrentPage--;
 			UpdateButtons ();
 		}
 
@@ -243,31 +242,32 @@ namespace MonoDevelop.Deployment.Gui
 			if (!ValidatePage ())
 				return;
 			
-			if (buttonNext.Label != Stock.GoForward) {
+			if (buttonNext.Label != NextLabel) {
 				this.Respond (ResponseType.Ok);
 				return;
 			}
 			
-			if (notebook.Page < notebook.NPages - 1)
-				notebook.Page++;
+			if (notebook.CurrentPage < notebook.NPages - 1)
+				notebook.CurrentPage++;
 			UpdateButtons ();
 		}
 
-		protected virtual void OnNotebookSelectPage(object o, Gtk.SelectPageArgs args)
+		const string NextLabel = "_Forward";
+
+		protected virtual void OnNotebookSelectPage(object o, Gtk.SwitchPageArgs args)
 		{
 			UpdateButtons ();
 		}
 		
 		void UpdateButtons ()
 		{
-			buttonBack.Sensitive = notebook.Page > 0 && notebook.GetNthPage (notebook.Page - 1).Visible;
+			buttonBack.Sensitive = notebook.CurrentPage > 0 && notebook.GetNthPage (notebook.CurrentPage - 1).Visible;
 			
-			if (notebook.Page < notebook.NPages - 1 && notebook.GetNthPage (notebook.Page + 1).Visible) {
-				buttonNext.Label = Stock.GoForward;
-				buttonNext.UseStock = true;
+			if (notebook.CurrentPage < notebook.NPages - 1 && notebook.GetNthPage (notebook.CurrentPage + 1).Visible) {
+				buttonNext.Label = NextLabel;
 			} else {
 				buttonNext.Label = GettextCatalog.GetString ("Create");
-				buttonNext.UseStock = false;
+
 			}
 			
 			if (vboxSaveProject.Visible) {

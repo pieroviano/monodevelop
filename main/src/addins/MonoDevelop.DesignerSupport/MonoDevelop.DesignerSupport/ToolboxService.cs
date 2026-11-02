@@ -313,12 +313,12 @@ namespace MonoDevelop.DesignerSupport
 			return GetToolboxItems (CurrentConsumer);
 		}
 		
-		public Gtk.TargetEntry[] GetCurrentDragTargetTable ()
+		public string[] GetCurrentDragTargetTable ()
 		{
 			if (CurrentConsumer != null)
 				return CurrentConsumer.DragTargets;
 			else
-				return new Gtk.TargetEntry [0];
+				return new string [0];
 		}
 		
 		
@@ -394,16 +394,19 @@ namespace MonoDevelop.DesignerSupport
 			OnToolboxUsed (CurrentConsumer, selectedItem);
 		}
 		
-		public void DragSelectedItem (Gtk.Widget source, Gdk.DragContext ctx)
+		/// <summary>Starts dragging the selected item; returns the content the consumer attaches to the drag (or null).</summary>
+		public Gdk.ContentProvider DragSelectedItem (Gtk.Widget source)
 		{
 			if ((CurrentConsumer == null) || (selectedItem == null))
-				return;
+				return null;
 			
 			try {
-				CurrentConsumer.DragItem (selectedItem, source, ctx);
+				var content = CurrentConsumer.DragItem (selectedItem, source);
 				OnToolboxUsed (CurrentConsumer, selectedItem);
+				return content;
 			} catch (Exception ex) {
 				MonoDevelop.Core.LoggingService.LogError ("Error dragging toolbox item.", ex);
+				return null;
 			}
 		}
 		

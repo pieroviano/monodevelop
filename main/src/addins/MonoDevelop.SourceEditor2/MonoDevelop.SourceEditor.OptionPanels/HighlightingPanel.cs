@@ -39,11 +39,11 @@ using System.Diagnostics;
 
 namespace MonoDevelop.SourceEditor.OptionPanels
 {
-	partial class HighlightingPanel : Gtk.Bin, IOptionsPanel
+	partial class HighlightingPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 		string schemeName;
 		ListStore styleStore = new ListStore (typeof (string), typeof (MonoDevelop.Ide.Editor.Highlighting.EditorTheme), typeof (bool));
-		static Lazy<Gdk.Pixbuf> errorPixbuf = new Lazy<Gdk.Pixbuf> (() => ImageService.GetIcon (Stock.DialogError, IconSize.Menu).ToPixbuf ());
+		static Lazy<Gdk.Pixbuf> errorPixbuf = new Lazy<Gdk.Pixbuf> (() => ImageService.GetIcon (MonoDevelop.Ide.Gui.GtkStock.DialogError, MonoDevelop.Components.StockIconSize.Menu).ToPixbuf ());
 
 		public HighlightingPanel ()
 		{
@@ -62,7 +62,7 @@ namespace MonoDevelop.SourceEditor.OptionPanels
 			MonoDevelop.Ide.Gui.Styles.Changed += HandleThemeChanged;
 		}
 
-		static void ImageDataFunc (TreeViewColumn tree_column, CellRenderer cell, TreeModel tree_model, TreeIter iter)
+		static void ImageDataFunc (TreeViewColumn tree_column, CellRenderer cell, ITreeModel tree_model, TreeIter iter)
 		{
 
 			var isError = (bool)tree_model.GetValue (iter, 2);
@@ -76,12 +76,31 @@ namespace MonoDevelop.SourceEditor.OptionPanels
 			ShowStyles ();
 		}
 		
-		protected override void OnDestroyed ()
+		bool destroyedFlag;
+
+		public override void Destroy ()
+		{
+			if (!destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Destroy ();
+		}
+
+		protected override void Dispose (bool disposing)
+		{
+			if (disposing && !destroyedFlag) {
+				destroyedFlag = true;
+				OnDestroyed ();
+			}
+			base.Dispose (disposing);
+		}
+
+		protected virtual void OnDestroyed ()
 		{
 			DefaultSourceEditorOptions.Instance.EditorTheme = schemeName;
 
 			MonoDevelop.Ide.Gui.Styles.Changed -= HandleThemeChanged;
-			base.OnDestroyed ();
 		}
 
 		string GetMarkup (string name, string description)

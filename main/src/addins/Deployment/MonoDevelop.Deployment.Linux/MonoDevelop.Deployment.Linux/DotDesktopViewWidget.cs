@@ -10,7 +10,7 @@ namespace MonoDevelop.Deployment.Linux
 {
 	[System.ComponentModel.Category("widget")]
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class DotDesktopViewWidget : Gtk.Bin
+	public partial class DotDesktopViewWidget : MonoDevelop.Components.BinWidget
 	{
 		public event EventHandler Changed;
 		
@@ -30,7 +30,7 @@ namespace MonoDevelop.Deployment.Linux
 		public DotDesktopViewWidget()
 		{
 			this.Build();
-			notebook.Page = 0;
+			notebook.CurrentPage = 0;
 			
 			// Environments tree
 			
@@ -157,7 +157,7 @@ namespace MonoDevelop.Deployment.Linux
 		
 		void UpdateShowInMenu ()
 		{
-			foreach (Gtk.Widget w in boxMenu.Children) {
+			for (var w = boxMenu.FirstChild; w != null; w = w.NextSibling) {
 				if (w != checkShowInMenu)
 					w.Sensitive = checkShowInMenu.Active;
 			}

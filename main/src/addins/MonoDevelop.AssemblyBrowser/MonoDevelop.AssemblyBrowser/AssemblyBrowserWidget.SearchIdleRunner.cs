@@ -84,11 +84,9 @@ namespace MonoDevelop.AssemblyBrowser
 					if (!fillStepFinished && (memberList.Count - i > 50 || (Environment.TickCount - lastUpdateTick) > 2000))
 						return true;
 					lastUpdateTick = Environment.TickCount;
-					assemblyBrowserWidget.searchTreeview.FreezeChildNotify ();
 					for (int j = 0; j < 50 && i < memberList.Count; j++) {
 						assemblyBrowserWidget.resultListStore.AppendValues (memberList [i++]);
 					}
-					assemblyBrowserWidget.searchTreeview.ThawChildNotify ();
 				}
 				return true;
 			}

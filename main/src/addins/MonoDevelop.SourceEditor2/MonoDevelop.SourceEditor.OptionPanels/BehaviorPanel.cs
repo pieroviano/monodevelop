@@ -33,7 +33,7 @@ using MonoDevelop.Ide.Editor;
 
 namespace MonoDevelop.SourceEditor.OptionPanels
 {
-	partial class BehaviorPanel : Gtk.Bin, IOptionsPanel
+	partial class BehaviorPanel : MonoDevelop.Components.BinWidget, IOptionsPanel
 	{
 		public BehaviorPanel ()
 		{

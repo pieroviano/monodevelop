@@ -37,7 +37,7 @@ using MonoDevelop.Projects;
 namespace MonoDevelop.Packaging.Gui
 {
 	[System.ComponentModel.ToolboxItem (true)]
-	public partial class GtkNuGetPackageMetadataOptionsPanelWidget : Gtk.Bin
+	public partial class GtkNuGetPackageMetadataOptionsPanelWidget : MonoDevelop.Components.BinWidget
 	{
 		NuGetPackageMetadata metadata;
 		bool projectOriginallyHadMetadata;
@@ -56,8 +56,8 @@ namespace MonoDevelop.Packaging.Gui
 
 		void SetupAccessibility ()
 		{
-			packageDescriptionPaddingLabel.Accessible.Role = Atk.Role.Filler;
-			packageReleaseNotesPaddingLabel.Accessible.Role = Atk.Role.Filler;
+			packageDescriptionPaddingLabel.SetShouldIgnore (true);
+			packageReleaseNotesPaddingLabel.SetShouldIgnore (true);
 
 			packageIdTextBox.SetCommonAccessibilityAttributes ("NuGetMetadata.ID",
 				packageIdLabel,

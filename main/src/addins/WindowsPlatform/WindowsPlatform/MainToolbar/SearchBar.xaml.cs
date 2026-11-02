@@ -37,13 +37,13 @@ namespace WindowsPlatform.MainToolbar
 				if (searchText == placeholderText)
 					SearchText = string.Empty;
 			};
-			IdeApp.Workbench.RootWindow.SetFocus += (o, e) =>
+			IdeApp.Workbench.RootWindow.AddNotification ("focus-widget", (o, e) =>
 			{
 				if (Keyboard.FocusedElement == SearchBar) {
 					Keyboard.ClearFocus ();
 					IdeApp.Workbench.RootWindow.Present ();
 				}
-			};
+			});
 
 			searchIcon = Stock.SearchboxSearch.GetStockIcon ().WithSize (Xwt.IconSize.Small);
 			clearIcon = ((MonoDevelop.Core.IconId)"md-searchbox-clear").GetStockIcon ().WithSize (Xwt.IconSize.Small);

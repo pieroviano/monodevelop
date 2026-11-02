@@ -25,55 +25,37 @@
 // THE SOFTWARE.
 using System;
 using Gtk;
-using Gdk;
+using MonoDevelop.Components;
 
 namespace MonoDevelop.SourceEditor
 {
-	class HoverCloseButton : EventBox
+	class HoverCloseButton : Gtk.Widget
 	{
 		bool hovered;
 
 		public HoverCloseButton ()
 		{
-			VisibleWindow = false;
-			Events |= EventMask.LeaveNotifyMask | EventMask.EnterNotifyMask | EventMask.ButtonPressMask | EventMask.ButtonReleaseMask;
+			SetSizeRequest (16, 16);
+			Halign = Align.Center;
+			Valign = Align.Center;
+			this.AddMotionHandler (null, (x, y) => SetHovered (true), () => SetHovered (false));
+			this.AddClickHandler (e => {
+				if (e.Button == 1 && hovered)
+					click = true;
+			}, e => {
+				if (click && hovered)
+					OnClicked (EventArgs.Empty);
+				click = false;
+			});
 		}
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		void SetHovered (bool value)
 		{
-			base.OnSizeRequested (ref requisition);
-			requisition.Width = requisition.Height = 16;
-		}
-
-		protected override bool OnEnterNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			hovered = true;
+			hovered = value;
 			QueueDraw ();
-			return base.OnEnterNotifyEvent (evnt);
-		}
-
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			hovered = false;
-			QueueDraw ();
-			return base.OnLeaveNotifyEvent (evnt);
 		}
 
 		bool click;
-		protected override bool OnButtonPressEvent (EventButton evnt)
-		{
-			if (evnt.Button == 1 && hovered) 
-				click = true;
-			return base.OnButtonPressEvent (evnt);
-		}
-
-		protected override bool OnButtonReleaseEvent (EventButton evnt)
-		{
-			if (click && hovered)
-				OnClicked (EventArgs.Empty);
-			click = false;
-			return base.OnButtonReleaseEvent (evnt);
-		}
 
 		public event EventHandler Clicked;
 
@@ -84,12 +66,15 @@ namespace MonoDevelop.SourceEditor
 				handler (this, e);
 		}
 
-		protected override bool OnExposeEvent (Gdk.EventExpose evnt)
+		protected override void OnSnapshot (Gtk.Snapshot snapshot)
 		{
-			using (var cr = CairoHelper.Create (evnt.Window)) {
-				DrawCloseButton (cr, new Gdk.Point (Allocation.X + Allocation.Width / 2, Allocation.Y + Allocation.Height / 2), hovered, 1.0, 0);
-			}
-			return base.OnExposeEvent (evnt);
+			snapshot.DrawCairo (this, cr => DrawCloseButton (cr, new Gdk.Point (Width / 2, Height / 2), hovered, 1.0, 0));
+		}
+
+		protected override void OnMeasure (Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
+		{
+			minimum = natural = 16;
+			minimum_baseline = natural_baseline = -1;
 		}
 
 		static void DrawCloseButton (Cairo.Context context, Gdk.Point center, bool hovered, double opacity, double animationProgress)

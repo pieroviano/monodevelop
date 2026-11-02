@@ -47,15 +47,13 @@ namespace MonoDevelop.ChangeLogAddIn
 		{
 			Build ();
 			
-			textview.ModifyFont (IdeServices.FontService.MonospaceFont);
+			SetTextViewFont (IdeServices.FontService.MonospaceFont);
 			textview.WrapMode = WrapMode.None;
 			textview.AcceptsTab = true;
 			Pango.TabArray tabs = new Pango.TabArray (1, true);
 			tabs.SetTab (0, Pango.TabAlign.Left, GetStringWidth (" ") * 4);
 			textview.Tabs = tabs;
-			textview.SizeRequested += delegate {
-				textview.WidthRequest = GetStringWidth (String.Empty.PadRight (80));
-			};
+			textview.WidthRequest = GetStringWidth (String.Empty.PadRight (80));
 			
 			store = new ListStore (typeof(ChangeLogEntry), typeof(Xwt.Drawing.Image), typeof(string));
 			fileList.Model = store;
@@ -66,9 +64,9 @@ namespace MonoDevelop.ChangeLogAddIn
 			foreach (ChangeLogEntry ce in entries.Values) {
 				Xwt.Drawing.Image pic;
 				if (ce.CantGenerate)
-					pic = ImageService.GetIcon (Ide.Gui.Stock.Warning, IconSize.Menu);
+					pic = ImageService.GetIcon (Ide.Gui.Stock.Warning, StockIconSize.Menu);
 				else if (ce.IsNew)
-					pic = ImageService.GetIcon (Stock.New, IconSize.Menu);
+					pic = ImageService.GetIcon (Ide.Gui.Stock.NewDocumentIcon, StockIconSize.Menu);
 				else
 					pic = null;
 				store.AppendValues (ce, pic, ce.File);
@@ -87,6 +85,24 @@ namespace MonoDevelop.ChangeLogAddIn
 				fileList.Selection.SelectIter (it);
 		}
 		
+		static int fontClassCounter;
+
+		// GTK 4: ModifyFont is gone; the font is applied through a CSS class unique to this dialog.
+		void SetTextViewFont (Pango.FontDescription font)
+		{
+			string fontClass = "md-changelog-entry-" + (++fontClassCounter);
+			textview.AddCssClass (fontClass);
+			var css = new System.Text.StringBuilder ();
+			if (!string.IsNullOrEmpty (font.Family))
+				css.Append ("font-family: \"").Append (font.Family.Replace ("\"", "")).Append ("\"; ");
+			if (font.Size > 0)
+				css.Append ("font-size: ").Append ((font.Size / Pango.Scale.PangoScale).ToString (System.Globalization.CultureInfo.InvariantCulture))
+					.Append (font.SizeIsAbsolute ? "px; " : "pt; ");
+			var provider = new CssProvider ();
+			provider.LoadFromString ("textview." + fontClass + " { " + css + " }");
+			StyleContext.AddProviderForDisplay (Gdk.Display.Default, provider, (uint)StyleProviderPriority.Application);
+		}
+
 		int GetStringWidth (string str)
 		{
 			int width, height;

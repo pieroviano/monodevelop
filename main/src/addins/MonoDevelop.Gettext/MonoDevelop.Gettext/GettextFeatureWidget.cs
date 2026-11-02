@@ -36,7 +36,7 @@ using MonoDevelop.Ide;
 
 namespace MonoDevelop.Gettext
 {
-	partial class GettextFeatureWidget : Gtk.Bin
+	partial class GettextFeatureWidget : MonoDevelop.Components.BinWidget
 	{
 		ListStore store;
 		

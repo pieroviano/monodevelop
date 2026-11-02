@@ -70,7 +70,7 @@ namespace WindowsPlatform
 			Image = image;
 		}
 
-		public ImageBox (string iconId, Gtk.IconSize size) : this ()
+		public ImageBox (string iconId, MonoDevelop.Components.StockIconSize size) : this ()
 		{
 			Image = MonoDevelop.Ide.ImageService.GetIcon (iconId, size);
 		}

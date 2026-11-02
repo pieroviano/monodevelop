@@ -42,6 +42,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Deployment\MonoDevelop.Deployment\DesignerLayout.cs"><Link>DesignerLayout.cs</Link></Compile>
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="AutotoolsContext.cs" />
     <Compile Include="Commands.cs" />

@@ -39,11 +39,12 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 		//This is run when an item is activated from the toolbox service.
 		void ConsumeItem (ItemToolboxNode item);
 		
-		// The table of targets that the drag will support
-		Gtk.TargetEntry[] DragTargets { get; }
+		// The content formats (MIME types) that the drag will support (GTK 4 replacement of the GTK 2 target table)
+		string[] DragTargets { get; }
 		
-		// Called when an item is dragged
-		void DragItem (ItemToolboxNode item, Gtk.Widget source, Gdk.DragContext ctx);
+		// Called when an item is dragged (from the drag source "prepare" handler). Returns the content to attach
+		// to the drag for the formats in DragTargets (GTK 4 replacement of hooking DragDataGet), or null if none.
+		Gdk.ContentProvider DragItem (ItemToolboxNode item, Gtk.Widget source);
 		
 		//Toolbox service uses this to filter toolbox items.
 		System.ComponentModel.ToolboxItemFilterAttribute[] ToolboxFilterAttributes {

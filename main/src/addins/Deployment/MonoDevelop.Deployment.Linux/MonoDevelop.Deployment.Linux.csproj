@@ -49,6 +49,7 @@
     <EmbeddedResource Include="app.desktop.xft.xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\MonoDevelop.Deployment\DesignerLayout.cs"><Link>DesignerLayout.cs</Link></Compile>
     <Compile Include="MonoDevelop.Deployment.Linux\BasicOptionPanelWidget.cs" />
     <Compile Include="MonoDevelop.Deployment.Linux\DesktopPanelWidget.cs" />
     <Compile Include="MonoDevelop.Deployment.Linux\DotDesktopViewWidget.cs" />

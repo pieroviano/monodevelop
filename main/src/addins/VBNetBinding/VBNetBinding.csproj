@@ -46,6 +46,7 @@
     <Compile Include="Project\VBCompilerParameters.cs" />
     <Compile Include="VBCodeGenerator.cs" />
     <Compile Include="Project\VBNetResourceIdBuilder.cs" />
+    <Compile Include="Gui\DesignerLayout.cs" />
     <Compile Include="Gui\ProjectOptionsPanelWidget.cs" />
     <Compile Include="Gui\ConfigurationOptionsPanelWidget.cs" />
     <Compile Include="Gui\ConfigurationOptionsPanel.cs" />

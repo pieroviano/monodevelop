@@ -25,7 +25,6 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -44,11 +43,11 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 
 		bool showCategories = true;
 		bool listMode = false;
-		int mouseX, mouseY;
+		// width used to lay out the items (the allocated width, or the width a measure is asked for)
+		int layoutWidth = 50;
 		Pango.FontDescription desc;
 		Xwt.Drawing.Image discloseDown;
 		Xwt.Drawing.Image discloseUp;
-		Gdk.Cursor handCursor;
 
 		const int animationDurationMs = 600;
 
@@ -133,35 +132,47 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 
 		public ToolboxWidget ()
 		{
-			this.Events = EventMask.ExposureMask |
-						   EventMask.EnterNotifyMask |
-						   EventMask.LeaveNotifyMask |
-						   EventMask.ButtonPressMask |
-						   EventMask.ButtonReleaseMask |
-						   EventMask.KeyPressMask |
-						   EventMask.PointerMotionMask;
 			this.CanFocus = true;
-			discloseDown = ImageService.GetIcon ("md-disclose-arrow-down", Gtk.IconSize.Menu);
-			discloseUp = ImageService.GetIcon ("md-disclose-arrow-up", Gtk.IconSize.Menu);
-			handCursor = new Cursor (CursorType.Hand1);
+			this.Focusable = true;
+			discloseDown = ImageService.GetIcon ("md-disclose-arrow-down", StockIconSize.Menu);
+			discloseUp = ImageService.GetIcon ("md-disclose-arrow-up", StockIconSize.Menu);
+
+			CreateLayouts ();
+			DrawFunc = Draw;
+
+			this.AddKeyPressHandler (OnKeyPressed);
+			this.AddClickHandler (OnButtonPressed);
+
+			var motion = new Gtk.EventControllerMotion ();
+			motion.Motion += (o, a) => OnMotion (a.X, a.Y, motion.CurrentEventState);
+			motion.Leave += (o, a) => OnLeave ();
+			AddController (motion);
+
+			this.AddScrollHandler ((dx, dy, state) => {
+				HideTooltipWindow ();
+				ClearMouseOverItem ();
+				return false;
+			});
 
 			var actionHandler = new ActionDelegate (this);
 			actionHandler.PerformShowMenu += PerformShowMenu;
 		}
 
-		protected override void OnStyleSet (Gtk.Style previous_style)
+		Gdk.Cursor handCursor;
+		bool handCursorSet;
+
+		void SetHandCursor (bool hand)
 		{
-			if (this.layout != null) {
-				this.layout.Dispose ();
-				this.layout = null;
-			}
-			if (this.headerLayout != null) {
-				this.headerLayout.Dispose ();
-				this.headerLayout = null;
-			}
+			if (hand == handCursorSet)
+				return;
+			handCursorSet = hand;
+			if (hand && handCursor == null)
+				handCursor = new Gdk.Cursor ("pointer", null);
+			Cursor = hand ? handCursor : null;
+		}
 
-			base.OnStyleSet (previous_style);
-
+		void CreateLayouts ()
+		{
 			layout = new Pango.Layout (this.PangoContext);
 			headerLayout = new Pango.Layout (this.PangoContext);
 
@@ -173,28 +184,26 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			layout.Ellipsize = EllipsizeMode.End;
 
 			headerLayout.Attributes = new AttrList ();
-			//			headerLayout.Attributes.Insert (new Pango.AttrWeight (Pango.Weight.Bold));
 		}
 
-
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			HideTooltipWindow ();
-			if (this.layout != null) {
-				this.layout.Dispose ();
-				this.layout = null;
+			if (disposing) {
+				HideTooltipWindow ();
+				if (tweener != null) {
+					tweener.Stop ();
+					tweener = null;
+				}
+				if (this.layout != null) {
+					this.layout.Dispose ();
+					this.layout = null;
+				}
+				if (this.headerLayout != null) {
+					this.headerLayout.Dispose ();
+					this.headerLayout = null;
+				}
 			}
-			if (this.headerLayout != null) {
-				this.headerLayout.Dispose ();
-				this.headerLayout = null;
-			}
-			base.OnDestroyed ();
-			handCursor.Dispose ();
-		}
-
-		static Cairo.Color Convert (Gdk.Color color)
-		{
-			return new Cairo.Color (color.Red / (double)ushort.MaxValue, color.Green / (double)ushort.MaxValue, color.Blue / (double)ushort.MaxValue);
+			base.Dispose (disposing);
 		}
 
 		const int CategoryLeftPadding = 6;
@@ -205,36 +214,38 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 		const int ItemIconTextItemSpacing = 4;
 		const int IconModePadding = 2;
 
-		protected override bool OnExposeEvent (Gdk.EventExpose e)
+		void Draw (Gtk.DrawingArea drawingArea, Cairo.Context cr, int width, int height)
 		{
-			Cairo.Context cr = Gdk.CairoHelper.Create (e.Window);
+			if (layout == null)
+				return;
 
-			Gdk.Rectangle area = e.Area;
+			var clip = cr.ClipExtents ();
+			var area = new Gdk.Rectangle ((int)Math.Floor (clip.X), (int)Math.Floor (clip.Y),
+				(int)Math.Ceiling (clip.Width), (int)Math.Ceiling (clip.Height));
+			var textColor = Ide.Gui.Styles.BaseForegroundColor.ToCairoColor ();
+			var backColor = Ide.Gui.Styles.BaseBackgroundColor.ToCairoColor ();
 
 			if (this.categories.Count == 0 || !string.IsNullOrEmpty (CustomMessage)) {
 				Pango.Layout messageLayout = new Pango.Layout (this.PangoContext);
 				messageLayout.Alignment = Pango.Alignment.Center;
-				messageLayout.Width = (int)(Allocation.Width * 2 / 3 * Pango.Scale.PangoScale);
+				messageLayout.Width = (int)(width * 2 / 3 * Pango.Scale.PangoScale);
 				if (!string.IsNullOrEmpty (CustomMessage))
 					messageLayout.SetText (CustomMessage);
 				else
 					messageLayout.SetText (MonoDevelop.Core.GettextCatalog.GetString ("There are no tools available for the current document."));
-				cr.MoveTo (Allocation.Width * 1 / 6, 12);
-				cr.SetSourceColor (Style.Text (StateType.Normal).ToCairoColor ());
+				cr.MoveTo (width * 1 / 6, 12);
+				cr.SetSourceColor (textColor);
 				Pango.CairoHelper.ShowLayout (cr, messageLayout);
 				messageLayout.Dispose ();
-				((IDisposable)cr).Dispose ();
-				return true;
+				return;
 			}
 
-			var backColor = Style.Base (StateType.Normal).ToCairoColor ();
 			cr.SetSourceColor (backColor);
 			cr.Rectangle (area.X, area.Y, area.Width, area.Height);
 			cr.Fill ();
 
-			int xpos = (this.hAdjustement != null ? (int)this.hAdjustement.Value : 0);
-			int vadjustment = (this.vAdjustement != null ? (int)this.vAdjustement.Value : 0);
-			int ypos = -vadjustment;
+			int xpos = 0;
+			int ypos = 0;
 			ToolboxWidgetCategory lastCategory = null;
 			int lastCategoryYpos = 0;
 			cr.LineWidth = 1;
@@ -253,19 +264,19 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 					cr.LineTo (itemDimension.Width, ypos + 0.5);
 				}
 				cr.MoveTo (0, ypos + itemDimension.Height - 0.5);
-				cr.LineTo (xpos + Allocation.Width, ypos + itemDimension.Height - 0.5);
+				cr.LineTo (xpos + width, ypos + itemDimension.Height - 0.5);
 				cr.SetSourceColor (MonoDevelop.Ide.Gui.Styles.PadCategoryBorderColor.ToCairoColor ());
 				cr.Stroke ();
 
 				headerLayout.SetMarkup (category.Text);
-				int width, height;
+				int headerWidth, headerHeight;
 				cr.SetSourceColor (MonoDevelop.Ide.Gui.Styles.PadCategoryLabelColor.ToCairoColor ());
-				headerLayout.GetPixelSize (out width, out height);
-				cr.MoveTo (xpos + CategoryLeftPadding, ypos + (double)(Math.Round ((double)(itemDimension.Height - height) / 2)));
+				headerLayout.GetPixelSize (out headerWidth, out headerHeight);
+				cr.MoveTo (xpos + CategoryLeftPadding, ypos + (double)(Math.Round ((double)(itemDimension.Height - headerHeight) / 2)));
 				Pango.CairoHelper.ShowLayout (cr, headerLayout);
 
 				var img = category.IsExpanded ? discloseUp : discloseDown;
-				cr.DrawImage (this, img, Allocation.Width - img.Width - CategoryRightPadding, ypos + Math.Round ((itemDimension.Height - img.Height) / 2));
+				cr.DrawImage (this, img, width - img.Width - CategoryRightPadding, ypos + Math.Round ((itemDimension.Height - img.Height) / 2));
 
 				lastCategory = category;
 				lastCategoryYpos = ypos + itemDimension.Height;
@@ -283,7 +294,7 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 				}
 				if (item == SelectedItem) {
 					icon = icon.WithStyles ("sel");
-					cr.SetSourceColor (Style.Base (StateType.Selected).ToCairoColor ());
+					cr.SetSourceColor (Ide.Gui.Styles.BaseSelectionBackgroundColor.ToCairoColor ());
 					cr.Rectangle (xpos, ypos, itemDimension.Width, itemDimension.Height);
 					cr.Fill ();
 				}
@@ -291,16 +302,16 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 					cr.DrawImage (this, icon, xpos + ItemLeftPadding, ypos + Math.Round ((itemDimension.Height - icon.Height) / 2));
 					layout.SetMarkup (item.Text);
 					layout.Width = (int)((itemDimension.Width - ItemIconTextItemSpacing - iconSize.Width - ItemLeftPadding * 2) * Pango.Scale.PangoScale);
-					layout.GetPixelSize (out var width, out var height);
-					cr.SetSourceColor (Style.Text (item != SelectedItem ? StateType.Normal : StateType.Selected).ToCairoColor ());
-					cr.MoveTo (xpos + ItemLeftPadding + iconSize.Width + ItemIconTextItemSpacing, ypos + Math.Round ((double)(itemDimension.Height - height) / 2));
+					layout.GetPixelSize (out var textWidth, out var textHeight);
+					cr.SetSourceColor ((item != SelectedItem ? Ide.Gui.Styles.BaseForegroundColor : Ide.Gui.Styles.BaseSelectionTextColor).ToCairoColor ());
+					cr.MoveTo (xpos + ItemLeftPadding + iconSize.Width + ItemIconTextItemSpacing, ypos + Math.Round ((double)(itemDimension.Height - textHeight) / 2));
 					Pango.CairoHelper.ShowLayout (cr, layout);
 				} else {
 					cr.DrawImage (this, icon, xpos + Math.Round ((itemDimension.Width - icon.Width) / 2), ypos + Math.Round ((itemDimension.Height - icon.Height) / 2));
 				}
 
 				if (item == mouseOverItem) {
-					cr.SetSourceColor (Style.Dark (StateType.Prelight).ToCairoColor ());
+					cr.SetSourceColor (Ide.Gui.Styles.PadCategoryBorderColor.ToCairoColor ());
 					cr.Rectangle (xpos + 0.5, ypos + 0.5, itemDimension.Width - 1, itemDimension.Height - 1);
 					cr.Stroke ();
 				}
@@ -317,9 +328,6 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 				cr.SetSourceColor (MonoDevelop.Ide.Gui.Styles.PadCategoryBorderColor.ToCairoColor ());
 				cr.Stroke ();
 			}
-
-			((IDisposable)cr).Dispose ();
-			return true;
 		}
 
 		void ProcessExpandAnimation (Cairo.Context cr, ToolboxWidgetCategory lastCategory, int lastCategoryYpos, Cairo.Color backColor, Gdk.Rectangle area, ref int ypos)
@@ -341,21 +349,21 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			}
 		}
 
-		protected override bool OnKeyPressEvent (Gdk.EventKey evnt)
+		bool OnKeyPressed (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
 			ToolboxWidgetItem nextItem;
+			var key = (Gdk.Key)keyval;
 
 			// Handle keyboard toolip popup
-			if ((evnt.Key == Gdk.Key.F1 && (evnt.State & Gdk.ModifierType.ControlMask) == Gdk.ModifierType.ControlMask)) {
+			if ((key == Gdk.Key.F1 && (state & Gdk.ModifierType.ControlMask) == Gdk.ModifierType.ControlMask)) {
 				if (this.SelectedItem != null) {
-					int vadjustment = (this.vAdjustement != null ? (int)this.vAdjustement.Value : 0);
 					Gdk.Rectangle rect = GetItemExtends (SelectedItem);
-					ShowTooltip (SelectedItem, 0, rect.X, rect.Bottom - vadjustment);
+					ShowTooltip (SelectedItem, 0, rect.X, rect.Bottom);
 				}
 				return true;
 			}
 
-			switch (evnt.Key) {
+			switch (key) {
 			case Gdk.Key.KP_Enter:
 			case Gdk.Key.Return:
 				if (this.SelectedItem != null)
@@ -431,34 +439,27 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			base.OnUnrealized ();
 		}
 
-		protected override bool OnLeaveNotifyEvent (Gdk.EventCrossing evnt)
-		{
-			if (evnt.Mode == CrossingMode.Normal) {
-				HideTooltipWindow ();
-				ClearMouseOverItem ();
-			}
-			GdkWindow.Cursor = null;
-			return base.OnLeaveNotifyEvent (evnt);
-		}
-
-		protected override bool OnScrollEvent (Gdk.EventScroll evnt)
+		void OnLeave ()
 		{
 			HideTooltipWindow ();
 			ClearMouseOverItem ();
-			return base.OnScrollEvent (evnt);
+			SetHandCursor (false);
 		}
 
-		public Action<Gdk.EventButton> DoPopupMenu { get; set; }
+		public Action<ClickInfo> DoPopupMenu { get; set; }
 
-		protected override bool OnButtonPressEvent (Gdk.EventButton e)
+		void OnButtonPressed (ClickInfo e)
 		{
 			this.GrabFocus ();
 			HideTooltipWindow ();
+			// the pointer may not have moved since the last motion (touch, keyboard...)
+			UpdateMouseOverItem (e.X, e.Y);
 			if (this.mouseOverItem is ToolboxWidgetCategory) {
-				if (!e.TriggersContextMenu () && e.Button == 1 && e.Type == EventType.ButtonPress) {
+				if (!e.IsContextMenuTrigger && e.Button == 1 && e.NPress == 1) {
 					ToolboxWidgetCategory mouseOverCateogry = (ToolboxWidgetCategory)this.mouseOverItem;
 					SetCategoryExpanded (mouseOverCateogry, !mouseOverCateogry.IsExpanded);
-					return true;
+					e.Claim ();
+					return;
 				}
 				this.SelectedItem = mouseOverItem;
 				this.QueueResize ();
@@ -466,16 +467,15 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 				this.SelectedItem = mouseOverItem;
 				this.QueueDraw ();
 			}
-			if (e.TriggersContextMenu ()) {
+			if (e.IsContextMenuTrigger) {
 				if (DoPopupMenu != null) {
 					DoPopupMenu (e);
-					return true;
+					e.Claim ();
 				}
-			} else if (e.Type == EventType.TwoButtonPress && this.SelectedItem != null) {
+			} else if (e.NPress == 2 && this.SelectedItem != null) {
 				this.OnActivateSelectedItem (EventArgs.Empty);
-				return true;
+				e.Claim ();
 			}
-			return base.OnButtonPressEvent (e);
 		}
 
 		void PerformShowMenu (object sender, EventArgs args)
@@ -515,33 +515,32 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			QueueDraw ();
 		}
 
-		protected override bool OnPopupMenu ()
+		void OnMotion (double x, double y, Gdk.ModifierType state)
 		{
-			if (DoPopupMenu != null) {
-				DoPopupMenu (null);
-				return true;
-			}
-			return base.OnPopupMenu ();
+			HideTooltipWindow ();
+			var oldItem = mouseOverItem;
+			UpdateMouseOverItem (x, y);
+
+			if (mouseOverItem != null && !state.HasFlag (ModifierType.Button1Mask))
+				ShowTooltip (mouseOverItem, TipTimer, (int)x + 2, (int)y + 16);
+
+			if (oldItem != mouseOverItem)
+				this.QueueDraw ();
 		}
 
-		protected override bool OnMotionNotifyEvent (Gdk.EventMotion e)
+		// Finds the item (or category) under the pointer
+		void UpdateMouseOverItem (double x, double y)
 		{
 			int xpos = 0;
 			int ypos = 0;
-			HideTooltipWindow ();
-			var oldItem = mouseOverItem;
 			mouseOverItem = null;
-			Gdk.Rectangle newItemExtents = Gdk.Rectangle.Zero;
-			this.mouseX = (int)e.X + (int)(this.hAdjustement != null ? this.hAdjustement.Value : 0);
-			this.mouseY = (int)e.Y + (int)(this.vAdjustement != null ? this.vAdjustement.Value : 0);
+			int mouseX = (int)x;
+			int mouseY = (int)y;
 			Iterate (ref xpos, ref ypos, (category, itemDimension) => {
 				if (xpos <= mouseX && mouseX <= xpos + itemDimension.Width &&
 					ypos <= mouseY && mouseY <= ypos + itemDimension.Height) {
 					mouseOverItem = category;
-					GdkWindow.Cursor = handCursor;
-					if (!e.State.HasFlag (ModifierType.Button1Mask))
-						ShowTooltip (mouseOverItem, TipTimer, (int)e.X + 2, (int)e.Y + 16);
-					newItemExtents = new Gdk.Rectangle (xpos, ypos, itemDimension.Width, itemDimension.Height);
+					SetHandCursor (true);
 					return false;
 				}
 				return true;
@@ -549,26 +548,14 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 				if (xpos <= mouseX && mouseX <= xpos + itemDimension.Width &&
 					ypos <= mouseY && mouseY <= ypos + itemDimension.Height) {
 					mouseOverItem = item;
-					GdkWindow.Cursor = null;
-					if (!e.State.HasFlag (ModifierType.Button1Mask))
-						ShowTooltip (mouseOverItem, TipTimer, (int)e.X + 2, (int)e.Y + 16);
-					newItemExtents = new Gdk.Rectangle (xpos, ypos, itemDimension.Width, itemDimension.Height);
+					SetHandCursor (false);
 					return false;
 				}
 				return true;
 			});
 
 			if (mouseOverItem == null)
-				GdkWindow.Cursor = null;
-
-			if (oldItem != mouseOverItem) {
-				this.QueueDraw ();
-				var oldItemExtents = GetItemExtends (oldItem);
-				QueueDrawArea (oldItemExtents.X, oldItemExtents.Y, oldItemExtents.Width, oldItemExtents.Height);
-				QueueDrawArea (newItemExtents.X, newItemExtents.Y, newItemExtents.Width, newItemExtents.Height);
-			}
-
-			return base.OnMotionNotifyEvent (e);
+				SetHandCursor (false);
 		}
 
 		#region Item selection logic
@@ -774,30 +761,20 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 		#endregion
 
 		#region Scrolling
-		Adjustment hAdjustement = null;
-		Adjustment vAdjustement = null;
+		/// <summary>Vertical adjustment of the scrolled window hosting this widget (used to keep the selection visible).</summary>
+		public Adjustment ScrollAdjustment { get; set; }
 
 		public void ScrollToSelectedItem ()
 		{
-			if (this.SelectedItem == null || this.vAdjustement == null)
+			var adjustment = ScrollAdjustment;
+			if (this.SelectedItem == null || adjustment == null)
 				return;
 			Gdk.Rectangle rect = GetItemExtends (this.SelectedItem);
-			if (this.vAdjustement.Value > rect.Top)
-				this.vAdjustement.Value = rect.Top;
-			if (this.vAdjustement.Value + this.Allocation.Height < rect.Bottom)
-				this.vAdjustement.Value = rect.Bottom - this.Allocation.Height;
-		}
-
-		protected override void OnSetScrollAdjustments (Adjustment hAdjustement, Adjustment vAdjustement)
-		{
-			this.hAdjustement = hAdjustement;
-			if (this.hAdjustement != null) {
-				this.hAdjustement.ValueChanged += (sender, e) => this.QueueDraw ();
-			}
-			this.vAdjustement = vAdjustement;
-			if (this.vAdjustement != null) {
-				this.vAdjustement.ValueChanged += (sender, e) => this.QueueDraw ();
-			}
+			int pageSize = (int)adjustment.PageSize;
+			if (adjustment.Value > rect.Top)
+				adjustment.Value = rect.Top;
+			if (adjustment.Value + pageSize < rect.Bottom)
+				adjustment.Value = rect.Bottom - pageSize;
 		}
 		#endregion
 
@@ -820,7 +797,7 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 					}
 
 					xpos = 0;
-					if (action != null && !action (category, item, new Gdk.Size (Allocation.Width, y)))
+					if (action != null && !action (category, item, new Gdk.Size (layoutWidth, y)))
 						return false;
 
 					ypos += y;
@@ -830,7 +807,7 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			foreach (ToolboxWidgetItem item in category.Items) {
 				if (!item.IsVisible)
 					continue;
-				if (xpos + iconSize.Width >= this.Allocation.Width) {
+				if (xpos + iconSize.Width >= layoutWidth) {
 					xpos = 0;
 					ypos += iconSize.Height;
 				}
@@ -858,7 +835,7 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 						category.ItemHeight = y;
 					}
 
-					if (catAction != null && !catAction (category, new Size (this.Allocation.Width, y)))
+					if (catAction != null && !catAction (category, new Size (layoutWidth, y)))
 						return;
 					ypos += y;
 				}
@@ -869,53 +846,41 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 			}
 		}
 		#endregion
-
 		#region Control size management
-		bool realSizeRequest;
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int forSize, out int minimum, out int natural, out int minimumBaseline, out int naturalBaseline)
 		{
-			if (!realSizeRequest) {
-				// Request a minimal width, to size recalculation infinite loops with
-				// small widths, due to the vscrollbar being shown and hidden.
-				requisition.Width = 50;
-				requisition.Height = 0;
+			minimumBaseline = naturalBaseline = -1;
+			if (orientation == Gtk.Orientation.Horizontal) {
+				// Request a minimal width, to avoid size recalculation loops with small widths
+				// due to the vscrollbar being shown and hidden.
+				minimum = natural = 50;
 				return;
 			}
+
+			int oldWidth = layoutWidth;
+			layoutWidth = Math.Max (forSize > 0 ? forSize : layoutWidth, 50);
 			int xpos = 0;
 			int ypos = 0;
-			Iterate (ref xpos, ref ypos, null, null);
-			requisition.Width = 50;
-			requisition.Height = ypos;
-			if (this.vAdjustement != null) {
-				this.vAdjustement.SetBounds (0,
-											 ypos,
-											 20,
-											 Allocation.Height,
-											 Allocation.Height);
-				if (ypos < Allocation.Height)
-					this.vAdjustement.Value = 0;
-				if (vAdjustement.Value + vAdjustement.PageSize > vAdjustement.Upper)
-					vAdjustement.Value = vAdjustement.Upper - vAdjustement.PageSize;
-				if (vAdjustement.Value < 0)
-					vAdjustement.Value = 0;
-			}
+			if (layout != null)
+				Iterate (ref xpos, ref ypos, null, null);
+			layoutWidth = oldWidth;
+			minimum = natural = ypos;
 		}
 
-		protected override void OnSizeAllocated (Gdk.Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
-			if (!realSizeRequest) {
-				realSizeRequest = true;
+			base.OnSizeAllocate (width, height, baseline);
+			if (width != layoutWidth) {
+				layoutWidth = width;
 				QueueResize ();
-			} else
-				realSizeRequest = false;
+			}
 		}
 
 		#endregion
 
 		#region Tooltips
 		const int TipTimer = 800;
-		Gtk.Window tooltipWindow = null;
+		TooltipWindow tooltipWindow = null;
 		ToolboxWidgetItem tipItem;
 		int tipX, tipY;
 		uint tipTimeoutId;
@@ -934,42 +899,19 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 
 		bool ShowTooltip ()
 		{
+			tipTimeoutId = 0;
 			HideTooltipWindow ();
 
 			if (tipItem.Node is ICustomTooltipToolboxNode custom) {
 				tooltipWindow = custom.CreateTooltipWindow (this);
 			} else {
-				tooltipWindow = new CustomTooltipWindow  {
-					Tooltip = tipItem.Tooltip,
-					ParentWindow = this.GdkWindow
+				tooltipWindow = new CustomTooltipWindow {
+					Tooltip = tipItem.Tooltip
 				};
 			}
 
-			//translate mouse position into screen coords
-			GdkWindow.GetOrigin (out var ox, out var oy);
-			int x = tipX + ox + Allocation.X;
-			int y = tipY + oy + Allocation.Y;
-
-			//get window size. might not work for all tooltips.
-			var req = tooltipWindow.SizeRequest ();
-			int w = req.Width;
-			int h = req.Height;
-
-			var geometry = Screen.GetUsableMonitorGeometry (Screen.GetMonitorAtPoint (ox + x, oy + y));
-
-			//if hits right edge, shift in
-			if (x + w > geometry.Right)
-				x = geometry.Right - w;
-
-			//if hits bottom, flip above mouse
-			if (y + h > geometry.Bottom)
-				y = y - h - 20;
-
-			int destX = Math.Max (0, x);
-			int destY = Math.Max (0, y);
-
-			tooltipWindow.Move (destX, destY);
-			tooltipWindow.ShowAll ();
+			// GTK 4 popovers keep themselves on screen; the popover points at the mouse position
+			tooltipWindow?.ShowPopup (this, new Gdk.Rectangle (tipX, tipY, 1, 1), Gtk.PositionType.Bottom);
 
 			return false;
 		}
@@ -999,17 +941,17 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 				}
 			}
 
-			Label label = new Label ();
+			Label label = new Label ((string)null);
 			public CustomTooltipWindow ()
 			{
 				label.Xalign = 0;
-				label.Xpad = 3;
-				label.Ypad = 3;
-				Add (label);
+				label.MarginStart = label.MarginEnd = label.MarginTop = label.MarginBottom = 3;
+				Child = label;
 			}
 		}
 		#endregion
 	}
+
 
 	class ToolboxWidgetCategory : ToolboxWidgetItem
 	{
@@ -1086,7 +1028,7 @@ namespace MonoDevelop.DesignerSupport.Toolbox
 		static Xwt.Drawing.Image DefaultIcon {
 			get {
 				if (defaultIcon == null)
-					defaultIcon = ImageService.GetIcon (Stock.MissingImage, IconSize.Menu);
+					defaultIcon = ImageService.GetIcon (Ide.Gui.GtkStock.MissingImage, StockIconSize.Menu);
 				return defaultIcon;
 			}
 		}

@@ -35,7 +35,7 @@ using MonoDevelop.Components;
 
 namespace Mono.TextEditor.Theatrics
 {
-	abstract class AnimatedBox : Container
+	abstract class AnimatedBox : ContainerWidget
 	{
 		private readonly Stage<AnimatedWidget> stage = new Stage<AnimatedWidget> ();
 		private readonly LinkedList<AnimatedWidget> children = new LinkedList<AnimatedWidget> ();
@@ -60,9 +60,6 @@ namespace Mono.TextEditor.Theatrics
 
 		protected AnimatedBox (bool horizontal)
 		{
-			GtkWorkarounds.FixContainerLeak (this);
-			
-			WidgetFlags |= WidgetFlags.NoWindow;
 			this.horizontal = horizontal;
 			stage.ActorStep += OnActorStep;
 			border_stage.Iteration += OnBorderIteration;
@@ -91,7 +88,7 @@ namespace Mono.TextEditor.Theatrics
 				break;
 			case AnimationState.Going:
 				if (actor.Expired) {
-					actor.Target.Unparent ();
+					RemoveChild (actor.Target);
 					children.Remove (actor.Target.Node);
 					return false;
 				} else {
@@ -118,7 +115,7 @@ namespace Mono.TextEditor.Theatrics
 				start_border = Choreographer.PixelCompose (percent, start_padding, border_easing);
 				end_border = Choreographer.PixelCompose (percent, end_padding, border_easing);
 			}
-			QueueResizeNoRedraw ();
+			QueueResize ();
 		}
 
 		private void OnWidgetDestroyed (object sender, EventArgs args)
@@ -131,7 +128,7 @@ namespace Mono.TextEditor.Theatrics
 			int skip_count = 0;
 			
 			foreach (AnimatedWidget animated_widget in Widgets) {
-				animated_widget.QueueResizeNoRedraw ();
+				animated_widget.QueueResize ();
 				if (skip_count > 1) {
 					skip_count--;
 					continue;
@@ -174,24 +171,22 @@ namespace Mono.TextEditor.Theatrics
 
 		#region Protected Overrides
 
-		protected override void OnAdded (Widget widget)
-		{
-			PackStart (widget, duration, easing, blocking);
-		}
+		/// <summary>The border around the animated children (GTK 4 containers have no border width).</summary>
+		public uint BorderWidth { get; set; }
 
-		protected override void OnSizeRequested (ref Requisition requisition)
+		protected override void OnMeasure (Gtk.Orientation orientation, int for_size, out int minimum, out int natural, out int minimum_baseline, out int natural_baseline)
 		{
 			int width = 0;
 			int height = 0;
-			
+
 			if (horizontal) {
 				width = start_border + end_border;
 			} else {
 				height = start_border + end_border;
 			}
-			
+
 			foreach (AnimatedWidget widget in Widgets) {
-				Requisition req = widget.SizeRequest ();
+				var req = GetChildNaturalSize (widget);
 				if (horizontal) {
 					width += req.Width;
 					height = System.Math.Max (height, req.Height);
@@ -200,14 +195,14 @@ namespace Mono.TextEditor.Theatrics
 					height += req.Height;
 				}
 			}
-			
-			requisition.Width = width;
-			requisition.Height = height;
+
+			minimum = natural = orientation == Gtk.Orientation.Horizontal ? width : height;
+			minimum_baseline = natural_baseline = -1;
 		}
 
-		protected override void OnSizeAllocated (Rectangle allocation)
+		protected override void OnSizeAllocate (int width, int height, int baseline)
 		{
-			base.OnSizeAllocated (allocation);
+			var allocation = new Gdk.Rectangle (0, 0, width, height);
 			if (horizontal) {
 				allocation.X += start_border;
 				allocation.Y += (int)BorderWidth;
@@ -220,21 +215,14 @@ namespace Mono.TextEditor.Theatrics
 			
 			foreach (AnimatedWidget widget in Widgets) {
 				if (horizontal) {
-					allocation.Width = widget.Width;
-					widget.SizeAllocate (allocation);
+					allocation.Width = widget.AnimatedWidth;
+					AllocateChild (widget, allocation);
 					allocation.X += allocation.Width;
 				} else {
-					allocation.Height = widget.Height;
-					widget.SizeAllocate (allocation);
+					allocation.Height = widget.AnimatedHeight;
+					AllocateChild (widget, allocation);
 					allocation.Y += allocation.Height;
 				}
-			}
-		}
-
-		protected override void ForAll (bool include_internals, Callback callback)
-		{
-			foreach (AnimatedWidget child in Widgets) {
-				callback (child);
 			}
 		}
 
@@ -378,7 +366,7 @@ namespace Mono.TextEditor.Theatrics
 			}
 			
 			AnimatedWidget animated_widget = new AnimatedWidget (widget, duration, easing, blocking, horizontal);
-			animated_widget.Parent = this;
+			AddChild (animated_widget);
 			animated_widget.WidgetDestroyed += OnWidgetDestroyed;
 			stage.Add (animated_widget, duration);
 			animated_widget.Node = end ? children.AddLast (animated_widget) : children.AddFirst (animated_widget);
@@ -401,7 +389,7 @@ namespace Mono.TextEditor.Theatrics
 
 		#region Remove Methods
 
-		public new void Remove (Widget widget)
+		public void Remove (Widget widget)
 		{
 			RemoveCore (widget, 0, 0, 0, false, false);
 		}

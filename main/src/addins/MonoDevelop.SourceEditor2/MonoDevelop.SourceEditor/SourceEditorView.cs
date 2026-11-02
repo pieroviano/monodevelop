@@ -219,6 +219,7 @@ namespace MonoDevelop.SourceEditor
 			widget.TextEditor.IconMargin.MouseMoved += OnIconMarginMouseMoved;
 			widget.TextEditor.IconMargin.MouseLeave += OnIconMarginMouseLeave;
 			widget.TextEditor.TextArea.FocusOutEvent += TextArea_FocusOutEvent;
+			widget.TextEditor.TextArea.ChildSizeChanged += HandleChildSizeChanged;
 			ClipboardRingService.Updated += OnClipboardItemsChanged;
 
 			textEditorService = Runtime.PeekService<TextEditorService> ();
@@ -434,7 +435,6 @@ namespace MonoDevelop.SourceEditor
 			if (extension is TopLevelWidgetExtension) {
 				var widgetExtension = (TopLevelWidgetExtension)extension;
 				Widget w = widgetExtension.CreateWidget ();
-				w.SizeAllocated += (o, args) => UpdateWidgetPosition (widgetExtension, w);
 				int x, y;
 				if (!CalcWidgetPosition (widgetExtension, w, out x, out y)) {
 					w.Destroy ();
@@ -465,7 +465,7 @@ namespace MonoDevelop.SourceEditor
 			if (widgetExtensions.TryGetValue (widgetExtension, out w)) {
 				int x, y;
 				widget.TextEditor.TextArea.GetTopLevelWidgetPosition (w, out x, out y);
-				var size = w.SizeRequest ();
+				var size = w.GetNaturalSize ();
 				Application.Invoke ((o, args) => {
 					widget.TextEditor.ScrollTo (new Gdk.Rectangle (x, y, size.Width, size.Height));
 				});
@@ -529,7 +529,7 @@ namespace MonoDevelop.SourceEditor
 			x = (int)widget.TextEditor.TextViewMargin.XOffset + lw + 4;
 			y = (int)widget.TextEditor.LineToY (widgetExtension.Line);
 			int lineStart = (int)widget.TextEditor.TextViewMargin.XOffset;
-			var size = w.SizeRequest ();
+			var size = w.GetNaturalSize ();
 
 			switch (widgetExtension.HorizontalAlignment) {
 			case HorizontalAlignment.LineLeft:
@@ -610,7 +610,7 @@ namespace MonoDevelop.SourceEditor
 
 			marker.SetPrimaryError (task);
 
-			if (TextEditor != null && TextEditor.IsComposited) {
+			if (TextEditor != null) {
 				/*if (messageBubbleHighlightPopupWindow != null)
 					messageBubbleHighlightPopupWindow.Destroy ();*/
 				/*	messageBherbbleHighlightPopupWindow = new MessageBubbleHighlightPopupWindow (this, marker);
@@ -1091,6 +1091,7 @@ namespace MonoDevelop.SourceEditor
 			widget.TextEditor.Options.ZoomChanged -= HandleWidgetTextEditorOptionsZoomChanged;
 			widget.TextEditor.TextViewMargin.LineShowing -= TextViewMargin_LineShowing;
 			widget.TextEditor.TextArea.FocusOutEvent -= TextArea_FocusOutEvent;
+			widget.TextEditor.TextArea.ChildSizeChanged -= HandleChildSizeChanged;
 			widget.TextEditor.Document.MimeTypeChanged -= Document_MimeTypeChanged;
 
 			if (textEditorService != null) {
@@ -1492,8 +1493,8 @@ namespace MonoDevelop.SourceEditor
 				}
 
 				IdeApp.CommandService.ShowContextMenu (
-					TextEditor,
-					args.RawEvent as Gdk.EventButton,
+					TextEditor.TextArea,
+					args.RawEvent,
 					GetExtensionContext (),
 					"/MonoDevelop/SourceEditor2/IconContextMenu/Editor");
 			} else if (args.Button == 1) {
@@ -1549,7 +1550,7 @@ namespace MonoDevelop.SourceEditor
 							var buttonCancel = new AlertButton (GettextCatalog.GetString ("Don't Undo")); 
 							var buttonOk = new AlertButton (GettextCatalog.GetString ("Undo")); 
 							var question = GettextCatalog.GetString ("You are about to undo past the last point this file was saved. Do you want to do this?");
-							var result = MessageService.GenericAlert (Gtk.Stock.DialogWarning, GettextCatalog.GetString ("Warning"),
+							var result = MessageService.GenericAlert (MonoDevelop.Ide.Gui.GtkStock.DialogWarning, GettextCatalog.GetString ("Warning"),
 																	  question, 1, buttonCancel, buttonOk);
 							if (result != buttonOk)
 								return;
@@ -1864,11 +1865,6 @@ namespace MonoDevelop.SourceEditor
 			}
 		}
 
-		public Style GtkStyle {
-			get {
-				return widget.Vbox.Style;
-			}
-		}
 
 		public void Replace (int offset, int count, string text)
 		{
@@ -1889,17 +1885,10 @@ namespace MonoDevelop.SourceEditor
 			public override Task<(int x, int y, int textHeight)> GetCoordinatesAsync ()
 			{
 				var p = editor.LocationToPoint (loc);
-				int tx, ty;
-				var parentWindow = editor.ParentWindow;
-				if (parentWindow != null) {
-					parentWindow.GetOrigin (out tx, out ty);
-				} else {
-					tx = ty = 0;
-				}
-				tx += editor.Allocation.X + p.X;
-				ty += editor.Allocation.Y + p.Y + (int)editor.LineHeight;
+				// GTK 4 has no screen coordinates: positions are relative to the main window (see GtkUtil.GetScreenCoordinates)
+				var screen = editor.TextArea.GetScreenCoordinates (new Gdk.Point (p.X, p.Y + (int)editor.LineHeight));
 
-				return Task.FromResult ((tx, ty, (int)editor.GetLineHeight (loc.Line)));
+				return Task.FromResult ((screen.X, screen.Y, (int)editor.GetLineHeight (loc.Line)));
 			}
 		}
 
@@ -1922,11 +1911,8 @@ namespace MonoDevelop.SourceEditor
 		public Gdk.Point DocumentToScreenLocation (DocumentLocation location)
 		{
 			var p = widget.TextEditor.LocationToPoint (location);
-			int tx, ty;
-			widget.Vbox.ParentWindow.GetOrigin (out tx, out ty);
-			tx += widget.TextEditor.Allocation.X + p.X;
-			ty += widget.TextEditor.Allocation.Y + p.Y + (int)TextEditor.LineHeight;
-			return new Gdk.Point (tx, ty);
+			// GTK 4 has no screen coordinates: positions are relative to the main window (see GtkUtil.GetScreenCoordinates)
+			return widget.TextEditor.TextArea.GetScreenCoordinates (new Gdk.Point (p.X, p.Y + (int)TextEditor.LineHeight));
 		}
 
 		public CodeTemplateContext GetCodeTemplateContext ()
@@ -2221,36 +2207,27 @@ namespace MonoDevelop.SourceEditor
 		}
 
 		#region dnd
-		Widget customSource;
 		ItemToolboxNode dragItem;
 
-		void IToolboxConsumer.DragItem (ItemToolboxNode item, Widget source, Gdk.DragContext ctx)
+		Gdk.ContentProvider IToolboxConsumer.DragItem (ItemToolboxNode item, Widget source)
 		{
-			//FIXME: use the preview text
 			string text = GetDragPreviewText (item);
 			if (string.IsNullOrEmpty (text))
-				return;
+				return null;
 			dragItem = item;
-			customSource = source;
-			customSource.DragDataGet += HandleDragDataGet;
-			customSource.DragEnd += HandleDragEnd;
+			// The editor inserts the item itself when it is dropped (see HandleTextDropped): the preview text
+			// only provides the drag content the drop target has to accept.
+			return new Gdk.ContentProvider (new GLib.Value (text));
 		}
 
-		void HandleDragEnd (object o, DragEndArgs args)
-		{
-			if (customSource != null) {
-				customSource.DragDataGet -= HandleDragDataGet;
-				customSource.DragEnd -= HandleDragEnd;
-				customSource = null;
-			}
-		}
-
-		void HandleDragDataGet (object o, DragDataGetArgs args)
+		internal void HandleTextDropped (object sender, TextDroppedEventArgs args)
 		{
 			if (dragItem != null) {
-				TextEditor.CaretToDragCaretPosition ();
-				((IToolboxConsumer)this).ConsumeItem (dragItem);
+				var item = dragItem;
 				dragItem = null;
+				TextEditor.CaretToDragCaretPosition ();
+				((IToolboxConsumer)this).ConsumeItem (item);
+				args.Handled = true;
 			}
 		}
 		#endregion
@@ -2283,9 +2260,9 @@ namespace MonoDevelop.SourceEditor
 			return textNode.IsCompatibleWith (DocumentController.Document);
 		}
 
-		public TargetEntry [] DragTargets {
+		public string [] DragTargets {
 			get {
-				return ClipboardActions.CopyOperation.TargetEntries;
+				return ClipboardActions.CopyOperation.MimeTypes;
 			}
 		}
 
@@ -3067,9 +3044,9 @@ namespace MonoDevelop.SourceEditor
 
 		Xwt.Point ITextEditorImpl.GetEditorWindowOrigin ()
 		{
-			int ox, oy;
-			TextEditor.GdkWindow.GetOrigin (out ox, out oy);
-			return new Xwt.Point (ox, oy);
+			// GTK 4 has no screen coordinates: the origin is relative to the main window (see GtkUtil.GetScreenCoordinates)
+			var origin = TextEditor.TextArea.GetScreenCoordinates (new Gdk.Point (0, 0));
+			return new Xwt.Point (origin.X, origin.Y);
 		}
 
 		Xwt.Rectangle ITextEditorImpl.GetEditorAllocation ()
@@ -3388,7 +3365,16 @@ namespace MonoDevelop.SourceEditor
 		public event EventHandler FocusLost;
 		public event EventHandler DirtyChanged;
 
-		void TextArea_FocusOutEvent (object o, FocusOutEventArgs args)
+		void HandleChildSizeChanged (object sender, Widget changed)
+		{
+			// replaces the GTK 2 SizeAllocated event of the widgets embedded by the top level widget extensions
+			foreach (var pair in widgetExtensions.ToArray ()) {
+				if (pair.Value == changed)
+					UpdateWidgetPosition (pair.Key, changed);
+			}
+		}
+
+		void TextArea_FocusOutEvent (object o, EventArgs args)
 		{
 			FocusLost?.Invoke (this, EventArgs.Empty);
 		}

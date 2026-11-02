@@ -46,7 +46,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 	{
 		void ForceDraw ();
 	}
-	class QuickTaskStrip : VBox
+	class QuickTaskStrip : Gtk.Box
 	{
 		public readonly static ConfigurationProperty<bool> EnableFancyFeatures = IdeApp.Preferences.EnableSourceAnalysis;
 		public readonly static bool MergeScrollBarAndQuickTasks = !MonoDevelop.Core.Platform.IsMac;
@@ -57,9 +57,9 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				PropertyService.Set ("ScrollBar.Mode", ScrollBarMode.Overview);
 			};
 		}
-		Adjustment adj;
+		Gtk.Adjustment adj;
 
-		public Adjustment VAdjustment {
+		public Gtk.Adjustment VAdjustment {
 			get {
 				return this.adj;
 			}
@@ -125,18 +125,24 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		internal SourceEditorView SourceEditorView { get; private set; }
 
-		public QuickTaskStrip (SourceEditorView parentView)
+		public QuickTaskStrip (SourceEditorView parentView) : base (Gtk.Orientation.Vertical, 0)
 		{
 			SourceEditorView = parentView ?? throw new ArgumentNullException (nameof (parentView));
 			ScrollBarMode = PropertyService.Get ("ScrollBar.Mode", ScrollBarMode.Overview);
 			PropertyService.AddPropertyHandler ("ScrollBar.Mode", ScrollBarModeChanged);
 			EnableFancyFeatures.Changed += HandleChanged;
-			Events |= EventMask.ButtonPressMask;
+			this.AddClickHandler (e => {
+				if (e.Button == 3) {
+					e.Claim ();
+					IdeApp.CommandService.ShowContextMenu (this, e, IdeApp.CommandService.CreateCommandEntrySet ("/MonoDevelop/SourceEditor2/ContextMenu/Scrollbar"), this);
+				}
+			});
+			Vexpand = true;
 
 			Accessible.Name = "MainWindow.QuickTaskStrip";
-			Accessible.SetShouldIgnore (false);
-			Accessible.SetRole (AtkCocoa.Roles.AXRuler);
-			Accessible.SetLabel (GettextCatalog.GetString ("Quick Task Strip"));
+			this.SetShouldIgnore (false);
+			this.SetRole (AtkCocoa.Roles.AXRuler);
+			this.SetLabel (GettextCatalog.GetString ("Quick Task Strip"));
 			Accessible.Description = GettextCatalog.GetString ("An overview of the current file's messages, warnings and errors");
 
 			var actionHandler = new ActionDelegate (this);
@@ -169,36 +175,42 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				switch (ScrollBarMode) {
 				case ScrollBarMode.Overview:
 					mapMode = overviewMode = new QuickTaskOverviewMode (this);
-					PackStart (mapMode, true, true, 0);
+					mapMode.Vexpand = true;
+					Append (mapMode);
 					break;
 				case ScrollBarMode.Minimap:
 					mapMode = new QuickTaskMiniMapMode (this);
 					overviewMode = null;
-					PackStart (mapMode, true, true, 0);
+					mapMode.Vexpand = true;
+					Append (mapMode);
 					break;
 				default:
 					throw new ArgumentOutOfRangeException ();
 				}
 			}
-			ShowAll ();
 		}
 
-		protected override void OnDestroyed ()
-		{
-			adj = null;
-			if (textEditor != null)
-				textEditor.EditorOptionsChanged -= TextEditor_EditorOptionsChanged;
-			textEditor = null;
-			providerTasks = null;
-			PropertyService.RemovePropertyHandler ("ScrollBar.Mode", ScrollBarModeChanged);
-			EnableFancyFeatures.Changed -= HandleChanged;
+		bool destroyed;
 
-			if (updateAccessibilityId != 0) {
-				GLib.Source.Remove (updateAccessibilityId);
-				updateAccessibilityId = 0;
+		public override void Destroy ()
+		{
+			if (!destroyed) {
+				destroyed = true;
+				adj = null;
+				if (textEditor != null)
+					textEditor.EditorOptionsChanged -= TextEditor_EditorOptionsChanged;
+				textEditor = null;
+				providerTasks = null;
+				PropertyService.RemovePropertyHandler ("ScrollBar.Mode", ScrollBarModeChanged);
+				EnableFancyFeatures.Changed -= HandleChanged;
+
+				if (updateAccessibilityId != 0) {
+					GLib.Source.Remove (updateAccessibilityId);
+					updateAccessibilityId = 0;
+				}
 			}
 
-			base.OnDestroyed ();
+			base.Destroy ();
 		}
 
 		void ScrollBarModeChanged (object sender, PropertyChangedEventArgs args)
@@ -233,7 +245,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 				children = overviewMode.UpdateAccessibility ();
 			}
 
-			Accessible.SetAccessibleChildren (children);
+			this.SetAccessibleChildren (children);
 
 			return false;
 		}
@@ -269,9 +281,7 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 
 		internal void ShowMenu ()
 		{
-			int x, y;
-			TranslateCoordinates (Toplevel, 0, 0, out x, out y);
-			IdeApp.CommandService.ShowContextMenu (this, x, y, IdeApp.CommandService.CreateCommandEntrySet ("/MonoDevelop/SourceEditor2/ContextMenu/Scrollbar"), this);
+			IdeApp.CommandService.ShowContextMenu (this, 0, 0, IdeApp.CommandService.CreateCommandEntrySet ("/MonoDevelop/SourceEditor2/ContextMenu/Scrollbar"), this);
 		}
 
 		void PerformShowMenu (object sender, EventArgs e)
@@ -279,13 +289,6 @@ namespace MonoDevelop.SourceEditor.QuickTasks
 			ShowMenu (); 
 		}
 
-		protected override bool OnButtonPressEvent (EventButton evnt)
-		{
-			if (evnt.Button == 3) {
-				IdeApp.CommandService.ShowContextMenu (this, evnt, IdeApp.CommandService.CreateCommandEntrySet ("/MonoDevelop/SourceEditor2/ContextMenu/Scrollbar"), this);
-			}
-			return base.OnButtonPressEvent (evnt);
-		}
 
 		void TextEditor_EditorOptionsChanged (object sender, EventArgs e)
 		{

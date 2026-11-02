@@ -38,13 +38,30 @@ using MonoDevelop.Ide;
 
 namespace MonoDevelop.SourceEditor
 {
-	class LanguageItemWindow: MonoDevelop.Components.TooltipWindow
+	/// <summary>
+	/// Tooltip with the text of a language item (error, quick fix...). The tooltip is a popover (GTK 4 cannot position
+	/// toplevel windows); this wrapper makes it usable as a <see cref="MonoDevelop.Components.Window"/> for the
+	/// <see cref="MonoDevelop.Ide.Editor.TooltipProvider"/> API. Show it with <see cref="ShowPopup"/>.
+	/// </summary>
+	class LanguageItemWindow : MonoDevelop.Components.Window
 	{
+		readonly LanguageItemPopover popover;
+
 		public bool IsEmpty { get; set; }
 		public object Tag { get; set; }
 
+		/// <summary>Raised when the tooltip is closed.</summary>
+		public event EventHandler Destroyed;
+
 		public LanguageItemWindow (ExtensibleTextEditor ed, Xwt.ModifierKeys modifierState, object result, string errorInformations, object unit)
+			: this (new LanguageItemPopover (), errorInformations)
 		{
+		}
+
+		LanguageItemWindow (LanguageItemPopover popover, string errorInformations) : base (popover)
+		{
+			this.popover = popover;
+			popover.Owner = this;
 			string tooltip = errorInformations;
 			if (string.IsNullOrEmpty (tooltip)|| tooltip == "?") {
 				IsEmpty = true;
@@ -58,35 +75,61 @@ namespace MonoDevelop.SourceEditor
 				BreakOnPunctuation = true,
 				Markup = tooltip,
 			};
-			this.BorderWidth = 3;
-			Add (label);
+			label.MarginTop = label.MarginBottom = label.MarginStart = label.MarginEnd = 3;
+			popover.Child = label;
 			UpdateFont (label);
 			
-			EnableTransparencyControl = true;
+			popover.EnableTransparencyControl = true;
+		}
+
+		/// <summary>The popover this window wraps.</summary>
+		public MonoDevelop.Components.TooltipWindow Popover => popover;
+
+		/// <summary>Anchors the tooltip to <paramref name="anchor"/>, pointing at <paramref name="area"/> (anchor coordinates), and shows it.</summary>
+		public void ShowPopup (Gtk.Widget anchor, Gdk.Rectangle area)
+		{
+			popover.ShowPopup (anchor, area);
+		}
+
+		/// <summary>Closes the tooltip.</summary>
+		public void Destroy ()
+		{
+			popover.Destroy ();
 		}
 		
 		//return the real width
 		public int SetMaxWidth (int maxWidth)
 		{
-			var label = Child as MonoDevelop.Components.FixedWidthWrapLabel;
+			var label = popover.Child as MonoDevelop.Components.FixedWidthWrapLabel;
 			if (label == null)
-				return Allocation.Width;
+				return popover.Width;
 			label.MaxWidth = maxWidth;
 			return label.RealWidth;
 		}
 		
-		protected override void OnStyleSet (Style previous_style)
-		{
-			base.OnStyleSet (previous_style);
-			UpdateFont (Child as MonoDevelop.Components.FixedWidthWrapLabel);
-		}
-		
+
 		void UpdateFont (MonoDevelop.Components.FixedWidthWrapLabel label)
 		{
 			if (label == null)
 				return;
 			label.FontDescription = IdeServices.FontService.GetFontDescription ("Pad");
 			
+		}
+
+		sealed class LanguageItemPopover : MonoDevelop.Components.TooltipWindow
+		{
+			public LanguageItemWindow Owner { get; set; }
+
+			bool destroyed;
+
+			public override void Destroy ()
+			{
+				if (!destroyed) {
+					destroyed = true;
+					Owner?.Destroyed?.Invoke (Owner, EventArgs.Empty);
+				}
+				base.Destroy ();
+			}
 		}
 	}
 }

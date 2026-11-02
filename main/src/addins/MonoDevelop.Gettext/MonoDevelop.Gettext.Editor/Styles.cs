@@ -34,10 +34,15 @@ namespace MonoDevelop.Gettext
 
 		public class POEditorStyle
 		{
-			public Gdk.Color EntryUntranslatedBackgroundColor { get; internal set; }
-			public Gdk.Color EntryMissingBackgroundColor { get; internal set; }
-			public Gdk.Color EntryFuzzyBackgroundColor { get; internal set; }
-			public Gdk.Color TabBarBackgroundColor { get; internal set; }
+			public Gdk.RGBA EntryUntranslatedBackgroundColor { get; internal set; }
+			public Gdk.RGBA EntryMissingBackgroundColor { get; internal set; }
+			public Gdk.RGBA EntryFuzzyBackgroundColor { get; internal set; }
+			public Gdk.RGBA TabBarBackgroundColor { get; internal set; }
+		}
+
+		static Gdk.RGBA Rgb (int r, int g, int b)
+		{
+			return new Gdk.RGBA { Red = r / 255f, Green = g / 255f, Blue = b / 255f, Alpha = 1 };
 		}
 
 		static Styles ()
@@ -50,15 +55,15 @@ namespace MonoDevelop.Gettext
 		{
 			POEditor = new POEditorStyle ();
 			if (IdeApp.Preferences.UserInterfaceTheme == Theme.Light) {
-				POEditor.EntryUntranslatedBackgroundColor = new Gdk.Color (234, 232, 227);
-				POEditor.EntryMissingBackgroundColor = new Gdk.Color (237, 226, 187);
-				POEditor.EntryFuzzyBackgroundColor = new Gdk.Color (255, 199, 186);
-				POEditor.TabBarBackgroundColor = new Gdk.Color (241, 241, 241);
+				POEditor.EntryUntranslatedBackgroundColor = Rgb (234, 232, 227);
+				POEditor.EntryMissingBackgroundColor = Rgb (237, 226, 187);
+				POEditor.EntryFuzzyBackgroundColor = Rgb (255, 199, 186);
+				POEditor.TabBarBackgroundColor = Rgb (241, 241, 241);
 			} else {
-				POEditor.EntryUntranslatedBackgroundColor = new Gdk.Color (255, 238, 194);
-				POEditor.EntryMissingBackgroundColor = new Gdk.Color (255, 0, 255); // TODO: VV
-				POEditor.EntryFuzzyBackgroundColor = new Gdk.Color (255, 195, 183);
-				POEditor.TabBarBackgroundColor = new Gdk.Color (51, 51, 51);
+				POEditor.EntryUntranslatedBackgroundColor = Rgb (255, 238, 194);
+				POEditor.EntryMissingBackgroundColor = Rgb (255, 0, 255); // TODO: VV
+				POEditor.EntryFuzzyBackgroundColor = Rgb (255, 195, 183);
+				POEditor.TabBarBackgroundColor = Rgb (51, 51, 51);
 			}
 		}
 	}

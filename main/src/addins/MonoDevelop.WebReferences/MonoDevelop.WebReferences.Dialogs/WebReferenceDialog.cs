@@ -176,8 +176,6 @@ namespace MonoDevelop.WebReferences.Dialogs
 			}
 
 			ChangeState (DialogState.Create);
-			frmBrowser.Show ();
-			this.Child.Show ();
 		}
 
 		public WebReferenceDialog (WebReferenceItem item, ClientOptions options)
@@ -205,8 +203,6 @@ namespace MonoDevelop.WebReferences.Dialogs
 			tbxReferenceName.Text = item.Name;
 			tbxNamespace.Text = item.Project.DefaultNamespace;
 
-			frmBrowser.Show ();
-			this.Child.Show ();
 		}
 		
 		/// <summary>Execute the event when any of the buttons on the action panel has been clicked</summary>
@@ -254,9 +250,9 @@ namespace MonoDevelop.WebReferences.Dialogs
 		/// <summary>Execute the event when the Enter key has been pressed on the Url Entry</summary>
 		/// <param name="sender">An object that contains the sender data.</param>
 		/// <param name="e">An EventArgs object that contains the event data.</param>
-		void Browser_URLKeyReleased (object sender, KeyReleaseEventArgs e)
+		void Browser_URLKeyReleased (uint keyval, uint keycode, Gdk.ModifierType state)
 		{
-			if (e.Event.Key == Gdk.Key.Return)
+			if (keyval == (uint)Gdk.Key.Return)
 			{
 				if (browser != null)
 					browser.LoadUrl(tbxReferenceURL.Text);
@@ -388,7 +384,7 @@ namespace MonoDevelop.WebReferences.Dialogs
 			Application.Invoke ((o, args) => {
 				if (docLabel != null) {
 					docLabel.Text = error;
-					docLabel.LineWrapMode = Pango.WrapMode.Word;
+					docLabel.WrapMode = Pango.WrapMode.Word;
 					docLabel.Wrap = true;
 				}
 			});
@@ -546,7 +542,7 @@ namespace MonoDevelop.WebReferences.Dialogs
 				return;
 
 			if (state != DialogState.Uninitialized)
-				frmBrowser.Forall (frmBrowser.Remove);
+				frmBrowser.Child = null;
 
 			browser = null;
 			browserWidget = null;
@@ -566,21 +562,20 @@ namespace MonoDevelop.WebReferences.Dialogs
 					browser.LocationChanged += Browser_LocationChanged;
 					browser.NetStart += Browser_StartLoading;
 					browser.NetStop += Browser_StopLoading;
-					frmBrowser.Add (browserWidget);
+					frmBrowser.Child = browserWidget;
 					browser.LoadUrl (tbxReferenceURL.Text);
-					browserWidget.Show ();
+					browserWidget.Visible = true;
 				} else {
 					docLabel = new Label ();
-					docLabel.Xpad = 6;
-					docLabel.Ypad = 6;
+					docLabel.MarginStart = docLabel.MarginEnd = 6;
+					docLabel.MarginTop = docLabel.MarginBottom = 6;
 					docLabel.Xalign = 0;
 					docLabel.Yalign = 0;
 
 					sw = new ScrolledWindow ();
-					sw.ShadowType = ShadowType.In;
-					sw.AddWithViewport (docLabel);
-					sw.ShowAll ();
-					frmBrowser.Add (sw);
+					sw.HasFrame = true;
+					sw.Child = docLabel;
+					frmBrowser.Child = sw;
 					UpdateLocation ();
 				}
 				break;
@@ -591,12 +586,11 @@ namespace MonoDevelop.WebReferences.Dialogs
 					return;
 
 				sw = new ScrolledWindow ();
-				sw.ShadowType = ShadowType.In;
+				sw.HasFrame = true;
 
 				wcfConfig = new WCFConfigWidget (wcfOptions, wcfProject);
-				sw.AddWithViewport (wcfConfig);
-				sw.ShowAll ();
-				frmBrowser.Add (sw);
+				sw.Child = wcfConfig;
+				frmBrowser.Child = sw;
 				break;
 
 			default:
@@ -628,15 +622,17 @@ namespace MonoDevelop.WebReferences.Dialogs
 		}
 
 
-		protected override void OnDestroyed ()
+		protected override void Dispose (bool disposing)
 		{
-			btnNavBack.Activated -= Browser_BackButtonClicked;
-			btnNavNext.Activated -= Browser_NextButtonClicked;
-			btnRefresh.Activated -= Browser_RefreshButtonClicked;
-			btnStop.Activated -= Browser_StopButtonClicked;
-			btnHome.Activated -= Browser_HomeButtonClicked;
+			if (disposing) {
+				btnNavBack.Clicked -= Browser_BackButtonClicked;
+				btnNavNext.Clicked -= Browser_NextButtonClicked;
+				btnRefresh.Clicked -= Browser_RefreshButtonClicked;
+				btnStop.Clicked -= Browser_StopButtonClicked;
+				btnHome.Clicked -= Browser_HomeButtonClicked;
+			}
 
-			base.OnDestroyed ();
+			base.Dispose (disposing);
 		}
 	}
 }

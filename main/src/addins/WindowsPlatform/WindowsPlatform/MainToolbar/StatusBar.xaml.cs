@@ -213,8 +213,8 @@ namespace WindowsPlatform.MainToolbar
 				xwtAnimation = null;
 			}
 
-			if (ImageService.IsAnimation (currentIcon, Gtk.IconSize.Menu)) {
-				animatedIcon = ImageService.GetAnimatedIcon (currentIcon, Gtk.IconSize.Menu);
+			if (ImageService.IsAnimation (currentIcon, MonoDevelop.Components.StockIconSize.Menu)) {
+				animatedIcon = ImageService.GetAnimatedIcon (currentIcon, MonoDevelop.Components.StockIconSize.Menu);
 				StatusImage = animatedIcon.FirstFrame;
 				xwtAnimation = animatedIcon.StartAnimation (p => {
 					StatusImage = p;

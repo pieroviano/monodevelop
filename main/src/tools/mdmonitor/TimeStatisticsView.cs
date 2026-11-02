@@ -34,10 +34,10 @@ using System.Linq;
 namespace Mono.Instrumentation.Monitor
 {
 	[System.ComponentModel.ToolboxItem(true)]
-	public partial class TimeStatisticsView : Gtk.Bin
+	public partial class TimeStatisticsView : MonoDevelop.Components.BinWidget
 	{
 		TreeStore store;
-		Gdk.Color normalColor;
+		string normalColor;
 		
 		const int ColFilled = 7;
 		const int ColCounter = 8;
@@ -62,10 +62,10 @@ namespace Mono.Instrumentation.Monitor
                typeof(CounterValue), 
                typeof(bool),  // Show stats
                typeof(bool), // Show icon
-               typeof(Gdk.Color)); // Color
+               typeof(string)); // Foreground color (CSS)
 			
 			treeView.Model = store;
-			normalColor = parent.Style.Foreground (StateType.Normal);
+			normalColor = parent.StyleContext.Color.ToCss ();
 			
 			CellRendererText crt = new CellRendererText ();
 			CellRendererPixbuf crp = new CellRendererPixbuf ();
@@ -81,12 +81,10 @@ namespace Mono.Instrumentation.Monitor
 			col.SortColumnId = 1;
 			
 			treeView.AppendColumn ("Count", crt, "text", 2).SortColumnId = 2;
-			treeView.AppendColumn ("Total Time", new CellRendererText (), "text", 3, "foreground-gdk", ColColor).SortColumnId = 3;
+			treeView.AppendColumn ("Total Time", new CellRendererText (), "text", 3, "foreground", ColColor).SortColumnId = 3;
 			treeView.AppendColumn ("Average Time", crt, "text", 4, "visible", ColShowStats).SortColumnId = 4;
 			treeView.AppendColumn ("Min Time", crt, "text", 5, "visible", ColShowStats).SortColumnId = 5;
 			treeView.AppendColumn ("Max Time", crt, "text", 6, "visible", ColShowStats).SortColumnId = 6;
-			
-			Show ();
 			
 			foreach (TreeViewColumn c in treeView.Columns)
 				c.Resizable = true;
@@ -185,7 +183,7 @@ namespace Mono.Instrumentation.Monitor
 			Gdk.Pixbuf icon = c.GetIcon ();
 			foreach (CounterValue val in c.GetValues ().Where (val => val.HasTimerTraces)) {
 				string msg = !string.IsNullOrEmpty (val.Message) ? val.Message : c.Name;
-				store.AppendValues (parent, icon, msg, val.Value, (float) val.Duration.TotalMilliseconds, 0f, 0f, 0f, false, null, val, true, true, val.GetTimeColor (c));
+				store.AppendValues (parent, icon, msg, val.Value, (float) val.Duration.TotalMilliseconds, 0f, 0f, 0f, false, null, val, true, true, val.GetTimeColor (c).ToCss ());
 			}
 		}
 		
