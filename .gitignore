@@ -284,6 +284,9 @@ main/tests/StressTest/bin
 /Packages
 /main/Main.sln.DotSettings
 .vs
+.vscode
 */.vs
+*/.vscode
 *.code-workspace
 /main/build
+.vscode
