@@ -62,9 +62,9 @@
       <Name>Mono.Debugging</Name>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\external\xwt\Xwt.Gtk\Xwt.Gtk.csproj">
-      <Project>{C3887A93-B2BD-4097-8E2F-3A063EFF32FD}</Project>
-      <Name>Xwt.Gtk</Name>
+    <ProjectReference Include="..\..\..\external\xwt\Xwt.Gtk4\Xwt.Gtk4.csproj">
+      <Project>{5B1A7C0E-3D42-4F0A-9E61-0A4C7D2B8F11}</Project>
+      <Name>Xwt.Gtk4</Name>
       <Private>False</Private>
     </ProjectReference>
   </ItemGroup>

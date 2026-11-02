@@ -79,11 +79,11 @@
     <IncludeCopyLocal Include="Microsoft.TemplateEngine.Edge.dll" />
     <IncludeCopyLocal Include="Microsoft.TemplateEngine.Orchestrator.RunnableProjects.dll" />
     <IncludeCopyLocal Include="Microsoft.TemplateEngine.Utils.dll" />
-    <IncludeCopyLocal Include="Mono.Addins.Gui.dll" />
+    <IncludeCopyLocal Include="Mono.Addins.GuiGtk4.dll" />
     <IncludeCopyLocal Include="Mono.Debugging.dll" />
     <IncludeCopyLocal Include="Xamarin.Mac.dll" />
     <IncludeCopyLocal Include="Xwt.dll" />
-    <IncludeCopyLocal Include="Xwt.Gtk.dll" />
+    <IncludeCopyLocal Include="Xwt.Gtk4.dll" />
     <IncludeCopyLocal Include="Xwt.XamMac.dll" />
     <IncludeCopyLocal Include="YamlDotNet.dll" />
   </ItemGroup>
@@ -105,9 +105,9 @@
       <Project>{92494904-35FA-4DC9-BDE9-3A3E87AC49D3}</Project>
       <Name>Xwt</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\external\xwt\Xwt.Gtk\Xwt.Gtk.csproj">
-      <Project>{C3887A93-B2BD-4097-8E2F-3A063EFF32FD}</Project>
-      <Name>Xwt.Gtk</Name>
+    <ProjectReference Include="..\..\..\external\xwt\Xwt.Gtk4\Xwt.Gtk4.csproj">
+      <Project>{5B1A7C0E-3D42-4F0A-9E61-0A4C7D2B8F11}</Project>
+      <Name>Xwt.Gtk4</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\..\external\mono-addins\Mono.Addins\Mono.Addins.csproj">
       <Project>{91DD5A2D-9FE3-4C3C-9253-876141874DAD}</Project>
@@ -119,9 +119,9 @@
       <Name>Mono.Addins.Setup</Name>
       <Private>False</Private>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\external\mono-addins\Mono.Addins.Gui\Mono.Addins.Gui.csproj">
-      <Project>{FEC19BDA-4904-4005-8C09-68E82E8BEF6A}</Project>
-      <Name>Mono.Addins.Gui</Name>
+    <ProjectReference Include="..\..\..\external\mono-addins\Mono.Addins.GuiGtk4\Mono.Addins.GuiGtk4.csproj">
+      <Project>{64EA4EAA-FB8A-4F4A-B9B0-529C1C40390E}</Project>
+      <Name>Mono.Addins.GuiGtk4</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\..\external\debugger-libs\Mono.Debugging\Mono.Debugging.csproj">
       <Project>{90C99ADB-7D4B-4EB4-98C2-40BD1B14C7D2}</Project>

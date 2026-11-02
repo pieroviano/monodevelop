@@ -50,9 +50,9 @@
       <Project>{AA0C00CB-8699-4F37-BFAE-40CA87ACC06D}</Project>
       <Name>Shell</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\..\..\external\xwt\Xwt.Gtk.Windows\Xwt.Gtk.Windows.csproj">
-      <Project>{252117CA-0ABB-4F36-BFC8-DE23A8089BB9}</Project>
-      <Name>Xwt.Gtk.Windows</Name>
+    <ProjectReference Include="..\..\..\..\external\xwt\Xwt.Gtk4.Windows\Xwt.Gtk4.Windows.csproj">
+      <Project>{7C2E9D14-6A53-4B8F-A1D7-3E8B5F90C622}</Project>
+      <Name>Xwt.Gtk4.Windows</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\..\..\external\xwt\Xwt.WPF\Xwt.WPF.csproj">
       <Project>{C93D746E-1586-4D4F-B411-BF5A966E6A08}</Project>
@@ -60,7 +60,7 @@
     </ProjectReference>
     <IncludeCopyLocal Include="Microsoft.WindowsAPICodePack.dll" />
     <IncludeCopyLocal Include="Microsoft.WindowsAPICodePack.Shell.dll" />
-    <IncludeCopyLocal Include="Xwt.Gtk.Windows.dll" />
+    <IncludeCopyLocal Include="Xwt.Gtk4.Windows.dll" />
     <IncludeCopyLocal Include="Xwt.WPF.dll" />
   </ItemGroup>
   <ItemGroup>
